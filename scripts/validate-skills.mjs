@@ -13,6 +13,7 @@
 //   - `references/...` and `scripts/...` paths exist in the skill, or in agent-workflow-protocol
 //   - relative markdown links resolve
 //   - nothing repository-specific has leaked into skills/, scripts/ or tests/
+//   - every $KEY a skill names exists in config.defaults.env, and every key there is used
 // Package-wide:
 //   - .claude-plugin/plugin.json lists exactly the promoted skills
 //   - bucket READMEs and the root README link every skill
@@ -163,6 +164,24 @@ for (const base of ["skills", "scripts", "tests"]) {
     if (file.endsWith("validate-skills.mjs")) continue; // holds the patterns themselves
     const text = read(file);
     for (const [re, why] of LEAKS) if (re.test(text)) err(relative(root, file), why);
+  }
+}
+
+// ---- config keys -----------------------------------------------------------
+// A skill that names $SOME_KEY must find it in config.defaults.env, and every key there must be used.
+if (protocol) {
+  const cfgPath = join(protocol.dir, "config.defaults.env");
+  const keys = new Set([...read(cfgPath).matchAll(/^([A-Z][A-Z0-9_]*)=/gm)].map((m) => m[1]));
+  const SHELL_VARS = new Set(["RUN_ID", "SHA"]); // set by lib.sh or by the skill itself
+  const mdFiles = walk(join(root, "skills")).filter((f) => f.endsWith(".md"));
+  const text = mdFiles.map((f) => [f, read(f)]);
+  for (const [file, body] of text) {
+    for (const [, v] of body.matchAll(/\$\{?([A-Z][A-Z0-9_]+)/g)) {
+      if (!keys.has(v) && !SHELL_VARS.has(v)) err(relative(root, file), `uses $${v}, which is not in config.defaults.env`);
+    }
+  }
+  for (const k of keys) {
+    if (!text.some(([, body]) => body.includes(k))) err(relative(root, cfgPath), `${k} is not used by any skill`);
   }
 }
 

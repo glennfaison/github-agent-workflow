@@ -18,6 +18,7 @@ cat > "$WORK/bin/gh" <<'STUB'
 cmd=$1; shift
 if [ "$cmd" = pr ] && [ "${1:-}" = list ]; then cat "$STATE/prs.json"; exit 0; fi
 jqf() { local f=""; while [ $# -gt 0 ]; do [ "$1" = --jq ] && f=$2; shift; done; jq -r "$f"; }
+if [ "$cmd" = issue ] && [ "${1:-}" = list ]; then echo '[{"number":9}]' | jqf "$@"; exit 0; fi
 case "$cmd" in
   api)   # gh api repos/{owner}/{repo}/issues/N/comments --paginate --jq F
          n=$(echo "$1" | sed -n 's#.*/issues/\([0-9]*\)/comments#\1#p')
@@ -26,7 +27,9 @@ case "$cmd" in
     sub=$1; shift; n=$1; shift
     lf="$STATE/labels_${cmd}_$n"; touch "$lf"
     case "$sub" in
-      view) if [ "$cmd" = pr ] && [[ " $* " == *closingIssuesReferences* ]]; then
+      view) if [[ " $* " == *" comments "* ]]; then
+              jq '{comments: .}' "$STATE/comments_$n.json" | jqf "$@"
+            elif [ "$cmd" = pr ] && [[ " $* " == *closingIssuesReferences* ]]; then
               jq --argjson n "$n" '.[]|select(.number==$n)|{body,closingIssuesReferences:(.closing//[])|map({number:.})}' "$STATE/prs.json" | jqf "$@"
             else jq -Rn '{labels:[inputs|select(length>0)|{name:.}]}' "$lf" | jqf "$@"; fi ;;
       edit) while [ $# -gt 0 ]; do case $1 in
@@ -94,6 +97,34 @@ check "handoff resets attempts" 0 "$(shepherd_attempts 10)"
 check "ready_sha is newest"    def789 "$(ready_sha 10)"
 c 11 "x <!-- agent:handoff kind=review sha=aaa -->"
 check "review handoff w/o open= counts as 1" 1 "$(open_findings 11)"
+
+echo "Failure cap"
+fail_item 20 issue Grooming "could not read ADR link"
+fail_item 20 issue Grooming "again"
+fail_item 20 issue Implementing "other step"
+check "failures counts per step"        2 "$(failures 20 Grooming)"
+check "other step is counted apart"     1 "$(failures 20 Implementing)"
+check "no failures = 0"                 0 "$(failures 21 Grooming)"
+c 20 "stuck <!-- agent:escalate step=Grooming -->"
+check "escalation resets the count"     0 "$(failures 20 Grooming)"
+fail_item 20 issue Grooming "after unsticking"
+check "counting restarts after it"      1 "$(failures 20 Grooming)"
+c 22 "merged <!-- agent:handoff kind=merged sha=abc -->"
+check "merged handoff is not a review round" 0 "$(review_rounds 22)"
+check "merged handoff leaves no open findings" 0 "$(open_findings 22)"
+
+echo "Run log"
+cat > "$STATE/comments_9.json" <<'J'
+[{"body":"**Step:** Grooming\n**Outcome:** nothing eligible","createdAt":"2999-01-01T00:00:00Z"},
+ {"body":"**Step:** Shepherding\n**Outcome:** nothing eligible\n**Problems:** failed: #4 x","createdAt":"2999-01-01T00:00:00Z"},
+ {"body":"**Step:** Reviewing\n**Outcome:** 1 merged","createdAt":"2999-01-01T00:00:00Z"},
+ {"body":"**Step:** Exploring\n**Outcome:** 2 filed (too old)","createdAt":"2000-01-01T00:00:00Z"}]
+J
+logs=$(read_logs 14)
+check "idle entry is skipped"           0 "$(grep -c 'Step:\*\* Grooming' <<<"$logs")"
+check "idle entry with Problems is kept" 1 "$(grep -c 'Step:\*\* Shepherding' <<<"$logs")"
+check "working entry is kept"           1 "$(grep -c 'Step:\*\* Reviewing' <<<"$logs")"
+check "entry older than the window is dropped" 0 "$(grep -c 'Exploring' <<<"$logs")"
 
 echo "Issue <-> PR links"
 cat > "$STATE/prs.json" <<'J'

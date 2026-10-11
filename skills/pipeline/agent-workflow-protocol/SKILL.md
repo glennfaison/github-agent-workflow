@@ -21,13 +21,13 @@ The workflow has five steps. Each step has a **group skill** that selects work a
 
 Item skills lean on three **utility skills** from this package: `unattended-triage` (the triage decision and its comment), `unattended-grilling` (one round of questions with recommended answers), and `merge-safety` (the merge gate). `setup-github-agent-workflow` is run once per repository, by a human.
 
-**Group skills** find candidates, apply the item skill's **Eligibility** section to them, take at most the step's `*_BATCH` items (oldest first), dispatch each to the item skill, and write the run-log entry. They never do item work themselves.
+**Group skills** find candidates, apply the item skill's **Eligibility** section to them, take the first `*_BATCH` that pass (oldest first; items that fail do not count toward the batch), dispatch each to the item skill by its `url`, and write one run-log entry. They never do item work themselves.
 
-**Item skills** take exactly one issue or PR number. On entry they check eligibility themselves, so a direct call or a double dispatch is safe. Then they claim, work, write the output state, release, and return a one-line result. Run one by hand with, for example, `/triage-github-issue 123`.
+**Item skills** take exactly one issue or PR, as a URL or a number (`N` is the last path segment of a URL). On entry they check **Eligibility** themselves, so a direct call or a double dispatch is safe. If it fails they claim nothing and return `#N skipped: <reason>`. Otherwise they claim, work, write the output state, release, and return a one-line result. Run one by hand with, for example, `/triage-github-issue 123`.
 
 **Dispatching.** To dispatch an item, call the Skill tool with the item skill's name and give it the item's URL (the item skill derives the number from it). If your runner can start sub-agents, run each item as its own sub-agent, given only the item's URL, so context stays small and one failing item cannot affect the rest. Otherwise run the items one after another. Either way, collect each item's result.
 
-**Item result.** One line: `#N <outcome>` or `#N skipped: <reason>` or `#N failed: <reason>`. For example `#31 ready-for-agent`, `#35 skipped: leased`, `#44 failed: could not read ADR link (404)`.
+**Item result.** One line: `#N <outcome>` or `#N skipped: <reason>` or `#N failed: <reason>`. For example `#31 ready-for-agent`, `#35 skipped: leased`, `#44 failed: could not read ADR link (404)`. A group skill logs the results of the items it dispatched. An item skill run on its own writes its own run-log entry (`references/log.md`).
 
 The steps are independent. Do not assume another step has run, will run, or is running (rule 1 below).
 
@@ -55,18 +55,17 @@ Use any group skill, or `/explore-github-repo`. The runner decides when and how 
 ## Unattended runs
 
 - **No human is present, and nobody answers questions.** Do not stop to ask. Decide from the item's labels and comments. Where you would ask, use the skill's own route: `needs-info`, `ready-for-human` or `references/escalate.md`.
-- **A run may find nothing to do, or start while another is running.** Both are normal. Rules 1, 3, 5 and 6 below cover them.
 - **If you cannot do something a skill requires, do not improvise.** Record it under **Problems** in the run log, release any lease you hold, and move on to the next item.
 
 ## Shell setup
 
-From inside the target repository, run the helper library that sits in this skill's directory:
+Every skill that has a shell does this first, from inside the target repository, and nothing else in a skill needs to repeat it. Run the helper library that sits in this skill's directory:
 
 ```bash
 source <this skill's directory>/scripts/lib.sh   # loads config, sets RUN_ID, defines the helpers
 ```
 
-With a shell, it requires `gh` (authenticated), `jq` and Python 3. Without one, see the next section.
+It requires `gh` (authenticated), `jq` and Python 3. Skills that commit (`implement-github-issue`, `shepherd-github-pr`, `review-github-pr`) then run `git config core.hooksPath "$GIT_HOOKS_PATH"` if that is set. Without a shell, see the next section.
 
 ## Running without a shell
 
@@ -88,6 +87,7 @@ Some runners (for example a chat automation with a GitHub connector) cannot run 
 7. **Touch only what you have claimed.** The only exceptions are the comments dedupe allows on other issues.
 8. **Triage and exploring never change the repository.** No commits, no branches, no edits to `GLOSSARY.md`, ADRs or `.out-of-scope/`. Put proposed changes in a comment.
 9. **No unattended `wontfix`.** If an issue looks already implemented or should be rejected, do not close it. Set `ready-for-human` and give the recommendation and reason in the comment.
+10. **Cap failures.** An item whose run fails stays eligible and is the oldest again next time, so a permanent failure would fill a batch forever. After a claimed run fails, run `fail_item N issue|pr STEP "reason"` before you release. Right after you claim, if `failures N STEP` is at least `$MAX_ITEM_FAILURES`, follow `references/escalate.md` instead of working.
 
 ## References
 
@@ -139,7 +139,10 @@ Hidden HTML comments make state readable without parsing prose. Append them as t
 | `<!-- agent:implements issue=N -->` | Implementing, in the **PR description** | links a PR to its issue, so a second PR is never opened for it (`prs_for_issue N`) |
 | `<!-- agent:handoff kind=ready sha=… -->` | Shepherding | the PR was reviewable at this head SHA |
 | `<!-- agent:handoff kind=review sha=… open=N -->` | Reviewing, when it does not merge; `N` = findings still unfixed | counts review rounds (`review_rounds N`); `open_findings N` tells Shepherding what is left |
+| `<!-- agent:handoff kind=merged sha=… -->` | Reviewing, after it merges | the review record (verdict, evidence) stays with the PR |
 | `<!-- agent:attempt step=shepherding sha=… -->` | Shepherding, after each fix push | counts attempts since the last handoff of any kind (`shepherd_attempts N`) |
+| `<!-- agent:failure step=… run=… -->` | `fail_item` | counts failed runs on an item (`failures N STEP`) |
+| `<!-- agent:escalate step=… -->` | `references/escalate.md` | ends the failure count, so a human who unsticks the item starts fresh |
 
 ## Reading and writing helpers
 
@@ -149,6 +152,8 @@ Hidden HTML comments make state readable without parsing prose. Append them as t
 | `prs_for_issue N` | every PR for issue N, one `<number> <OPEN\|MERGED\|CLOSED>` per line. Matches the `agent:implements` marker, a `<type>/N-<topic>` branch, or `Closes\|Fixes\|Resolves #N` in the body |
 | `issue_for_pr N` | the issue numbers PR N implements |
 | `review_rounds N`, `shepherd_attempts N` | the two counters above |
+| `fail_item N issue\|pr STEP REASON` | comment the failure on N with the `agent:failure` marker |
+| `failures N STEP` | failed runs of STEP on N since the last escalation |
 | `open_findings N` | review findings still open on a PR (0 if none) |
 | `ready_sha N` | head SHA recorded by the newest `kind=ready` handoff |
 | `log_issue`, `log_run FILE`, `read_logs DAYS` | see `references/log.md` |

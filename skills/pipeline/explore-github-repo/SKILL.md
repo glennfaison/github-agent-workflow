@@ -9,7 +9,7 @@ Explore the live app and the codebase, then file the most valuable findings as i
 
 **Input:** the URL of the live app to explore. Optional. Use the URL in the prompt, otherwise `$APP_URL`. If both are empty, explore the code only and say so in the log. Never ask for it.
 
-**Read first:** call the Skill tool with `agent-workflow-protocol`, then read these files in that skill's directory: `references/log.md`, `references/issue-format.md` and `config.defaults.env`. If you have a shell, follow **Shell setup** in the protocol.
+**Read first:** call the Skill tool with `agent-workflow-protocol`, then read these files in that skill's directory: `references/log.md`, `references/issue-format.md` and `config.defaults.env`.
 
 ## Inputs
 
@@ -36,8 +36,8 @@ This skill does **not** select by label, claim work, or take a lease. It only re
 2. **Explore the live app.** Open the input URL (or `$APP_URL`) and use it as a user would. Look for bugs, rough edges and missing features. If there is no URL, or you cannot browse it, skip this step and say so in the log.
 3. **Explore the codebase.** Read for architecture problems, technical debt, refactor opportunities and missing functionality.
    - The live app and the code are read-only. Use test data only. Take no destructive action against the target.
-4. **Build the candidate list. Do not cap it.** For each: a title, a category (`bugfix`, `feature`, `refactor`, `debt`), the evidence for that category (see `references/issue-format.md`), and the impact. **For a feature, write the use case before anything else:** who the user is, what they are trying to do, and why that falls short today. If you cannot state a use case, it is not a feature candidate: drop it or reword it as a question in the log. While exploring the live app, capture screenshots for bugs and for the screen where a feature would live.
-5. **Rank the list.** Rank by severity times confidence first: user-facing breakage and data loss, backed by a reproduction, beat guesses. Break ties by value per effort.
+4. **Build the candidate list. Do not cap it.** For each: a title, a category (`bugfix`, `feature`, `refactor`, `debt`), the **impact** and **confidence**, and the evidence that category requires (see `references/issue-format.md`: each category has its own required sections, and a candidate that cannot fill them is not ready to file). **For a feature, write the use case before anything else:** who the user is, what they are trying to do, and why that falls short today. If you cannot state a use case, it is not a feature candidate: drop it or reword it as a question in the log. While exploring the live app, capture screenshots for bugs and for the screen where a feature would live.
+5. **Rank the list.** Rank by severity times confidence first (a bug's severity is in its issue format; use impact for the rest): user-facing breakage and data loss, backed by a reproduction, beat guesses. Break ties by value per effort.
 6. **File from the top of the list.** Walk the ranked list in order. Hand each candidate to `file-github-issue` (title, category, area, evidence, related issue numbers, screenshots, `$RUN_ID`). These calls are short, so run them in this context. Keep a tally of each result:
    - `filed #N` counts toward the cap.
    - A duplicate (comment added to an existing issue) or a dropped candidate does **not** count. Move on to the next one.

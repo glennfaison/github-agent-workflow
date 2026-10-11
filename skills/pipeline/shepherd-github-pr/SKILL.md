@@ -7,13 +7,11 @@ description: Take one specific GitHub PR by number from opened to reviewable. Fi
 
 Take one PR from "opened" to "reviewable": get checks green, address open review findings, then post the handoff. This skill never polls. If checks are still running, it skips the PR and a later run picks it up.
 
-**Input:** the URL of a PR, or just its number. Derive `N` from the last path segment of the URL (for example `https://github.com/owner/repo/pull/123` gives `N=123`).
+**Input:** a PR URL or number.
 
-**Read first:** call the Skill tool with `agent-workflow-protocol`, then read these files in that skill's directory: `references/labels.md`, `references/handoff.md`, `references/escalate.md`, `references/log.md` and `config.defaults.env`. Also the repository guidance in `$REPO_GUIDANCE`. If you have a shell, follow **Shell setup** in the protocol and, if `$GIT_HOOKS_PATH` is set, run `git config core.hooksPath "$GIT_HOOKS_PATH"`.
+**Read first:** call the Skill tool with `agent-workflow-protocol`, then read these files in that skill's directory: `references/labels.md`, `references/handoff.md`, `references/escalate.md`, `references/log.md` and `config.defaults.env`. Also the repository guidance in `$REPO_GUIDANCE`.
 
 ## Eligibility
-
-Check this first. If it fails, claim nothing and return `#N skipped: <reason>`.
 
 - `N` is an open PR labelled `agent:needs-work`, without `agent:stuck`.
 - If it carries `agent:in-progress` and `lease_live N` succeeds, someone has it: skip.
@@ -36,14 +34,14 @@ Check this first. If it fails, claim nothing and return `#N skipped: <reason>`.
 
 ## Process
 
-1. **Claim.** `claim N pr agent:in-progress Shepherding "$LEASE_TTL_PR"`. Release on every exit path from here on: fixed, handed off, escalated or failed.
+1. **Claim.** `claim N pr agent:in-progress Shepherding "$LEASE_TTL_PR"`. If `failures N Shepherding` is at least `$MAX_ITEM_FAILURES`, follow `references/escalate.md` and stop. Release on every exit path from here on: fixed, handed off, escalated or failed.
 2. **Fork check.** `gh pr view N --json isCrossRepository`. If true, follow `references/escalate.md` and stop.
 3. **Decide what is needed:**
    - Checks `failing`, or `open_findings N` is above 0: go to step 4.
    - Checks `green` and `open_findings N` is 0: go to step 5.
 4. **Fix.**
    1. If `shepherd_attempts N` is at least `$MAX_SHEPHERD_ATTEMPTS`, follow `references/escalate.md` and stop.
-   2. Read the failing logs (`gh run view <run-id> --log-failed`) and, if `open_findings N` is above 0, the newest `kind=review` handoff comment. If you cannot read enough of the failing output to find the cause, do not guess: release, and return `#N failed: cannot read failing output`. This does not count as an attempt.
+   2. Read the failing logs (`gh run view <run-id> --log-failed`) and, if `open_findings N` is above 0, the newest `kind=review` handoff comment. If you cannot read enough of the failing output to find the cause, do not guess: run `fail_item N pr Shepherding "cannot read failing output"`, release, and return `#N failed: cannot read failing output`. This does not count as an attempt.
    3. Check out the PR branch and fix the cause. Run the narrowest relevant test first.
    4. **Never edit tests, snapshots or allowlists to make a check pass.** If a test looks wrong, say so in the attempt comment and leave it.
    5. Push. Post a short comment on what you tried, ending with `<!-- agent:attempt step=shepherding sha=<new head SHA> -->`.
@@ -53,7 +51,7 @@ Check this first. If it fails, claim nothing and return `#N skipped: <reason>`.
 
 ## Result
 
-Return one line: `#N fix pushed`, `#N ready-for-review`, `#N escalated: <reason>`, `#N skipped: <reason>` or `#N failed: <reason>`. When a group skill called you, it logs the result. When you were run on your own, write a run-log entry for it (`references/log.md`).
+Return one line: `#N fix pushed`, `#N ready-for-review`, `#N escalated: <reason>`, `#N skipped: <reason>` or `#N failed: <reason>`.
 
 ## Never
 

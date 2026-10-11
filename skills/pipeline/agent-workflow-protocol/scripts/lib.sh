@@ -143,6 +143,18 @@ shepherd_attempts() {
   markers "$1" | awk '/agent:handoff/{c=0} /agent:attempt step=shepherding/{c++} END{print c+0}'
 }
 
+# fail_item <number> <issue|pr> <step> <reason>  -> tell a human, and let failures() count it
+fail_item() {
+  local n=$1 kind=$2 step=$3 reason=$4
+  gh "$kind" comment "$n" --body "$step run $RUN_ID failed: $reason
+<!-- agent:failure step=$step run=$RUN_ID -->" >/dev/null
+}
+
+# failures <number> <step>  -> failed runs of <step> on this item since the last escalation
+failures() {
+  markers "$1" | awk -v s="$2" '/agent:escalate/{c=0} index($0,"agent:failure step=" s " "){c++} END{print c+0}'
+}
+
 # open_findings <pr>  -> number of review findings still open (0 if none).
 # The newest event decides: a review handoff sets it to its open=N (1 if absent);
 # a ready handoff or a Shepherding attempt after it resets it to 0.
@@ -202,12 +214,15 @@ log_issue() {
 # log_run <body-file>  -> append the file as one comment on the log issue
 log_run() { gh issue comment "$(log_issue)" --body-file "$1" >/dev/null; }
 
-# read_logs <days>  -> bodies of log comments newer than <days> days
+# read_logs <days>  -> bodies of log comments newer than <days> days.
+# Idle entries ("Outcome: nothing eligible" and no Problems line) are skipped: they only prove a run happened.
 read_logs() {
   local cutoff n
   cutoff=$(utc_plus "-$1 days")
   for n in $(gh issue list --label agent:log --state all --limit 3 --json number --jq '.[].number'); do
     gh issue view "$n" --json comments \
-      --jq ".comments[] | select(.createdAt > \"$cutoff\") | \"---\n\" + .body"
+      --jq ".comments[] | select(.createdAt > \"$cutoff\")
+            | select((.body | contains(\"Outcome:** nothing eligible\") and (contains(\"**Problems:**\") | not)) | not)
+            | \"---\n\" + .body"
   done
 }
