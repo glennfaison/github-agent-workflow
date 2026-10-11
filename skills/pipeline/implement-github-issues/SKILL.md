@@ -7,7 +7,7 @@ description: Find open GitHub issues labelled ready-for-agent and hand the oldes
 
 Pick the `ready-for-agent` issues that an agent can start now, and give each to `implement-github-issue`. This skill writes no code and never waits on CI.
 
-**Read first:** call the Skill tool with `agent-workflow-protocol`, then read these files in that skill's directory: `references/labels.md`, `references/log.md` and `config.defaults.env`. If you have a shell, follow **Shell setup** in the protocol.
+**Read first:** call the Skill tool with `agent-workflow-protocol`, then read these files in that skill's directory: `references/labels.md`, `references/log.md` and `config.defaults.env`.
 
 ## Process
 
@@ -20,9 +20,7 @@ Pick the `ready-for-agent` issues that an agent can start now, and give each to 
            | {number, url, title, createdAt, labels: names} ] | sort_by(.createdAt)'
    ```
 
-2. **Select.** Oldest first, apply `implement-github-issue`'s **Eligibility** (including the lease check) to each, and keep the first `$IMPLEMENT_BATCH` that pass.
-3. **Dispatch** each selected issue to `implement-github-issue` by its `url` (see **Dispatching** in the protocol). Collect each result line.
-4. **Log it.** One run-log entry (`references/log.md`): each item's result and any **Problems**. Nothing eligible: log `nothing eligible` and stop.
+2. **Select, dispatch and log**, as **Group skills** in the protocol describes: `implement-github-issue`'s **Eligibility**, the first `$IMPLEMENT_BATCH` that pass, one dispatch per `url`.
 
 ## Never
 

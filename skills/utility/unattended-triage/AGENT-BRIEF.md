@@ -38,7 +38,7 @@ State what is out of scope. This stops the agent gold-plating or assuming things
 ```markdown
 ## Agent Brief
 
-**Category:** bug / enhancement
+**Category:** bug / enhancement (add `refactor` or `debt` when the issue says so)
 **Summary:** one-line description of what needs to happen
 
 **Current behavior:**
@@ -60,6 +60,15 @@ What should happen once the work is done. Be specific about edge cases and error
 - Thing that should NOT be changed in this issue
 - Adjacent feature that might seem related but is separate
 ```
+
+## By category
+
+Add what the category needs to the template, so the agent does not have to go back to the issue for it.
+
+- **Bug:** a **Reproduction** line (the steps, or the code path), and an acceptance criterion that a regression test fails before the fix and passes after it.
+- **Feature:** the use case in one sentence under **Summary**, and the user-visible behaviour under **Desired behavior**.
+- **Refactor:** an acceptance criterion that behaviour is unchanged, naming the tests that must pass without edits (or the characterization test to write first), and under **Out of scope** any public interface that must not change.
+- **Debt:** a measurable done-condition, for example "the suite runs in under N seconds" or "no copy of X remains".
 
 ## A good brief (bug)
 

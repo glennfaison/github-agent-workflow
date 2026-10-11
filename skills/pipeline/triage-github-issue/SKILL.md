@@ -7,13 +7,11 @@ description: Triage one specific GitHub issue by number. Claims it, checks for d
 
 Make one issue ready for an agent to implement, or route it to a human.
 
-**Input:** the URL of an issue, or just its number. Derive `N` from the last path segment of the URL (for example `https://github.com/owner/repo/issues/123` gives `N=123`).
+**Input:** an issue URL or number.
 
-**Read first:** call the Skill tool with `agent-workflow-protocol`, then read these files in that skill's directory: `references/labels.md`, `references/dedupe.md`, `references/issue-format.md`, `references/log.md` and `config.defaults.env`. If you have a shell, follow **Shell setup** in the protocol.
+**Read first:** call the Skill tool with `agent-workflow-protocol`, then read these files in that skill's directory: `references/labels.md`, `references/dedupe.md`, `references/issue-format.md`, `references/log.md` and `config.defaults.env`.
 
 ## Eligibility
-
-Check this first. If it fails, claim nothing and return `#N skipped: <reason>`.
 
 - `N` is an open issue with **none** of: `ready-for-agent`, `ready-for-human`, `needs-info`, `agent:pr-open`, `agent:stuck`, `agent:log`. A human takes an issue out of `needs-info` by removing the label after answering; from then on it is eligible like any other.
 - `needs-triage` does not exclude it. It means an earlier pass did not finish.
@@ -31,7 +29,7 @@ Check this first. If it fails, claim nothing and return `#N skipped: <reason>`.
 
 ## Process
 
-1. **Claim.** `claim N issue agent:triage Grooming "$LEASE_TTL_TRIAGE"`. Release on every exit path from here on (see step 9).
+1. **Claim.** `claim N issue agent:triage Grooming "$LEASE_TTL_TRIAGE"`. If `failures N Grooming` is at least `$MAX_ITEM_FAILURES`, follow `references/escalate.md` and stop. Release on every exit path from here on (see step 9).
 2. **Dedupe.** Follow `references/dedupe.md`, using the **Grooming** column. If your issue is a duplicate and is now closed, skip to step 9.
 3. **Link related issues** in a comment, or in the description if that reads better.
 4. **Check the format.** Decide the category, then compare the description with `references/issue-format.md` (its **Grooming's check** section). Fill in what the evidence supports. Note what is missing and cannot be inferred. Those become questions in step 5.
@@ -45,11 +43,11 @@ Check this first. If it fails, claim nothing and return `#N skipped: <reason>`.
 9. **Release.** `release N issue agent:triage`.
 
 
-If any step fails, leave the state labels as they were, run `release N issue agent:triage`, and return `#N failed: <reason>`.
+If any step fails, leave the state labels as they were, run `fail_item N issue Grooming "<reason>"` and `release N issue agent:triage`, and return `#N failed: <reason>`.
 
 ## Result
 
-Return one line: `#N ready-for-agent`, `#N needs-info`, `#N ready-for-human`, `#N duplicate of #M`, `#N skipped: <reason>` or `#N failed: <reason>`. When a group skill called you, it logs the result. When you were run on your own, write a run-log entry for it (`references/log.md`).
+Return one line: `#N ready-for-agent`, `#N needs-info`, `#N ready-for-human`, `#N duplicate of #M`, `#N skipped: <reason>` or `#N failed: <reason>`.
 
 ## Never
 

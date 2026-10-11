@@ -89,3 +89,4 @@ To stop everything for one item, label it `agent:stuck`. To stop a step, pause i
 | `failed: cannot read failing output` | The token lacks Actions read, or the runner has no log access |
 | Exploring files nothing from the live app | No `APP_URL` and no URL in the prompt, or the runner cannot browse. The log says which |
 | An item stays leased | The run died. The lease expires after its TTL and the next run takes it |
+| An item carries `agent:stuck` after repeated `failed` results | The same step failed on it `MAX_ITEM_FAILURES` times. The escalation comment lists the reasons. Fix the cause and remove the label |

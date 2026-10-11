@@ -7,7 +7,7 @@ description: Find open agent PRs labelled agent:needs-work whose checks have fin
 
 Pick the `agent:needs-work` PRs that can be worked on now, and give each to `shepherd-github-pr`. This skill never polls: a PR whose checks are still running is skipped, and a later run picks it up.
 
-**Read first:** call the Skill tool with `agent-workflow-protocol`, then read these files in that skill's directory: `references/labels.md`, `references/log.md` and `config.defaults.env`. If you have a shell, follow **Shell setup** in the protocol.
+**Read first:** call the Skill tool with `agent-workflow-protocol`, then read these files in that skill's directory: `references/labels.md`, `references/log.md` and `config.defaults.env`.
 
 ## Process
 
@@ -21,9 +21,7 @@ Pick the `agent:needs-work` PRs that can be worked on now, and give each to `she
            | {number, url, title, createdAt, fork: .isCrossRepository} ] | sort_by(.createdAt)'
    ```
 
-2. **Select.** Oldest first, apply `shepherd-github-pr`'s **Eligibility** (check state and lease) to each, and keep the first `$SHEPHERD_BATCH` that pass. Skipped PRs do not count toward the batch.
-3. **Dispatch** each selected PR to `shepherd-github-pr` by its `url` (see **Dispatching** in the protocol). Collect each result line.
-4. **Log it.** One run-log entry (`references/log.md`): each item's result and any **Problems**. Nothing eligible: log `nothing eligible` and stop.
+2. **Select, dispatch and log**, as **Group skills** in the protocol describes: `shepherd-github-pr`'s **Eligibility** (check state and lease), the first `$SHEPHERD_BATCH` that pass, one dispatch per `url`.
 
 ## Never
 

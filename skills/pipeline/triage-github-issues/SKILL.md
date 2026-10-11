@@ -7,7 +7,7 @@ description: Scan all open issues in the repo, tidy issues whose PRs have finish
 
 Go through the open issues as a group. Tidy the ones whose PRs are done, pick the issues that need triage, and give each to `triage-github-issue`. This skill does no triage itself.
 
-**Read first:** call the Skill tool with `agent-workflow-protocol`, then read these files in that skill's directory: `references/labels.md`, `references/log.md` and `config.defaults.env`. If you have a shell, follow **Shell setup** in the protocol.
+**Read first:** call the Skill tool with `agent-workflow-protocol`, then read these files in that skill's directory: `references/labels.md`, `references/log.md` and `config.defaults.env`.
 
 ## Inputs
 
@@ -26,7 +26,9 @@ Go through the open issues as a group. Tidy the ones whose PRs are done, pick th
    - Any PR is `MERGED`: close the issue (`gh issue close N --comment "Implemented in #P."`).
    - Any PR is `OPEN`: leave it alone.
    - Every PR is `CLOSED` (none open or merged): the work was abandoned. In one command swap `agent:pr-open` for `ready-for-human`, and comment "PR #P was closed without merging. A human should decide whether to retry." Do not send it back to an agent: that is how the same fix gets re-attempted in a loop.
-   - No PR found at all: leave it alone and note it under **Problems** in the log.
+   - No PR found at all: leave it alone and note it under **Problems** in the log (`repo-state`).
+
+   List them with `gh issue list --state open --label agent:pr-open --limit 200 --json number --jq '.[].number'`.
 
    This is the only place this workflow changes the state of an issue it has not claimed.
 2. **List candidates.**
@@ -38,9 +40,7 @@ Go through the open issues as a group. Tidy the ones whose PRs are done, pick th
            | {number, url, title, createdAt, labels: names} ] | sort_by(.createdAt)'
    ```
 
-3. **Select.** Oldest first, apply `triage-github-issue`'s **Eligibility** (including the lease check) to each, and keep the first `$GROOM_BATCH` that pass.
-4. **Dispatch** each selected issue to `triage-github-issue` by its `url` (see **Dispatching** in the protocol). Collect each result line.
-5. **Log it.** One run-log entry (`references/log.md`): the counts, each item's result, and any **Problems**. Nothing eligible: log `nothing eligible` and stop.
+3. **Select, dispatch and log**, as **Group skills** in the protocol describes: `triage-github-issue`'s **Eligibility**, the first `$GROOM_BATCH` that pass, one dispatch per `url`. The run-log entry (`references/log.md`) also lists the housekeeping you did. Nothing eligible and no housekeeping: log `nothing eligible` and stop.
 
 ## Never
 

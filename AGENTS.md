@@ -29,7 +29,9 @@ skills/<bucket>/<skill>/SKILL.md     exactly three levels deep
 - `docs/adr/`: why the package is built this way. Add one when a decision is not obvious from the files.
 - `skills/*/README.md`: one line per skill. Keep them in step with the `description` in each `SKILL.md`.
 
-Config keys live in `config.defaults.env`. Add a key there, use it in the skill by its `$NAME`, and name it in the README's **Configuration** section if a user would set it.
+Config keys live in `config.defaults.env`. Add a key there, use it in the skill by its `$NAME`, and name it in the README's **Configuration** section if a user would set it. The validator fails on a `$NAME` that is not in that file, and on a key no skill uses.
+
+Boilerplate every skill shares (how an item skill takes its input, the eligibility check, logging a result, shell setup) lives once in `agent-workflow-protocol`. Do not copy it back into a skill.
 
 ## Dependencies
 
@@ -45,4 +47,4 @@ npm run check-plugin-version
 
 ## Releasing
 
-Add a changeset (`npm run changeset`) for any change that users of the skills would notice. There is no lockfile: `@changesets/cli` is pinned exactly, and the release workflow runs `npm install`. (A lockfile generated in October 2026 failed `npm ci` because of an optional `@types/node` peer. Add one when `npm install && npm ci` agrees.) On merge to `main`, the release workflow opens or updates a version PR. `npm run version` bumps `package.json` and syncs `.claude-plugin/plugin.json`.
+Add a changeset (`npm run changeset`) for any change that users of the skills would notice. There is no lockfile: `@changesets/cli` is pinned exactly, and the release workflow runs `npm install`. A lockfile once failed `npm ci` on an optional `@types/node` peer, so add one only when `npm install && npm ci` agrees. On merge to `main`, the release workflow opens or updates a version PR. `npm run version` bumps `package.json` and syncs `.claude-plugin/plugin.json`.

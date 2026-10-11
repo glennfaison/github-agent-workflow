@@ -7,13 +7,11 @@ description: Review one specific GitHub PR by number and merge it, pinned to the
 
 Review one PR and merge it if an agent can safely do so. If not, record why and, when the fix is small, fix it.
 
-**Input:** the URL of a PR, or just its number. Derive `N` from the last path segment of the URL (for example `https://github.com/owner/repo/pull/123` gives `N=123`).
+**Input:** a PR URL or number.
 
-**Read first:** call the Skill tool with `agent-workflow-protocol`, then read these files in that skill's directory: `references/labels.md`, `references/handoff.md`, `references/escalate.md`, `references/log.md` and `config.defaults.env`. If you have a shell, follow **Shell setup** in the protocol and, if `$GIT_HOOKS_PATH` is set, run `git config core.hooksPath "$GIT_HOOKS_PATH"`.
+**Read first:** call the Skill tool with `agent-workflow-protocol`, then read these files in that skill's directory: `references/labels.md`, `references/handoff.md`, `references/escalate.md`, `references/log.md` and `config.defaults.env`.
 
 ## Eligibility
-
-Check this first. If it fails, claim nothing and return `#N skipped: <reason>`.
 
 - `N` is an open, non-draft PR labelled `agent:ready-for-review`, without `agent:stuck`.
 - If it carries `agent:in-progress` and `lease_live N` succeeds, someone has it: skip.
@@ -26,20 +24,20 @@ The head SHA must match `ready_sha N` and checks must be green. Step 4 enforces 
 
 ## Outputs
 
-- Mergeable: merge pinned to the reviewed SHA (`gh pr merge N --match-head-commit "$SHA" --"$MERGE_METHOD"`). For each linked issue, remove `agent:pr-open` and close it with "Implemented in #N."
+- Mergeable: merge pinned to the reviewed SHA (`gh pr merge N --match-head-commit "$SHA" --"$MERGE_METHOD"`), then a "merged" note ending with `<!-- agent:handoff kind=merged sha=$SHA -->`. For each linked issue, remove `agent:pr-open` and close it with "Implemented in #N."
 - Not mergeable: an optional small fix (no design decision, only code this PR already changes), a "review" handoff ending with `<!-- agent:handoff kind=review sha=$SHA open=<unfixed count> -->`, and a swap `agent:ready-for-review` → `agent:needs-work`.
 - Escalation to `agent:stuck` if `review_rounds N` is at least `$MAX_REVIEW_ROUNDS` or the PR is a fork.
 - Lease released.
 
 ## Process
 
-1. **Claim.** `claim N pr agent:in-progress Reviewing "$LEASE_TTL_PR"`. Release on every exit path from here on: merged, sent back, escalated or failed.
+1. **Claim.** `claim N pr agent:in-progress Reviewing "$LEASE_TTL_PR"`. If `failures N Reviewing` is at least `$MAX_ITEM_FAILURES`, follow `references/escalate.md` and stop. Release on every exit path from here on: merged, sent back, escalated or failed.
 2. **Pin the head.** `SHA=$(gh pr view N --json headRefOid --jq .headRefOid)`. Everything below applies to this commit and no other.
 3. **Fork check.** If `isCrossRepository` is true, follow `references/escalate.md` and stop.
 4. **Confirm the state is true.** If checks are not all green, or `ready_sha N` is not equal to `$SHA` (someone pushed after the handoff), the PR is not ready. Swap `agent:ready-for-review` for `agent:needs-work`, release, and stop for this PR. `shepherd-github-pr` will re-verify.
 5. **Review.** Read the PR title, body, comments and the linked issue. Call the Skill tool twice, for `merge-safety` and for `code-review`, both against `$SHA`.
 6. **Decide.**
-   - **Mergeable.** Merge pinned to the reviewed commit: `gh pr merge N --match-head-commit "$SHA" --"$MERGE_METHOD"`. If someone pushed meanwhile, the merge fails: do not retry. If your tools cannot pin a merge to a commit, re-read the head SHA immediately before merging and stop if it is not `$SHA`. Then, for each issue `M` printed by `issue_for_pr N`: `gh issue edit M --remove-label agent:pr-open` and `gh issue close M --comment "Implemented in #N."`. GitHub only closes the issue itself from `Closes #M` when the PR merges into the repository's default branch, which may not be `$PR_BASE_BRANCH`. Close it explicitly anyway: it does no harm if already closed, and it covers a PR whose body lacked the keyword. Done.
+   - **Mergeable.** Merge pinned to the reviewed commit: `gh pr merge N --match-head-commit "$SHA" --"$MERGE_METHOD"`. If your tools cannot pin a merge to a commit, re-read the head SHA immediately before merging and stop if it is not `$SHA`. If the merge fails, do not retry. When someone pushed meanwhile, that is all: the next run sees the new head. For any other reason, run `fail_item N pr Reviewing "merge failed: <reason>"`, release and return `#N failed: <reason>`. After a successful merge, post the "merged" note (`references/handoff.md`), ending with `<!-- agent:handoff kind=merged sha=$SHA -->`. Then, for each issue `M` printed by `issue_for_pr N`: `gh issue edit M --remove-label agent:pr-open` and `gh issue close M --comment "Implemented in #N."`. GitHub only closes the issue itself from `Closes #M` when the PR merges into the repository's default branch, which may not be `$PR_BASE_BRANCH`. Close it explicitly anyway: it does no harm if already closed, and it covers a PR whose body lacked the keyword. Done.
    - **Not mergeable.** Continue to step 7.
 7. **Not mergeable: fix what is small, record the rest.**
    1. If `review_rounds N` is at least `$MAX_REVIEW_ROUNDS`, follow `references/escalate.md` and stop. Do not start another round.
@@ -50,7 +48,7 @@ The head SHA must match `ready_sha N` and checks must be green. Step 4 enforces 
 
 ## Result
 
-Return one line: `#N merged`, `#N sent back: <open findings>`, `#N escalated: <reason>`, `#N skipped: <reason>` or `#N failed: <reason>`. When a group skill called you, it logs the result. When you were run on your own, write a run-log entry for it (`references/log.md`).
+Return one line: `#N merged`, `#N sent back: <open findings>`, `#N escalated: <reason>`, `#N skipped: <reason>` or `#N failed: <reason>`.
 
 ## Never
 
