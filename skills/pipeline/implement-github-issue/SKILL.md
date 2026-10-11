@@ -1,6 +1,6 @@
 ---
 name: implement-github-issue
-description: Implement one specific ready-for-agent GitHub issue by number and open a PR against develop. Checks first that no PR already exists for the issue, reads the Agent Brief, builds on a feature or bugfix branch, and hands the PR to Shepherding. Use when given an issue number to implement, or when implement-github-issues dispatches one to you.
+description: Implement one specific ready-for-agent GitHub issue by number and open a PR against the configured base branch. Checks first that no PR already exists for the issue, reads the Agent Brief, builds on a feature or bugfix branch, and hands the PR to Shepherding. Use when given an issue number to implement, or when implement-github-issues dispatches one to you.
 ---
 
 # Implement GitHub issue
@@ -58,5 +58,5 @@ Return one line: `#N PR #P opened`, `#N existing PR #P`, `#N already merged in #
 ## Never
 
 - Wait for checks, fix CI, or post the reviewer handoff. `shepherd-github-pr` does that.
-- Push to `main`, or open a PR against `main`.
+- Commit or push to `$PR_BASE_BRANCH` directly, or open a PR against any other branch. Work lands on a branch, through the PR.
 - Open a second PR for an issue that already has one.

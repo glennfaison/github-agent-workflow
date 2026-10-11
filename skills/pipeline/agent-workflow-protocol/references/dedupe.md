@@ -8,7 +8,7 @@ Search all of these using two or three distinctive keywords from the title and b
 
 1. Open issues: `gh issue list --state open --search "KEYWORDS" --json number,title,labels`
 2. Issues closed in the last `EXPLORE_DEDUPE_CLOSED_DAYS` days: `gh issue list --state closed --search "KEYWORDS closed:>=YYYY-MM-DD" --json number,title,stateReason`
-3. `.out-of-scope/`, if the directory exists (it is not there today; a skill may create it later).
+3. `.out-of-scope/`, if the directory exists.
 
 Ignore issues labelled `agent:log`.
 

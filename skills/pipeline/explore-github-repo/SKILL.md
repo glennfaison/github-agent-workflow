@@ -7,14 +7,14 @@ description: Explore a repository's live app and its codebase, rank what you fin
 
 Explore the live app and the codebase, then file the most valuable findings as issues. This skill applies **no labels**: `triage-github-issues` picks up unlabelled issues.
 
-**Input:** the URL of the live app to explore. Required. If none is given, ask for it; if you cannot ask, stop and say the URL is missing.
+**Input:** the URL of the live app to explore. Optional. Use the URL in the prompt, otherwise `$APP_URL`. If both are empty, explore the code only and say so in the log. Never ask for it.
 
 **Read first:** call the Skill tool with `agent-workflow-protocol`, then read these files in that skill's directory: `references/log.md`, `references/issue-format.md` and `config.defaults.env`. If you have a shell, follow **Shell setup** in the protocol.
 
 ## Inputs
 
 - The monthly run log (`read_logs "$EXPLORE_LOG_LOOKBACK_DAYS"`): deferred candidates from earlier Exploring runs, recurring problems (failures, escalations, flaky checks, repeatedly skipped items), and automation suggestions.
-- The live app at the input URL (read-only; test data only).
+- The live app at the input URL or `$APP_URL`, if there is one (read-only; test data only).
 - The codebase (read-only).
 
 This skill does **not** select by label, claim work, or take a lease. It only reads.
@@ -33,7 +33,7 @@ This skill does **not** select by label, claim work, or take a lease. It only re
    - **Automation suggestions**.
 
    Each becomes a candidate in step 4.
-2. **Explore the live app.** Open the input URL and use it as a user would. Look for bugs, rough edges and missing features. If you cannot browse it, skip this step and say so in the log.
+2. **Explore the live app.** Open the input URL (or `$APP_URL`) and use it as a user would. Look for bugs, rough edges and missing features. If there is no URL, or you cannot browse it, skip this step and say so in the log.
 3. **Explore the codebase.** Read for architecture problems, technical debt, refactor opportunities and missing functionality.
    - The live app and the code are read-only. Use test data only. Take no destructive action against the target.
 4. **Build the candidate list. Do not cap it.** For each: a title, a category (`bugfix`, `feature`, `refactor`, `debt`), the evidence for that category (see `references/issue-format.md`), and the impact. **For a feature, write the use case before anything else:** who the user is, what they are trying to do, and why that falls short today. If you cannot state a use case, it is not a feature candidate: drop it or reword it as a question in the log. While exploring the live app, capture screenshots for bugs and for the screen where a feature would live.

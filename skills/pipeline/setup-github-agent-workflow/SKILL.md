@@ -12,12 +12,13 @@ Run once per repository, by a maintainer, before any other skill in this package
 
 ## Process
 
-1. **Check the tools.** `gh auth status` must succeed, and `jq` and GNU `date` must exist. Run `gh repo view --json nameWithOwner` and confirm with the user that this is the repository to set up.
+1. **Check the tools.** `gh auth status` must succeed, and `jq` and `python3` must exist (the helpers use Python for date arithmetic). Run `gh repo view --json nameWithOwner` and confirm with the user that this is the repository to set up.
 2. **Check the skills this package needs from elsewhere.** Look through your available skills for `tdd` and `code-review`. They come from [mattpocock/skills](https://github.com/mattpocock/skills), and the workflow calls them. A repository's own `code-review` skill also satisfies the second. For anything missing, tell the user how to install it, then continue:
    - Claude Code: `claude plugins install mattpocock-skills`
    - Any agent: `npx skills@latest add mattpocock/skills` (and pick `tdd` and `code-review`)
 3. **Ask for the repository's settings**, one question each, with the default from `config.defaults.env`:
    - the branch agent PRs target (`PR_BASE_BRANCH`)
+   - the URL of the deployed app that Exploring should browse (`APP_URL`), or none (Exploring then reads the code only)
    - the merge method (`MERGE_METHOD`: squash, merge or rebase)
    - the GitHub user to request review from when an item is escalated (`HUMAN_REVIEWER`), or none
    - the build command to run before opening a PR (`BUILD_CMD`), or none (CI is then the only build gate)
