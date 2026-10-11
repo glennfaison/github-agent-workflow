@@ -2,7 +2,7 @@
 
 Status: accepted
 
-Skills are grouped into buckets (`skills/github-workflow/`, `skills/utility/`) so the package stays navigable as it grows. Kilo Code and similar harnesses discover skills one level deep, in a skills directory, and require `name` to match the directory name. A bucketed package therefore cannot be dropped into a skills directory as it is.
+Skills are grouped into buckets (`skills/pipeline/`, `skills/utility/`) so the package stays navigable as it grows. Kilo Code and similar harnesses discover skills one level deep, in a skills directory, and require `name` to match the directory name. A bucketed package therefore cannot be dropped into a skills directory as it is.
 
 ## Decision
 

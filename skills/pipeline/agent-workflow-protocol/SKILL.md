@@ -66,7 +66,7 @@ From inside the target repository, run the helper library that sits in this skil
 source <this skill's directory>/scripts/lib.sh   # loads config, sets RUN_ID, defines the helpers
 ```
 
-With a shell, it requires `gh` (authenticated), `jq` and GNU `date`. Without one, see the next section.
+With a shell, it requires `gh` (authenticated), `jq` and Python 3. Without one, see the next section.
 
 ## Running without a shell
 

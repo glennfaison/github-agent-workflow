@@ -22,6 +22,15 @@ skills/<bucket>/<skill>/SKILL.md     exactly three levels deep
 - **Nothing repository-specific in `skills/`, `scripts/` or `tests/`.** Per-repo values go in `.agents/docs/github-agent-workflow.env` in the consuming repo. The validator fails on references to a particular repository.
 - **Shared files live in the skill that owns them.** Everything the skills share is in `agent-workflow-protocol`.
 
+## Docs
+
+- `README.md`: what the package is, install, configuration. Written for a person choosing the package.
+- `docs/RUNNERS.md`: what a scheduler needs and how to word its prompt. Keep it free of any one repository.
+- `docs/adr/`: why the package is built this way. Add one when a decision is not obvious from the files.
+- `skills/*/README.md`: one line per skill. Keep them in step with the `description` in each `SKILL.md`.
+
+Config keys live in `config.defaults.env`. Add a key there, use it in the skill by its `$NAME`, and name it in the README's **Configuration** section if a user would set it.
+
 ## Dependencies
 
 `external-skills.json` lists the skills this package needs from elsewhere, and `.claude-plugin/plugin.json` declares the plugin dependency. Add to both. See [docs/adr/0001-absorb-user-invoked-skills.md](docs/adr/0001-absorb-user-invoked-skills.md).

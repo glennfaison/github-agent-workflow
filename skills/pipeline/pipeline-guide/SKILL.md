@@ -17,6 +17,29 @@ Each step has a **group skill** that selects work from the repository and an **i
 | Get a PR through checks and post the review handoff | [shepherd-github-prs](../shepherd-github-prs/SKILL.md) | [shepherd-github-pr](../shepherd-github-pr/SKILL.md) |
 | Review a ready PR and merge when safe | [review-github-prs](../review-github-prs/SKILL.md) | [review-github-pr](../review-github-pr/SKILL.md) |
 
+## Which one do I run?
+
+- A whole backlog, on a schedule: the **group skill** for the step.
+- One issue or PR you already have a number or URL for: the **item skill**. It checks eligibility itself, so a wrong guess is safe.
+- An item an agent gave up on (`agent:stuck`): none. A human fixes it and removes the label.
+- First time in a repository: [setup-github-agent-workflow](../setup-github-agent-workflow/SKILL.md).
+
+## Lifecycle at a glance
+
+```
+issue   (no label) --triage--> ready-for-agent --implement--> agent:pr-open --merged--> closed
+                      |-------> needs-info      (a human answers and removes the label: back to triage)
+                      '-------> ready-for-human
+
+PR      agent:needs-work --shepherd--> agent:ready-for-review --review--> merged
+             ^                                   |
+             '-------------- sent back ----------'
+
+any     agent:stuck: an agent gave up. Every step ignores the item until a human removes the label.
+```
+
+Every label and transition is in [labels.md](../agent-workflow-protocol/references/labels.md). If a skill disagrees with it, labels.md wins.
+
 Shared:
 
 - [agent-workflow-protocol](../agent-workflow-protocol/SKILL.md): leases, markers, labels, handoffs, escalation, the run log and config. Reference only; every pipeline skill reads it first.

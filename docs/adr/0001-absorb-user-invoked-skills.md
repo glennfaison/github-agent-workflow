@@ -8,7 +8,7 @@ The workflow needs the judgment in three skills from mattpocock/skills: `triage`
 
 - Absorb the parts of those skills the workflow needs, adapted to run with no human present: `unattended-triage`, `unattended-grilling`, and the implementation loop inside `implement-github-issue`. Credit them in `CREDITS.md`.
 - Depend on mattpocock/skills only for skills that are model-invoked: `tdd` and `code-review`.
-- Declare that dependency in `.claude-plugin/plugin.json` (without a version constraint) and in `external-skills.json`. `/setup-github-workflow` checks for the skills and says how to install them.
+- Declare that dependency in `.claude-plugin/plugin.json` (without a version constraint) and in `external-skills.json`. `/setup-github-agent-workflow` checks for the skills and says how to install them.
 
 ## Consequences
 

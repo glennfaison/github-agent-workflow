@@ -1,12 +1,14 @@
 # Issue format
 
-What a well-formed issue contains. `file-github-issue` **writes** to this format, `triage-github-issue` **checks** against it, and `implement-github-issue` **reads** it. The headings mirror `.github/ISSUE_TEMPLATE/bug_report.yml` and `feature_request.yml`, so agent-filed and human-filed issues look alike.
+What a well-formed issue contains. `file-github-issue` **writes** to this format, `triage-github-issue` **checks** against it, and `implement-github-issue` **reads** it.
+
+If the repository has issue templates (`.github/ISSUE_TEMPLATE/`), use their headings and field names for the sections below, so agent-filed and human-filed issues look alike. The tables name what each section must hold; the template decides what it is called.
 
 Agents never apply labels when filing. (The templates add `bug` and `enhancement` for humans; agent-filed issues get their labels during Grooming.) Put the category on a `Category:` line in the body instead.
 
 ## Every issue
 
-- **Area**, one of: Editor / page builder, Design components, Data sources / placeholders, Templates, Import / export (JSON, shortcode), Standalone HTML export, Command palette / theme, Docs / tooling / CI, Other.
+- **Area**, taken from the options of the **Area** dropdown in the repository's issue template when it has one. Without a template, a short phrase naming the part of the product or codebase affected, or `Other`.
 - A last line `Filed by Exploring run <RUN_ID>` when an agent filed it.
 
 ## By category
@@ -17,7 +19,7 @@ Agents never apply labels when filing. (The templates add `bug` and `enhancement
 |---|---|
 | What happened? | What went wrong, and what was expected instead |
 | Steps to reproduce | Numbered, starting from a URL or page state |
-| Page JSON or shortcode | A minimal page that reproduces it, if relevant |
+| Reproduction input | The smallest input that reproduces it (a file, payload, saved document or page state), if relevant |
 | Environment | Browser and version, OS, the URL tested and the commit or deployment if known |
 | Visuals | Screenshot of the faulty state, if possible |
 

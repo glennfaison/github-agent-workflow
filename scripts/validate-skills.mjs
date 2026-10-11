@@ -31,6 +31,7 @@ const LEAKS = [
   [/\.agents\/docs\/(?!github-agent-workflow\.env)/, "points at .agents/docs/ (except the sanctioned config file)"],
   [/scripts\/agent\//, "points at scripts/agent/"],
   [/\.agents\/skills\/agent-workflow-protocol/, "hard-codes the protocol skill's path"],
+  [/`(?:develop|main)`/, "hard-codes a branch name (use $PR_BASE_BRANCH)"],
 ];
 
 const errors = [];

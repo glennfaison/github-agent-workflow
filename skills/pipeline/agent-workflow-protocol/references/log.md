@@ -6,7 +6,7 @@ Every run writes one comment to a shared log. Exploring reads the log to find re
 
 One GitHub issue per month, titled `Agent log YYYY-MM` and labelled `agent:log`. Each run appends **one comment**. `log_issue` finds this month's issue or creates it. Every step ignores `agent:log` issues.
 
-This is deliberately not a file in the repository. A committed log would need a commit per run. By your branch rules that means a gitflow branch and a PR per run, the Reviewing step would try to review those PRs, and parallel runners would collide on the same file. Issue comments are append-only, timestamped, and need no PR.
+This is deliberately not a file in the repository. A committed log would need a commit per run. Under a repository's branch rules that can mean a protected branch and a PR per run, the Reviewing step would try to review those PRs, and parallel runners would collide on the same file. Issue comments are append-only, timestamped, and need no PR.
 
 ## What to write
 

@@ -27,7 +27,7 @@ Each step is a pair of skills. A **group skill** selects the work (`/triage-gith
    | Shepherding | `Run /shepherd-github-prs on github.com/OWNER/REPO` |
    | Reviewing | `Run /review-github-prs on github.com/OWNER/REPO` |
 
-   The runner owns timing, frequency and triggers (a schedule, a webhook). The skills own what a run does.
+   The runner owns timing, frequency and triggers (a schedule, a webhook). The skills own what a run does. Exploring browses the app at `APP_URL` from the repository's settings. [docs/RUNNERS.md](./docs/RUNNERS.md) covers what a runner needs, prompts for runners that cannot load skills, and a starting cadence.
 
 ## Skills
 
@@ -56,7 +56,7 @@ Each step is a pair of skills. A **group skill** selects the work (`/triage-gith
 ## Requirements
 
 - An agent that supports skills (Claude Code, Kilo Code, Codex, ...), or one that can read a `SKILL.md` and follow it.
-- `gh` (authenticated, with repository write access), `jq` and GNU `date` for the shell helpers. Runners with no shell (a chat automation with a GitHub connector) work too: the protocol tells the agent to do the same operations with the tools it has, and to log what it cannot do.
+- `gh` (authenticated, with repository write access), `jq` and Python 3 for the shell helpers. Runners with no shell (a chat automation with a GitHub connector) work too: the protocol tells the agent to do the same operations with the tools it has, and to log what it cannot do.
 - Two skills from [mattpocock/skills](https://github.com/mattpocock/skills):
   - `tdd`, used to build test-first.
   - `code-review`, used before opening a PR and when reviewing one. A repository's own `code-review` skill satisfies it.
@@ -91,10 +91,11 @@ Defaults ship in [config.defaults.env](./skills/pipeline/agent-workflow-protocol
 ```
 .claude-plugin/        plugin.json (skills, dependencies) and marketplace.json
 skills/
-  pipeline/     the pipeline: group and item skills, the protocol, setup
+  pipeline/            the pipeline: group and item skills, the protocol, setup
   utility/             building blocks the pipeline calls
 scripts/               link-skills.sh, validate-skills.mjs, sync-plugin-version.mjs
 tests/                 the shell helpers, against a stub gh
+docs/RUNNERS.md        running the steps on a scheduler
 docs/adr/              decisions
 external-skills.json   skills needed from elsewhere
 ```
