@@ -1,0 +1,3 @@
+interface:
+  display_name: "File GitHub Issue"
+  short_description: "File one finding as a deduplicated issue"

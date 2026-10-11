@@ -1,0 +1,42 @@
+{
+  "name": "github-agent-workflow",
+  "version": "0.1.0",
+  "description": "Agent skills that run a GitHub repository's issue-to-merge pipeline unattended: explore, triage, implement, shepherd through CI, review and merge. Each step is a group skill that selects work and an item skill that does it.",
+  "author": {
+    "name": "Glenn Faison"
+  },
+  "license": "MIT",
+  "keywords": [
+    "github",
+    "agents",
+    "workflow",
+    "triage",
+    "automation",
+    "issues",
+    "pull-requests"
+  ],
+  "dependencies": [
+    {
+      "name": "mattpocock-skills",
+      "marketplace": "claude-plugins-official"
+    }
+  ],
+  "skills": [
+    "./skills/pipeline/explore-github-repo",
+    "./skills/pipeline/file-github-issue",
+    "./skills/pipeline/agent-workflow-protocol",
+    "./skills/pipeline/implement-github-issue",
+    "./skills/pipeline/implement-github-issues",
+    "./skills/pipeline/pipeline-guide",
+    "./skills/pipeline/review-github-pr",
+    "./skills/pipeline/review-github-prs",
+    "./skills/pipeline/setup-github-agent-workflow",
+    "./skills/pipeline/shepherd-github-pr",
+    "./skills/pipeline/shepherd-github-prs",
+    "./skills/pipeline/triage-github-issue",
+    "./skills/pipeline/triage-github-issues",
+    "./skills/utility/merge-safety",
+    "./skills/utility/unattended-grilling",
+    "./skills/utility/unattended-triage"
+  ]
+}

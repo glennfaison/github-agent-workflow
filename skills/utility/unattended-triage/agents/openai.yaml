@@ -1,0 +1,3 @@
+interface:
+  display_name: "Unattended Triage"
+  short_description: "Decide an issue's state and write the comment"

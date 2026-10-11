@@ -1,0 +1,3 @@
+interface:
+  display_name: "GitHub Workflow Protocol"
+  short_description: "Shared rules for the GitHub agent workflow"

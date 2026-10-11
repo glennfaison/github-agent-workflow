@@ -1,0 +1,14 @@
+{
+  "mattpocock-skills": {
+    "repository": "https://github.com/mattpocock/skills",
+    "install": {
+      "claude-code": "claude plugins install mattpocock-skills",
+      "any-agent": "npx skills@latest add mattpocock/skills"
+    },
+    "required": [
+      "tdd",
+      "code-review"
+    ],
+    "optional": []
+  }
+}

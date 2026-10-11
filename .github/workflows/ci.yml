@@ -1,0 +1,37 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+jobs:
+  check:
+    name: Validate skills and test helpers
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      # The skill validator and the plugin version check need no dependencies.
+      - name: Validate skills
+        run: npm run validate
+
+      - name: Check plugin version
+        run: npm run check-plugin-version
+
+      - name: Test shell helpers
+        run: npm test
+
+      - name: Check that the link script is idempotent
+        run: |
+          mkdir -p /tmp/skills
+          bash scripts/link-skills.sh --dest /tmp/skills
+          bash scripts/link-skills.sh --dest /tmp/skills
+          test "$(find /tmp/skills -maxdepth 1 -type l | wc -l)" -eq "$(find skills -mindepth 3 -maxdepth 3 -name SKILL.md | wc -l)"

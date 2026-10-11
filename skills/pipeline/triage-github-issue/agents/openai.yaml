@@ -1,0 +1,3 @@
+interface:
+  display_name: "Triage GitHub Issue"
+  short_description: "Triage one issue by number"

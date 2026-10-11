@@ -1,0 +1,25 @@
+{
+  "name": "github-agent-workflow",
+  "owner": {
+    "name": "Glenn Faison"
+  },
+  "description": "An unattended GitHub issue-to-merge workflow, as an installable Claude Code plugin.",
+  "allowCrossMarketplaceDependenciesOn": [
+    "claude-plugins-official"
+  ],
+  "plugins": [
+    {
+      "name": "github-agent-workflow",
+      "source": "./",
+      "description": "Explore, triage, implement, shepherd through CI, review and merge, as skills a scheduler can run.",
+      "category": "development",
+      "keywords": [
+        "github",
+        "agents",
+        "workflow",
+        "triage",
+        "automation"
+      ]
+    }
+  ]
+}
