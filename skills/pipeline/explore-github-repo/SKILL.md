@@ -7,33 +7,45 @@ description: Explore a repository's live app and its codebase, rank what you fin
 
 Explore the live app and the codebase, then file the most valuable findings as issues. This skill applies **no labels**: `triage-github-issues` picks up unlabelled issues.
 
-**Input:** the URL of the live app to explore. Optional. Use the URL in the prompt, otherwise `$APP_URL`. If both are empty, explore the code only and say so in the log. Never ask for it.
-
-**Read first:** call the Skill tool with `agent-workflow-protocol`, then read these files in that skill's directory: `references/log.md`, `references/issue-format.md` and `config.defaults.env`.
+**Read first:** call the Skill tool with `agent-workflow-protocol`, then read these files in that skill's directory: `references/log.md` and `references/issue-format.md`.
 
 ## Inputs
 
-- The monthly run log (`read_logs "$EXPLORE_LOG_LOOKBACK_DAYS"`): deferred candidates from earlier Exploring runs, recurring problems (failures, escalations, flaky checks, repeatedly skipped items), and automation suggestions.
-- The live app at the input URL or `$APP_URL`, if there is one (read-only; test data only).
+**Free text.** Any prose. The first URL you find in it is the live app to explore; with no URL, explore the code only and say so in the log. Never ask for a URL.
+
+**Key-value pairs.** `key=value` on a line of its own. An input you give this way overrides this skill's default for the same name.
+
+| Input | Default | What it does |
+|---|---|---|
+| `app_url` | *(none)* | The live app to browse when the free text gives no URL. Empty means explore the code only |
+| `issues_per_run` | `5` | File at most this many new issues in one run |
+| `log_lookback_days` | `14` | How far back to read the run log, in days |
+
+**Implicit dependencies.** This skill also needs the run log (see `references/log.md`, `read_logs`), `agent-workflow-protocol` and its shell helpers (`scripts/lib.sh`) when a shell is available. Without one, read the same information and do the same operations with the tools you have.
+
+## Sources this skill reads
+
+- The monthly run log (`read_logs "$log_lookback_days"`): deferred candidates from earlier Exploring runs, recurring problems (failures, escalations, flaky checks, repeatedly skipped items), and automation suggestions.
+- The live app at the input URL or `$app_url`, if there is one (read-only; test data only).
 - The codebase (read-only).
 
 This skill does **not** select by label, claim work, or take a lease. It only reads.
 
 ## Outputs
 
-- Up to `$EXPLORE_ISSUE_CAP` new GitHub issues, filed by `file-github-issue` with no labels and no assignee.
+- Up to `$issues_per_run` new GitHub issues, filed by `file-github-issue` with no labels and no assignee.
 - Comments on existing issues when a candidate is a duplicate (also done by `file-github-issue`). These do not count toward the cap.
 - A run-log entry (`references/log.md`) listing issues filed, dedupe comments, dropped candidates, and **Deferred candidates** (the rest of the ranked list, at most 20 lines).
 
 ## Process
 
-1. **Read the run log.** `read_logs "$EXPLORE_LOG_LOOKBACK_DAYS"`. Collect:
+1. **Read the run log.** `read_logs "$log_lookback_days"`. Collect:
    - **Deferred candidates** left by earlier Exploring runs.
    - **Problems** that recur: repeated failures, escalations, flaky checks, items skipped again and again.
    - **Automation suggestions**.
 
    Each becomes a candidate in step 4.
-2. **Explore the live app.** Open the input URL (or `$APP_URL`) and use it as a user would. Look for bugs, rough edges and missing features. If there is no URL, or you cannot browse it, skip this step and say so in the log.
+2. **Explore the live app.** Open the input URL (or `$app_url`) and use it as a user would. Look for bugs, rough edges and missing features. If there is no URL, or you cannot browse it, skip this step and say so in the log.
 3. **Explore the codebase.** Read for architecture problems, technical debt, refactor opportunities and missing functionality.
    - The live app and the code are read-only. Use test data only. Take no destructive action against the target.
 4. **Build the candidate list. Do not cap it.** For each: a title, a category (`bugfix`, `feature`, `refactor`, `debt`), the **impact** and **confidence**, and the evidence that category requires (see `references/issue-format.md`: each category has its own required sections, and a candidate that cannot fill them is not ready to file). **For a feature, write the use case before anything else:** who the user is, what they are trying to do, and why that falls short today. If you cannot state a use case, it is not a feature candidate: drop it or reword it as a question in the log. While exploring the live app, capture screenshots for bugs and for the screen where a feature would live.
@@ -42,11 +54,11 @@ This skill does **not** select by label, claim work, or take a lease. It only re
    - `filed #N` counts toward the cap.
    - A duplicate (comment added to an existing issue) or a dropped candidate does **not** count. Move on to the next one.
 
-   Stop when `$EXPLORE_ISSUE_CAP` issues are filed or the list is used up.
+   Stop when `$issues_per_run` issues are filed or the list is used up.
 7. **Log it.** Follow `references/log.md`. Include the issues filed, the comments added, the candidates dropped as duplicates or rejected earlier, and **Deferred candidates**: the ranked candidates you did not reach, one line each, at most 20.
 
 ## Never
 
 - Apply, remove or change any label.
-- File more than `$EXPLORE_ISSUE_CAP` issues in one run.
+- File more than `$issues_per_run` issues in one run.
 - Comment on, close or edit an issue other than the evidence comments `file-github-issue` adds.

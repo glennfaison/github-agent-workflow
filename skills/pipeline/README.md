@@ -5,7 +5,7 @@ The five steps of the issue-to-merge pipeline. Each step has a **group skill** t
 ## Shared
 
 - **[pipeline-guide](./pipeline-guide/SKILL.md)**: Map of the steps and which skill to run. Read-only index.
-- **[agent-workflow-protocol](./agent-workflow-protocol/SKILL.md)**: Leases, markers, labels, handoffs, escalation, the run log and the config. Reference material that every other skill here reads first.
+- **[agent-workflow-protocol](./agent-workflow-protocol/SKILL.md)**: Leases, markers, labels, handoffs, escalation, the run log, the shared defaults and how a skill takes its input. Reference material that every other skill here reads first.
 - **[setup-github-agent-workflow](./setup-github-agent-workflow/SKILL.md)**: Configure a repository for the workflow: settings, labels, pointers. User-invoked. Run once per repo.
 
 ## Exploring

@@ -6,7 +6,6 @@ set -u
 
 PKG="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 LIB="$PKG/skills/pipeline/agent-workflow-protocol/scripts/lib.sh"
-DEFAULTS="$PKG/skills/pipeline/agent-workflow-protocol/config.defaults.env"
 
 WORK="$(mktemp -d)"; trap 'rm -rf "$WORK"' EXIT
 export STATE="$WORK/state"; mkdir -p "$STATE" "$WORK/bin" "$WORK/repo"
@@ -45,7 +44,6 @@ chmod +x "$WORK/bin/gh"; export PATH="$WORK/bin:$PATH"
 
 # lib.sh needs to run inside a git repository, but not this one
 git init -q "$WORK/repo" && cd "$WORK/repo" || exit 1
-export AGENT_REPO_CONFIG="$WORK/none.env"       # no repository overrides unless a test sets them
 
 pass=0; fail=0
 check() { # name expected actual
@@ -54,15 +52,24 @@ check() { # name expected actual
 c() { local cf="$STATE/comments_$1.json"; [ -f "$cf" ] || echo '[]' > "$cf"
       jq --arg b "$2" '. + [{body:$b}]' "$cf" > "$cf.t"; mv "$cf.t" "$cf"; }
 
-echo "Config layering"
-( set -e; source "$LIB"; [ "$PR_BASE_BRANCH" = "$(sed -n 's/^PR_BASE_BRANCH="\([^"]*\)".*/\1/p' "$DEFAULTS")" ] ); check "defaults load, and sourcing with set -e survives a missing override file" 0 $?
-printf 'PR_BASE_BRANCH="develop"\nBUILD_CMD="npm run build"\n' > "$WORK/override.env"
-check "override wins"                   develop "$(AGENT_REPO_CONFIG="$WORK/override.env" bash -c 'source "$1"; echo "$PR_BASE_BRANCH"' _ "$LIB")"
-check "override adds a value"           "npm run build" "$(AGENT_REPO_CONFIG="$WORK/override.env" bash -c 'source "$1"; echo "$BUILD_CMD"' _ "$LIB")"
-check "unset keys keep their default"   "squash" "$(AGENT_REPO_CONFIG="$WORK/override.env" bash -c 'source "$1"; echo "$MERGE_METHOD"' _ "$LIB")"
-mkdir -p .agents/docs && printf 'MERGE_METHOD="rebase"\n' > .agents/docs/github-agent-workflow.env
-check "repo file is found by default"   rebase "$(unset AGENT_REPO_CONFIG; bash -c 'source "$1"; echo "$MERGE_METHOD"' _ "$LIB")"
-rm -rf docs
+echo "Defaults"
+( set -e; source "$LIB" ); check "sourcing with set -e survives, and no config file is needed" 0 $?
+check "pr_base_branch default"  "main"          "$(bash -c 'source "$1"; echo "$pr_base_branch"' _ "$LIB")"
+check "groom_batch default"     "5"             "$(bash -c 'source "$1"; echo "$groom_batch"' _ "$LIB")"
+check "merge_method default"    "squash"        "$(bash -c 'source "$1"; echo "$merge_method"' _ "$LIB")"
+check "build_cmd default empty" ""              "$(bash -c 'source "$1"; echo "$build_cmd"' _ "$LIB")"
+check "lower and upper match"   "1 hour:1 hour" "$(bash -c 'source "$1"; echo "$lease_ttl_triage:$LEASE_TTL_TRIAGE"' _ "$LIB")"
+
+echo "Overriding a default"
+# Values with spaces need quotes: the file is sourced, so an unquoted space ends the assignment.
+printf 'pr_base_branch=develop\nbuild_cmd="npm run build"\nlease_ttl_pr="2 hours"\n' > "$WORK/overrides.env"
+check "override file wins"      "develop"       "$(AGENT_OVERRIDES="$WORK/overrides.env" bash -c 'source "$1"; echo "$pr_base_branch"' _ "$LIB")"
+check "override file adds"      "npm run build" "$(AGENT_OVERRIDES="$WORK/overrides.env" bash -c 'source "$1"; echo "$build_cmd"' _ "$LIB")"
+check "override file takes spaces" "2 hours"     "$(AGENT_OVERRIDES="$WORK/overrides.env" bash -c 'source "$1"; echo "$lease_ttl_pr"' _ "$LIB")"
+check "unset keys keep default" "squash"        "$(AGENT_OVERRIDES="$WORK/overrides.env" bash -c 'source "$1"; echo "$merge_method"' _ "$LIB")"
+check "export wins"             "release/x"     "$(AGENT_OVERRIDES="$WORK/overrides.env" bash -c 'export merge_method=release/x; source "$1"; echo "$merge_method"' _ "$LIB")"
+check "missing file is fine"    "main"          "$(AGENT_OVERRIDES="$WORK/nope.env" bash -c 'source "$1"; echo "$pr_base_branch"' _ "$LIB")"
+rm -f "$WORK/overrides.env"
 
 # shellcheck disable=SC1090
 source "$LIB"

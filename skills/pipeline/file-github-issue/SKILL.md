@@ -11,6 +11,19 @@ File one finding. Check for duplicates first, then write the issue in the repo's
 
 **Read first:** call the Skill tool with `agent-workflow-protocol`, then read these files in that skill's directory: `references/dedupe.md` and `references/issue-format.md`.
 
+## Inputs
+
+**Free text.** The candidate exactly as the caller wrote it: title, category, area, impact, confidence, the evidence, related issue numbers and screenshots. A caller that has nothing to add beyond a sentence and a category is fine: the Process below decides whether that is enough to file.
+
+**Key-value pairs.** `key=value` on a line of its own. Recognised keys:
+
+| Input | Default | What it does |
+|---|---|---|
+| `title`, `category`, `area`, `impact`, `confidence`, `evidence`, `related`, `screenshots`, `run_id` | *(none)* | The candidate's fields, one per key. Each overrides the same field taken from the free text. `category` is `bugfix`, `feature`, `refactor` or `debt` |
+| `dedupe_closed_days` | `30` | The "recently closed" window the duplicate search runs over |
+
+**Implicit dependencies.** This skill also needs `agent-workflow-protocol` and its shell helpers (`scripts/lib.sh`) when a shell is available, and the repository's existing issues to search. Without a shell, do the same duplicate search and `gh issue create` with the tools you have.
+
 ## Eligibility
 
 Always eligible. There is nothing to claim: this skill only reads, and the only thing it writes is a new issue or an evidence comment.

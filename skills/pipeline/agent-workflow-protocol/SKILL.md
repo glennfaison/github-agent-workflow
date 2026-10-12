@@ -1,6 +1,6 @@
 ---
 name: agent-workflow-protocol
-description: Shared rules for the GitHub issue-to-merge agent workflow (leases, markers, labels, handoffs, escalation, run log, config, and running unattended or without a shell). Read it before using any explore-, triage-, implement-, shepherd- or review-github skill. It is reference material, not something to run on its own.
+description: Shared rules for the GitHub issue-to-merge agent workflow (leases, markers, labels, handoffs, escalation, run log, and running unattended or without a shell). Read it before using any explore-, triage-, implement-, shepherd- or review-github skill. It is reference material, not something to run on its own.
 ---
 
 # GitHub workflow protocol
@@ -21,7 +21,7 @@ The workflow has five steps. Each step has a **group skill** that selects work a
 
 Item skills lean on three **utility skills** from this package: `unattended-triage` (the triage decision and its comment), `unattended-grilling` (one round of questions with recommended answers), and `merge-safety` (the merge gate). `setup-github-agent-workflow` is run once per repository, by a human.
 
-**Group skills** find candidates, apply the item skill's **Eligibility** section to them, take the first `*_BATCH` that pass (oldest first; items that fail do not count toward the batch), dispatch each to the item skill by its `url`, and write one run-log entry. They never do item work themselves.
+**Group skills** find candidates, apply the item skill's **Eligibility** section to them, take the first `batch` that pass (oldest first; items that fail do not count toward the batch), dispatch each to the item skill by its input URL, and write one run-log entry. They never do item work themselves.
 
 **Item skills** take exactly one issue or PR, as a URL or a number (`N` is the last path segment of a URL). On entry they check **Eligibility** themselves, so a direct call or a double dispatch is safe. If it fails they claim nothing and return `#N skipped: <reason>`. Otherwise they claim, work, write the output state, release, and return a one-line result. Run one by hand with, for example, `/triage-github-issue 123`.
 
@@ -40,9 +40,43 @@ Two skills are **not part of this package**, and must be installed with it. Both
 - `tdd`: used by `implement-github-issue` to build test-first. If it is missing, build test-first anyway and say you could not load the skill.
 - `code-review`: used by `implement-github-issue` and `review-github-pr`. If a repository has its own skill of that name, that one is used. If none is installed, review the diff yourself for correctness, regressions and missing tests.
 
-## Per-repository config
+## How a skill takes its input
 
-Defaults ship in `config.defaults.env`, next to this file. A repository overrides any of them in `.agents/docs/github-agent-workflow.env`, which `/setup-github-agent-workflow` writes. The repository's value wins. Skills refer to these names (`$PR_BASE_BRANCH`, `$BUILD_CMD`, `$REPO_GUIDANCE`, and so on). Without a shell, read both files and apply the same layering.
+Every skill lists its inputs in an **`## Inputs`** section. Two forms are accepted and may be mixed in one invocation:
+
+- **Key-value pairs.** `key=value` on a line of its own, for example `issue=123`, `app_url=https://staging.example.com`, `batch=2`. A key given this way overrides that skill's default for the same name.
+- **Free text.** Anything else. Each skill says what it reads out of its own free text and how: `explore-github-repo` takes the first URL it sees, an item skill takes the first bare number or URL, and so on.
+
+A key-value pair and free text that name the same thing resolve to the pair. An input a skill does not list is ignored, not an error.
+
+## Defaults
+
+**There is no config file.** Every number a skill used to read from one is now a default stated in that skill's **`## Inputs`** section, beside the input it belongs to. Override one per run by passing it as a key-value pair (`batch=2`). Leave a value out and the skill falls back to its own default, so no port, host, path or command is ever assumed.
+
+| Name | Default | Where it is used |
+|---|---|---|
+| `app_url` | *(none)* | `explore-github-repo` |
+| `issues_per_run` | `5` | `explore-github-repo` |
+| `log_lookback_days` | `14` | `explore-github-repo` |
+| `dedupe_closed_days` | `30` | `file-github-issue`, `triage-github-issue` |
+| `pr_base_branch` | `main` | `implement-github-issue`, `review-github-pr` |
+| `merge_method` | `squash` | `review-github-pr` |
+| `human_reviewer` | *(none)* | `shepherd-github-pr`, `review-github-pr` |
+| `build_cmd` | *(none)* | `implement-github-issue` |
+| `git_hooks_path` | *(none)* | `implement-github-issue`, `shepherd-github-pr`, `review-github-pr` |
+| `repo_guidance` | `AGENTS.md` | `implement-github-issue`, `shepherd-github-pr` |
+| `lease_ttl_triage` | `1 hour` | `triage-github-issue` |
+| `lease_ttl_implement` | `3 hours` | `implement-github-issue` |
+| `lease_ttl_pr` | `1 hour` | `shepherd-github-pr`, `review-github-pr` |
+| `groom_batch` | `5` | `triage-github-issues` |
+| `implement_batch` | `1` | `implement-github-issues` |
+| `shepherd_batch` | `3` | `shepherd-github-prs` |
+| `review_batch` | `3` | `review-github-prs` |
+| `max_shepherd_attempts` | `3` | `shepherd-github-pr` |
+| `max_review_rounds` | `3` | `review-github-pr` |
+| `max_item_failures` | `3` | `triage-github-issue`, `implement-github-issue`, `shepherd-github-pr`, `review-github-pr` |
+
+A placeholder in braces, holding one of these names, works wherever a skill names one of them, in prose or in a command: substitute the real name for the placeholder. A shell substitutes it from the same defaults: hand `scripts/lib.sh` the run's pairs on one line, or export them, and it falls back to the table above for anything left unset. The examples in a skill's **Process** section read most naturally with the defaults in place, so a bare shell variable in them means "this skill's value for that input".
 
 ## Starting a run
 
@@ -62,10 +96,10 @@ Use any group skill, or `/explore-github-repo`. The runner decides when and how 
 Every skill that has a shell does this first, from inside the target repository, and nothing else in a skill needs to repeat it. Run the helper library that sits in this skill's directory:
 
 ```bash
-source <this skill's directory>/scripts/lib.sh   # loads config, sets RUN_ID, defines the helpers
+source <this skill's directory>/scripts/lib.sh   # loads the defaults, sets RUN_ID, defines the helpers
 ```
 
-It requires `gh` (authenticated), `jq` and Python 3. Skills that commit (`implement-github-issue`, `shepherd-github-pr`, `review-github-pr`) then run `git config core.hooksPath "$GIT_HOOKS_PATH"` if that is set. Without a shell, see the next section.
+It requires `gh` (authenticated), `jq` and Python 3. To override a default for the run, export the key before you source, or point `AGENT_OVERRIDES` at a file of `key=value` lines: `AGENT_OVERRIDES=/path/to/overrides.env source <dir>/scripts/lib.sh`. Skills that commit (`implement-github-issue`, `shepherd-github-pr`, `review-github-pr`) then run `git config core.hooksPath "${git_hooks_path}"` if that is set. Without a shell, see the next section.
 
 ## Running without a shell
 
@@ -82,12 +116,16 @@ Some runners (for example a chat automation with a GitHub connector) cannot run 
 2. **Claim before acting. Release always.** Release on success and on failure. Do it explicitly: each command may run in its own shell, so a shell `trap` cannot be relied on. A crashed run is covered by lease expiry.
 3. **Be idempotent.** Before creating a branch, PR, issue or comment, check whether it already exists. Rerunning a skill on the same item must be safe.
 4. **Write the output state before releasing the lease.** If a run dies midway, the item stays in its input state and the next run retries it.
-5. **Stay bounded.** A group skill handles at most its step's `*_BATCH` items (see config). An item skill handles exactly one. One item failing does not stop the rest. Log it and move on.
+5. **Stay bounded.** A group skill handles at most its step's `batch` items (see **Defaults**). An item skill handles exactly one. One item failing does not stop the rest. Log it and move on.
 6. **Nothing eligible: log one line and exit.** Never invent work.
 7. **Touch only what you have claimed.** The only exceptions are the comments dedupe allows on other issues.
 8. **Triage and exploring never change the repository.** No commits, no branches, no edits to `GLOSSARY.md`, ADRs or `.out-of-scope/`. Put proposed changes in a comment.
 9. **No unattended `wontfix`.** If an issue looks already implemented or should be rejected, do not close it. Set `ready-for-human` and give the recommendation and reason in the comment.
-10. **Cap failures.** An item whose run fails stays eligible and is the oldest again next time, so a permanent failure would fill a batch forever. After a claimed run fails, run `fail_item N issue|pr STEP "reason"` before you release. Right after you claim, if `failures N STEP` is at least `$MAX_ITEM_FAILURES`, follow `references/escalate.md` instead of working.
+10. **Cap failures.** An item whose run fails stays eligible and is the oldest again next time, so a permanent failure would fill a batch forever. After a claimed run fails, run `fail_item N issue|pr STEP "reason"` before you release. Right after you claim, if `failures N STEP` is at least `max_item_failures`, follow `references/escalate.md` instead of working.
+
+## Inputs
+
+This skill is reference material: it is never run, so it takes **no inputs** of its own. Every skill that does run names its own inputs in its own **`## Inputs`** section, and the settings they share are in **Defaults** above.
 
 ## References
 
@@ -101,8 +139,7 @@ Read these when a skill points at them. All are in this skill's directory.
 | `references/dedupe.md` | duplicate search and the canonical-issue rule |
 | `references/issue-format.md` | what a well-formed issue contains |
 | `references/log.md` | the monthly run-log issue and entry format |
-| `config.defaults.env` | batch sizes, lease TTLs, limits, repository defaults |
-| `scripts/lib.sh` | the helpers named below |
+| `scripts/lib.sh` | the helpers named below, and the default values of every setting above |
 
 ## Leases
 
@@ -116,13 +153,13 @@ A lease is **live** only if the item carries the lease label **and** the newest 
 | `renew N issue\|pr STEP TTL` | post a newer marker. Do this before the lease runs out, if a long task needs it |
 | `release N issue\|pr LABEL` | remove the label |
 
-TTLs are `LEASE_TTL_TRIAGE`, `LEASE_TTL_IMPLEMENT` and `LEASE_TTL_PR` in the config (see **Per-repository config**).
+TTLs are `lease_ttl_triage`, `lease_ttl_implement` and `lease_ttl_pr` in **Defaults**.
 
 Typical use:
 
 ```bash
 if has_label "$N" issue agent:triage && lease_live "$N"; then continue; fi   # someone has it
-claim "$N" issue agent:triage Grooming "$LEASE_TTL_TRIAGE"
+claim "$N" issue agent:triage Grooming "$lease_ttl_triage"
 # ... work ...
 release "$N" issue agent:triage                                       # on EVERY way out: success, bail-out, escalation, failure
 ```

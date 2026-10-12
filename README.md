@@ -15,7 +15,7 @@ Each step is a pair of skills. A **group skill** selects the work (`/triage-gith
 ## Quickstart
 
 1. **Install** the skills and their dependencies (see [Install](#install)).
-2. **Set up the repository.** In an agent, run `/setup-github-agent-workflow`. It checks the dependencies, asks for the repository's settings, writes `.agents/docs/github-agent-workflow.env`, and creates the labels.
+2. **Set up the repository.** In an agent, run `/setup-github-agent-workflow`. It checks the dependencies, asks for the repository's settings, records them in the repository's agent instructions, and creates the labels.
 3. **Try each step once by hand**, and read the run-log comment it leaves (a monthly `Agent log` issue). Reviewing merges PRs, so use a sandbox repository first.
 4. **Schedule** one prompt per step on your runner:
 
@@ -27,7 +27,7 @@ Each step is a pair of skills. A **group skill** selects the work (`/triage-gith
    | Shepherding | `Run /shepherd-github-prs on github.com/OWNER/REPO` |
    | Reviewing | `Run /review-github-prs on github.com/OWNER/REPO` |
 
-   The runner owns timing, frequency and triggers (a schedule, a webhook). The skills own what a run does. Exploring browses the app at `APP_URL` from the repository's settings. [docs/RUNNERS.md](./docs/RUNNERS.md) covers what a runner needs, prompts for runners that cannot load skills, and a starting cadence.
+   The runner owns timing, frequency and triggers (a schedule, a webhook). The skills own what a run does. Add the repository's settings as key-value inputs on the prompt (see [Inputs and defaults](#inputs-and-defaults)); Exploring browses the live app when one is given. [docs/RUNNERS.md](./docs/RUNNERS.md) covers what a runner needs, prompts for runners that cannot load skills, and a starting cadence.
 
 ## Skills
 
@@ -82,9 +82,39 @@ npx skills@latest add mattpocock/skills      # tdd and code-review
 
 Commit the links. Run the script again after updating the package.
 
-## Configuration
+## Inputs and defaults
 
-Defaults ship in [config.defaults.env](./skills/pipeline/agent-workflow-protocol/config.defaults.env): batch sizes, lease lengths, escalation limits, the PR base branch, merge method, build command and more. A repository overrides any of them in `.agents/docs/github-agent-workflow.env`, which `/setup-github-agent-workflow` writes. The repository's value wins.
+Every skill takes its inputs two ways, mixed freely in one prompt:
+
+- **Key-value pairs**, `key=value` on a line of its own, for example `app_url=https://staging.example.com` or `issue=123`.
+- **Free text**, which each skill knows how to read: a URL or a bare number on its own, a sentence describing what you want done.
+
+**There is no config file.** Each skill has an `## Inputs` section listing everything it takes, including its **implicit dependencies** (the tools, skills and repository state it needs that are not inputs), and stating the **default** for every value where one is sensible. `agent-workflow-protocol` collects the shared defaults:
+
+| Input | Default |
+|---|---|
+| `app_url` | *(none)* |
+| `issues_per_run` | `5` |
+| `log_lookback_days` | `14` |
+| `dedupe_closed_days` | `30` |
+| `pr_base_branch` | `main` |
+| `merge_method` | `squash` |
+| `human_reviewer` | *(none)* |
+| `build_cmd` | *(none)* |
+| `git_hooks_path` | *(none)* |
+| `repo_guidance` | `AGENTS.md` |
+| `lease_ttl_triage` | `1 hour` |
+| `lease_ttl_implement` | `3 hours` |
+| `lease_ttl_pr` | `1 hour` |
+| `groom_batch` | `5` |
+| `implement_batch` | `1` |
+| `shepherd_batch` | `3` |
+| `review_batch` | `3` |
+| `max_shepherd_attempts` | `3` |
+| `max_review_rounds` | `3` |
+| `max_item_failures` | `3` |
+
+Leave an input out and its default applies, so a repository that suits the defaults needs no settings at all. For a runner with a shell, `scripts/lib.sh` implements the same defaults and honours an exported override.
 
 ## Layout
 
@@ -104,7 +134,7 @@ external-skills.json   skills needed from elsewhere
 
 ```bash
 npm install
-npm run validate               # structure, front matter, references, manifest, READMEs
+npm run validate               # structure, front matter, references, manifest, READMEs, inputs
 npm test                       # the shell helpers, against a stub gh
 npm run check-plugin-version
 ```

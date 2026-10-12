@@ -13,7 +13,6 @@
 //   - `references/...` and `scripts/...` paths exist in the skill, or in agent-workflow-protocol
 //   - relative markdown links resolve
 //   - nothing repository-specific has leaked into skills/, scripts/ or tests/
-//   - every $KEY a skill names exists in config.defaults.env, and every key there is used
 // Package-wide:
 //   - .claude-plugin/plugin.json lists exactly the promoted skills
 //   - bucket READMEs and the root README link every skill
@@ -29,10 +28,10 @@ const LEAKS = [
   [/livepage/i, "mentions LivePage"],
   [/pagecrafter/i, "mentions pagecrafter"],
   [/glennfaison/i, "mentions glennfaison"],
-  [/\.agents\/docs\/(?!github-agent-workflow\.env)/, "points at .agents/docs/ (except the sanctioned config file)"],
+  [/\.agents\/docs\//, "points at .agents/docs/ (there is no config file there: defaults live in each skill)"],
   [/scripts\/agent\//, "points at scripts/agent/"],
   [/\.agents\/skills\/agent-workflow-protocol/, "hard-codes the protocol skill's path"],
-  [/`(?:develop|main)`/, "hard-codes a branch name (use $PR_BASE_BRANCH)"],
+  [/--base[= ]+"?`?(?:develop|main)`?/, "hard-codes a PR base branch (use $pr_base_branch)"],
 ];
 
 const errors = [];
@@ -167,21 +166,58 @@ for (const base of ["skills", "scripts", "tests"]) {
   }
 }
 
-// ---- config keys -----------------------------------------------------------
-// A skill that names $SOME_KEY must find it in config.defaults.env, and every key there must be used.
-if (protocol) {
-  const cfgPath = join(protocol.dir, "config.defaults.env");
-  const keys = new Set([...read(cfgPath).matchAll(/^([A-Z][A-Z0-9_]*)=/gm)].map((m) => m[1]));
-  const SHELL_VARS = new Set(["RUN_ID", "SHA"]); // set by lib.sh or by the skill itself
-  const mdFiles = walk(join(root, "skills")).filter((f) => f.endsWith(".md"));
-  const text = mdFiles.map((f) => [f, read(f)]);
-  for (const [file, body] of text) {
-    for (const [, v] of body.matchAll(/\$\{?([A-Z][A-Z0-9_]+)/g)) {
-      if (!keys.has(v) && !SHELL_VARS.has(v)) err(relative(root, file), `uses $${v}, which is not in config.defaults.env`);
-    }
+// ---- inputs and defaults ---------------------------------------------------
+// There is no config file. Every skill declares an `## Inputs` section that names its inputs and
+// their defaults; agent-workflow-protocol holds the shared defaults; scripts/lib.sh implements
+// them. So check that the three stay in step, rather than checking against a config file.
+const SHELL_VARS = new Set(["RUN_ID", "SHA"]);
+// The text of a `## Inputs` section: from its heading to the next `##` heading or the end.
+// Returns null when the skill has no such section. Line-based on purpose: with the m flag `$`
+// also matches end of line, which makes a lazy section match stop at the first newline.
+function inputSection(body) {
+  const lines = body.split("\n");
+  let start = -1;
+  for (let i = 0; i < lines.length; i++) {
+    if (/^## Inputs(\s|$)/.test(lines[i])) { start = i; break; }
   }
-  for (const k of keys) {
-    if (!text.some(([, body]) => body.includes(k))) err(relative(root, cfgPath), `${k} is not used by any skill`);
+  if (start === -1) return null;
+  const out = [];
+  for (let i = start + 1; i < lines.length; i++) {
+    if (/^## /.test(lines[i])) break;
+    out.push(lines[i]);
+  }
+  return out.join("\n");
+}
+
+if (protocol) {
+  // The shared defaults, as documented, and as the shell library implements them.
+  const protocolBody = read(join(protocol.dir, "SKILL.md"));
+  const documented = new Set(
+    [...protocolBody.matchAll(/^\|\s*`([a-z][a-z0-9_]*)`\s*\|/gm)].map((m) => m[1])
+  );
+  const libBody = read(join(protocol.dir, "scripts", "lib.sh"));
+  const implemented = new Set(
+    [...libBody.matchAll(/^([a-z][a-z0-9_]*):[A-Z][A-Z0-9_]*$/gm)].map((m) => m[1])
+  );
+
+  for (const k of documented) {
+    if (!implemented.has(k)) err(`${protocol.rel}/scripts/lib.sh`, `does not set \`${k}\`, which the Defaults table documents`);
+  }
+  for (const k of implemented) {
+    if (!documented.has(k)) err(`${protocol.rel}/SKILL.md`, `Defaults table is missing \`${k}\`, which scripts/lib.sh sets`);
+  }
+
+  for (const s of skills.filter((x) => x.promoted)) {
+    const section = inputSection(s.body);
+    if (section === null) {
+      err(s.rel, "has no '## Inputs' section; every skill names its inputs and their defaults there");
+      continue;
+    }
+    for (const [, name] of s.body.matchAll(/\$\{?([a-z][a-z0-9_]+)/g)) {
+      if (SHELL_VARS.has(name.toUpperCase()) || documented.has(name)) continue;
+      if (section.includes("`" + name + "`")) continue; // declared in this skill's own inputs
+      err(s.rel, `uses $${name}, which is not in the Defaults table or in this skill's Inputs section`);
+    }
   }
 }
 

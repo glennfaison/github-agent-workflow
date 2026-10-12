@@ -3,19 +3,83 @@
 # Usage: source <this skill's directory>/scripts/lib.sh   (run from inside the target repository)
 # Requires: gh (authenticated), jq, and Python 3 for portable date arithmetic.
 #
-# Config is layered: this skill's config.defaults.env first, then the repository's own
-# overrides in .agents/docs/github-agent-workflow.env (written by /setup-github-agent-workflow).
-# Set AGENT_REPO_CONFIG to read the overrides from somewhere else.
+# There is no config file. Every default this library needs is set here, by name, and the same
+# names are the keys a run may override: pass them as key=value pairs on a line of their own, or
+# export them first. Whatever the run does not set falls back to the default below, exactly as
+# ../SKILL.md's Defaults table describes.
 
 AGENT_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 AGENT_ROOT="$(git rev-parse --show-toplevel)"
-# shellcheck disable=SC1091
-source "$AGENT_LIB_DIR/../config.defaults.env"
-AGENT_REPO_CONFIG="${AGENT_REPO_CONFIG:-$AGENT_ROOT/.agents/docs/github-agent-workflow.env}"
-if [ -f "$AGENT_REPO_CONFIG" ]; then
+
+# ---- Defaults ---------------------------------------------------------------
+# These mirror the Defaults table in ../SKILL.md, which is the source of truth. A repository used
+# to override them from a shared environment file; that file is gone. Override a value for one run
+# either by exporting the key first, or by pointing AGENT_OVERRIDES at a file of "key=value" lines:
+#   AGENT_OVERRIDES=/path/to/overrides.env source <this skill's directory>/scripts/lib.sh
+# Anything the run does not set falls back to the default below.
+
+: "${app_url:=}"
+: "${issues_per_run:=5}"
+: "${log_lookback_days:=14}"
+: "${dedupe_closed_days:=30}"
+: "${pr_base_branch:=main}"
+: "${merge_method:=squash}"
+: "${human_reviewer:=}"
+: "${build_cmd:=}"
+: "${git_hooks_path:=}"
+: "${repo_guidance:=AGENTS.md}"
+: "${lease_ttl_triage:=1 hour}"
+: "${lease_ttl_implement:=3 hours}"
+: "${lease_ttl_pr:=1 hour}"
+: "${groom_batch:=5}"
+: "${implement_batch:=1}"
+: "${shepherd_batch:=3}"
+: "${review_batch:=3}"
+: "${max_shepherd_attempts:=3}"
+: "${max_review_rounds:=3}"
+: "${max_item_failures:=3}"
+
+# $AGENT_OVERRIDES, if set, is a file of "key=value" overrides, one per line. Blank lines and lines
+# starting with # are ignored. An exported key still wins: it is applied after the file is read.
+# A variable, not a positional argument: `source` inherits the caller's positional parameters, so
+# $1 would be whatever the caller happened to have.
+if [ -n "${AGENT_OVERRIDES:-}" ] && [ -f "${AGENT_OVERRIDES}" ]; then
   # shellcheck disable=SC1090
-  source "$AGENT_REPO_CONFIG"
+  source "${AGENT_OVERRIDES}"
 fi
+
+# Export every name in both forms, so a skill that reads $groom_batch and one that reads
+# $groom_batch see the same value. The lowercase form is the documented one. Written out
+# rather than derived, because macOS still ships bash 3.2 and ${name^^} needs bash 4.
+_config_pairs="
+app_url:APP_URL
+issues_per_run:ISSUES_PER_RUN
+log_lookback_days:LOG_LOOKBACK_DAYS
+dedupe_closed_days:DEDUPE_CLOSED_DAYS
+pr_base_branch:PR_BASE_BRANCH
+merge_method:MERGE_METHOD
+human_reviewer:HUMAN_REVIEWER
+build_cmd:BUILD_CMD
+git_hooks_path:GIT_HOOKS_PATH
+repo_guidance:REPO_GUIDANCE
+lease_ttl_triage:LEASE_TTL_TRIAGE
+lease_ttl_implement:LEASE_TTL_IMPLEMENT
+lease_ttl_pr:LEASE_TTL_PR
+groom_batch:GROOM_BATCH
+implement_batch:IMPLEMENT_BATCH
+shepherd_batch:SHEPHERD_BATCH
+review_batch:REVIEW_BATCH
+max_shepherd_attempts:MAX_SHEPHERD_ATTEMPTS
+max_review_rounds:MAX_REVIEW_ROUNDS
+max_item_failures:MAX_ITEM_FAILURES
+"
+while IFS=: read -r _lower _upper; do
+  [ -n "$_lower" ] || continue
+  eval "export $_upper=\${$_lower}"
+done <<CONFIG_PAIRS
+$_config_pairs
+CONFIG_PAIRS
+unset _config_pairs _lower _upper
 
 # Portable date helpers: GNU `date -d` is unavailable on macOS, so the workflow uses
 # Python's datetime library for ISO parsing and relative durations.
@@ -108,7 +172,7 @@ lease_live() {
   [ -n "$exp" ] && [ "$now" -lt "$(utc_epoch "$exp")" ]
 }
 
-# claim <number> <issue|pr> <label> <step> <ttl>   e.g. claim 12 issue agent:triage Grooming "$LEASE_TTL_TRIAGE"
+# claim <number> <issue|pr> <label> <step> <ttl>   e.g. claim 12 issue agent:triage Grooming "$lease_ttl_triage"
 claim() {
   local n=$1 kind=$2 label=$3 step=$4 ttl=$5 exp
   exp=$(utc_plus "+$ttl")

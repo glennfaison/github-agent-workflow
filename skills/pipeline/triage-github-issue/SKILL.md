@@ -7,9 +7,24 @@ description: Triage one specific GitHub issue by number. Claims it, checks for d
 
 Make one issue ready for an agent to implement, or route it to a human.
 
-**Input:** an issue URL or number.
+**Input:** one GitHub issue, as a URL or a number. Required.
 
-**Read first:** call the Skill tool with `agent-workflow-protocol`, then read these files in that skill's directory: `references/labels.md`, `references/dedupe.md`, `references/issue-format.md`, `references/log.md` and `config.defaults.env`.
+**Read first:** call the Skill tool with `agent-workflow-protocol`, then read these files in that skill's directory: `references/labels.md`, `references/dedupe.md`, `references/issue-format.md` and `references/log.md`.
+
+## Inputs
+
+**Free text.** The first URL or bare `#N` / `N` you find is the issue to triage. Anything else in the prose is context for this skill to read, not a second instruction.
+
+**Key-value pairs.** `key=value` on a line of its own. Recognised keys, all optional except `issue`:
+
+| Input | Default | What it does |
+|---|---|---|
+| `issue` | *(required)* | The issue, as a URL or a number. `N` is the last path segment of a URL |
+| `lease_ttl_triage` | `1 hour` | How long the Grooming lease stays valid without a renewal |
+| `max_item_failures` | `3` | Failed runs of one step on one item before it is escalated |
+| `dedupe_closed_days` | `30` | The "recently closed" window the duplicate search runs over |
+
+**Implicit dependencies.** This skill also needs `agent-workflow-protocol` and its shell helpers (`scripts/lib.sh`) when a shell is available, the `unattended-triage` skill (through the Skill tool), and the issue's own comments and images. Without a shell, claim, label and comment through the tools you have.
 
 ## Eligibility
 
@@ -29,7 +44,7 @@ Make one issue ready for an agent to implement, or route it to a human.
 
 ## Process
 
-1. **Claim.** `claim N issue agent:triage Grooming "$LEASE_TTL_TRIAGE"`. If `failures N Grooming` is at least `$MAX_ITEM_FAILURES`, follow `references/escalate.md` and stop. Release on every exit path from here on (see step 9).
+1. **Claim.** `claim N issue agent:triage Grooming "$lease_ttl_triage"`. If `failures N Grooming` is at least `$max_item_failures`, follow `references/escalate.md` and stop. Release on every exit path from here on (see step 9).
 2. **Dedupe.** Follow `references/dedupe.md`, using the **Grooming** column. If your issue is a duplicate and is now closed, skip to step 9.
 3. **Link related issues** in a comment, or in the description if that reads better.
 4. **Check the format.** Decide the category, then compare the description with `references/issue-format.md` (its **Grooming's check** section). Fill in what the evidence supports. Note what is missing and cannot be inferred. Those become questions in step 5.

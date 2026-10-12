@@ -7,9 +7,26 @@ description: Take one specific GitHub PR by number from opened to reviewable. Fi
 
 Take one PR from "opened" to "reviewable": get checks green, address open review findings, then post the handoff. This skill never polls. If checks are still running, it skips the PR and a later run picks it up.
 
-**Input:** a PR URL or number.
+**Input:** one GitHub PR, as a URL or a number. Required.
 
-**Read first:** call the Skill tool with `agent-workflow-protocol`, then read these files in that skill's directory: `references/labels.md`, `references/handoff.md`, `references/escalate.md`, `references/log.md` and `config.defaults.env`. Also the repository guidance in `$REPO_GUIDANCE`.
+**Read first:** call the Skill tool with `agent-workflow-protocol`, then read these files in that skill's directory: `references/labels.md`, `references/handoff.md`, `references/escalate.md` and `references/log.md`. Also the repository guidance in `$repo_guidance`.
+
+## Inputs
+
+**Free text.** The first URL or bare `#N` / `N` you find is the PR to shepherd. Anything else in the prose is context for this skill to read, not a second instruction.
+
+**Key-value pairs.** `key=value` on a line of its own. Recognised keys, all optional except `pr`:
+
+| Input | Default | What it does |
+|---|---|---|
+| `pr` | *(required)* | The PR, as a URL or a number. `N` is the last path segment of a URL |
+| `lease_ttl_pr` | `1 hour` | How long the Shepherding lease stays valid without a renewal |
+| `max_shepherd_attempts` | `3` | Consecutive fix attempts, reset by any handoff, before the PR is escalated |
+| `max_item_failures` | `3` | Failed runs of one step on one item before it is escalated |
+| `human_reviewer` | *(none)* | A GitHub user to request review from when this PR is escalated. Empty means request nobody |
+| `repo_guidance` | `AGENTS.md` | Space-separated files holding the repository's contributor rules |
+
+**Implicit dependencies.** This skill also needs `agent-workflow-protocol` and its shell helpers (`scripts/lib.sh`) when a shell is available, read access to the failing check logs, and a git identity. Without a shell, or without the log access this needs, follow **Unattended runs** in the protocol and record it under **Problems**.
 
 ## Eligibility
 
@@ -29,18 +46,18 @@ Take one PR from "opened" to "reviewable": get checks green, address open review
 
 - Fix path: push a commit and post an attempt comment ending with `<!-- agent:attempt step=shepherding sha=<new head SHA> -->`. The PR stays `agent:needs-work`.
 - Ready path: a "ready" handoff comment ending with `<!-- agent:handoff kind=ready sha=<head SHA> -->`, then swap `agent:needs-work` → `agent:ready-for-review`.
-- Escalation to `agent:stuck` when attempts reach `$MAX_SHEPHERD_ATTEMPTS` or the PR is a fork (`references/escalate.md`).
+- Escalation to `agent:stuck` when attempts reach `$max_shepherd_attempts` or the PR is a fork (`references/escalate.md`).
 - Lease released.
 
 ## Process
 
-1. **Claim.** `claim N pr agent:in-progress Shepherding "$LEASE_TTL_PR"`. If `failures N Shepherding` is at least `$MAX_ITEM_FAILURES`, follow `references/escalate.md` and stop. Release on every exit path from here on: fixed, handed off, escalated or failed.
+1. **Claim.** `claim N pr agent:in-progress Shepherding "$lease_ttl_pr"`. If `failures N Shepherding` is at least `$max_item_failures`, follow `references/escalate.md` and stop. Release on every exit path from here on: fixed, handed off, escalated or failed.
 2. **Fork check.** `gh pr view N --json isCrossRepository`. If true, follow `references/escalate.md` and stop.
 3. **Decide what is needed:**
    - Checks `failing`, or `open_findings N` is above 0: go to step 4.
    - Checks `green` and `open_findings N` is 0: go to step 5.
 4. **Fix.**
-   1. If `shepherd_attempts N` is at least `$MAX_SHEPHERD_ATTEMPTS`, follow `references/escalate.md` and stop.
+   1. If `shepherd_attempts N` is at least `$max_shepherd_attempts`, follow `references/escalate.md` and stop.
    2. Read the failing logs (`gh run view <run-id> --log-failed`) and, if `open_findings N` is above 0, the newest `kind=review` handoff comment. If you cannot read enough of the failing output to find the cause, do not guess: run `fail_item N pr Shepherding "cannot read failing output"`, release, and return `#N failed: cannot read failing output`. This does not count as an attempt.
    3. Check out the PR branch and fix the cause. Run the narrowest relevant test first.
    4. **Never edit tests, snapshots or allowlists to make a check pass.** If a test looks wrong, say so in the attempt comment and leave it.

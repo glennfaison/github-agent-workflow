@@ -8,6 +8,25 @@ description: Assess whether a pull request is safe for an agent to merge by chec
 Give an evidence-based merge-gate assessment. This is not a substitute for a
 full code or security review, and it does not authorize or perform a merge.
 
+## Inputs
+
+**Free text.** The pull request to assess, as a URL or a number, plus anything
+you need it to consider that is not on the PR itself. Read the rest of the text
+as context, not as a second instruction.
+
+**Key-value pairs.** `key=value` on a line of its own. Recognised keys, all
+optional except `pr`:
+
+| Input | Default | What it does |
+|---|---|---|
+| `pr` | *(required)* | The pull request, as a URL or a number |
+| `base` | *(none)* | The branch the PR merges into, when the caller already knows it |
+| `head` | *(none)* | The commit being reviewed, when the caller has already pinned it |
+
+**Implicit dependencies.** This skill needs the complete diff, the affected
+callers and contracts, and the linked issue when it clarifies the intended
+behaviour. It merges nothing and changes no labels.
+
 ## Workflow
 
 1. Establish the exact PR, base and head, then inspect the complete diff and

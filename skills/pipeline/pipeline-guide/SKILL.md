@@ -7,6 +7,14 @@ description: Find the right skill in the issue-to-merge pipeline (explore, triag
 
 A map of the pipeline. It runs nothing: invoke a skill by name, or read its `SKILL.md`.
 
+## Inputs
+
+**Free text.** What you are trying to do, in your own words. That description is what this skill maps onto a step below.
+
+**Key-value pairs.** None. There is nothing here to parameterise.
+
+**Implicit dependencies.** The `SKILL.md` files of every skill it points at. This skill reads those pointers and runs nothing, so it needs no shell, no `gh` and no config.
+
 Each step has a **group skill** that selects work from the repository and an **item skill** that does the work on one issue or PR. Run a group skill on a schedule. Run an item skill by hand on one issue or PR URL.
 
 | Step | Group skill (whole backlog) | Item skill (one URL) |
@@ -42,7 +50,7 @@ Every label and transition is in [labels.md](../agent-workflow-protocol/referenc
 
 Shared:
 
-- [agent-workflow-protocol](../agent-workflow-protocol/SKILL.md): leases, markers, labels, handoffs, escalation, the run log and config. Reference only; every pipeline skill reads it first.
-- [setup-github-agent-workflow](../setup-github-agent-workflow/SKILL.md): configure a repository once (settings, labels). User-invoked.
+- [agent-workflow-protocol](../agent-workflow-protocol/SKILL.md): leases, markers, labels, handoffs, escalation, the run log, how a skill takes its input and the shared defaults. Reference only; every pipeline skill reads it first.
+- [setup-github-agent-workflow](../setup-github-agent-workflow/SKILL.md): configure a repository once (labels, agent instructions, scheduler prompts). User-invoked.
 
 Also used by the pipeline: [unattended-triage](../../utility/unattended-triage/SKILL.md), [unattended-grilling](../../utility/unattended-grilling/SKILL.md) and [merge-safety](../../utility/merge-safety/SKILL.md).

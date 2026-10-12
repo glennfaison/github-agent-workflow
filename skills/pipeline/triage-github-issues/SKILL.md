@@ -7,7 +7,19 @@ description: Scan all open issues in the repo, tidy issues whose PRs have finish
 
 Go through the open issues as a group. Tidy the ones whose PRs are done, pick the issues that need triage, and give each to `triage-github-issue`. This skill does no triage itself.
 
-**Read first:** call the Skill tool with `agent-workflow-protocol`, then read these files in that skill's directory: `references/labels.md`, `references/log.md` and `config.defaults.env`.
+**Read first:** call the Skill tool with `agent-workflow-protocol`, then read these files in that skill's directory: `references/labels.md` and `references/log.md`.
+
+## Inputs
+
+**Free text.** Any prose. This skill needs nothing from it: a repository is the only subject, and it is already checked out and authenticated. (`hub` is not required.)
+
+**Key-value pairs.** `key=value` on a line of its own:
+
+| Input | Default | What it does |
+|---|---|---|
+| `groom_batch` | `5` | The most issues this run triages before it stops |
+
+**Implicit dependencies.** This skill also needs `agent-workflow-protocol` and its shell helpers (`scripts/lib.sh`) when a shell is available, and the repository's open issues to list. Without a shell, list, label and comment through the tools you have.
 
 ## Inputs
 
@@ -17,7 +29,7 @@ Go through the open issues as a group. Tidy the ones whose PRs are done, pick th
 ## Outputs
 
 - Housekeeping may close an issue (PR merged) or swap `agent:pr-open` → `ready-for-human` (every PR closed unmerged).
-- Up to `$GROOM_BATCH` issues triaged by `triage-github-issue`.
+- Up to `$groom_batch` issues triaged by `triage-github-issue`.
 - One run-log entry (`references/log.md`).
 
 ## Process
@@ -40,7 +52,7 @@ Go through the open issues as a group. Tidy the ones whose PRs are done, pick th
            | {number, url, title, createdAt, labels: names} ] | sort_by(.createdAt)'
    ```
 
-3. **Select, dispatch and log**, as **Group skills** in the protocol describes: `triage-github-issue`'s **Eligibility**, the first `$GROOM_BATCH` that pass, one dispatch per `url`. The run-log entry (`references/log.md`) also lists the housekeeping you did. Nothing eligible and no housekeeping: log `nothing eligible` and stop.
+3. **Select, dispatch and log**, as **Group skills** in the protocol describes: `triage-github-issue`'s **Eligibility**, the first `$groom_batch` that pass, one dispatch per `url`. The run-log entry (`references/log.md`) also lists the housekeeping you did. Nothing eligible and no housekeeping: log `nothing eligible` and stop.
 
 ## Never
 

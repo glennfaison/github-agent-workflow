@@ -7,7 +7,19 @@ description: Find open, non-draft PRs labelled agent:ready-for-review and hand t
 
 Pick the `agent:ready-for-review` PRs that can be reviewed now, and give each to `review-github-pr`. This skill reviews and merges nothing itself.
 
-**Read first:** call the Skill tool with `agent-workflow-protocol`, then read these files in that skill's directory: `references/labels.md`, `references/log.md` and `config.defaults.env`.
+**Read first:** call the Skill tool with `agent-workflow-protocol`, then read these files in that skill's directory: `references/labels.md` and `references/log.md`.
+
+## Inputs
+
+**Free text.** Any prose. This skill needs nothing from it: a repository is the only subject, and it is already checked out and authenticated.
+
+**Key-value pairs.** `key=value` on a line of its own:
+
+| Input | Default | What it does |
+|---|---|---|
+| `review_batch` | `3` | The most PRs this run dispatches before it stops |
+
+**Implicit dependencies.** This skill also needs `agent-workflow-protocol` and its shell helpers (`scripts/lib.sh`) when a shell is available, and the repository's open PRs to list. Without a shell, list and dispatch through the tools you have.
 
 ## Process
 
@@ -21,7 +33,7 @@ Pick the `agent:ready-for-review` PRs that can be reviewed now, and give each to
            | {number, url, title, createdAt, fork: .isCrossRepository} ] | sort_by(.createdAt)'
    ```
 
-2. **Select, dispatch and log**, as **Group skills** in the protocol describes: `review-github-pr`'s **Eligibility**, the first `$REVIEW_BATCH` that pass, one dispatch per `url`.
+2. **Select, dispatch and log**, as **Group skills** in the protocol describes: `review-github-pr`'s **Eligibility**, the first `$review_batch` that pass, one dispatch per `url`.
 
 ## Never
 

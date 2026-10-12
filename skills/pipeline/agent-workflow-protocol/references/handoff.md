@@ -12,8 +12,8 @@ Elsewhere a handoff is often a document that compacts a conversation for another
 | Author | Comment | Required content |
 |---|---|---|
 | Shepherding | the "ready" handoff on a PR | **Changes** made, **Decisions** taken and why, **Risks**, **Verification** actually run (commands and results, and a link to the green check run), **Reviewer focus** (where to look hardest), **Not done** (anything the issue asked for that this PR leaves out, and why) |
-| Reviewing, not merged | the "review" handoff on a PR | **Verdict**, **Findings**: each with what is wrong, why, and whether it is fixed (with the commit) or still open; **What remains**; **Verification** you ran; **Round** (`review_rounds N` of `$MAX_REVIEW_ROUNDS`) |
-| Reviewing, merged | the "merged" note on a PR, posted right after the merge | **Verdict** from `merge-safety` (compatibility, reversibility, GitHub readiness) and the outcome of `code-review`; **Verification** you ran; the merge commit and `$MERGE_METHOD`. It keeps the reason for an unattended merge with the PR |
+| Reviewing, not merged | the "review" handoff on a PR | **Verdict**, **Findings**: each with what is wrong, why, and whether it is fixed (with the commit) or still open; **What remains**; **Verification** you ran; **Round** (`review_rounds N` of `max_review_rounds`) |
+| Reviewing, merged | the "merged" note on a PR, posted right after the merge | **Verdict** from `merge-safety` (compatibility, reversibility, GitHub readiness) and the outcome of `code-review`; **Verification** you ran; the merge commit and `merge_method`. It keeps the reason for an unattended merge with the PR |
 | Any step that escalates | the escalation comment | see `escalate.md` |
 
 ## Issues
