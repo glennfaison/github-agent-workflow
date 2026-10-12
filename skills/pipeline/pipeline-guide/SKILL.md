@@ -46,6 +46,8 @@ PR      agent:needs-work --shepherd--> agent:ready-for-review --review--> merged
 any     agent:stuck: an agent gave up. Every step ignores the item until a human removes the label.
 ```
 
+The same diagram, rendered: [lifecycle.svg](references/lifecycle.svg).
+
 Every label and transition is in [labels.md](../agent-workflow-protocol/references/labels.md). If a skill disagrees with it, labels.md wins.
 
 Shared:
