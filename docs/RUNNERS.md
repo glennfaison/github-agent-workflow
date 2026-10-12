@@ -67,6 +67,85 @@ Pin `REF` to a commit or tag, not a branch. The run executes whatever that file 
 
 For a vendored package the skill files are not in the application repository, only a pointer to them, so a connector reading the application repository finds nothing. Point it at the package repository.
 
+## Copy-paste prompts
+
+One prompt per scheduled step, listing **every input** that step's skills take, with the default shown as the value. Delete any line and the skill falls back to that same default, so a full prompt behaves exactly like the short ones above. The value of the full form is seeing, in one place, everything a run can be told.
+
+The canonical lists are the skills' own **Inputs** sections and the **Defaults** table in [agent-workflow-protocol](../skills/pipeline/agent-workflow-protocol/SKILL.md); the prompts below enumerate what those say, for the version of the package they were copied from. The inputs with no default (`app_url`, `human_reviewer`, `build_cmd`, `git_hooks_path`) are shown empty, which is their default. Fill in `OWNER/REPO` and `NAME` (the runner's name, so the run log says who did what) and each block is ready to paste.
+
+**Exploring**
+
+```text
+Run /explore-github-repo on github.com/OWNER/REPO.
+app_url=
+issues_per_run=5
+log_lookback_days=14
+No human is present: do not ask questions. Runner: NAME.
+If /explore-github-repo is not recognised, call the Skill tool with explore-github-repo, or read its SKILL.md and follow it.
+```
+
+`app_url` is the live app to explore. With it empty, exploring covers the code only.
+
+**Grooming**
+
+```text
+Run /triage-github-issues on github.com/OWNER/REPO.
+groom_batch=5
+dedupe_closed_days=30
+lease_ttl_triage=1 hour
+max_item_failures=3
+No human is present: do not ask questions. Runner: NAME.
+If /triage-github-issues is not recognised, call the Skill tool with triage-github-issues, or read its SKILL.md and follow it.
+```
+
+**Implementing**
+
+```text
+Run /implement-github-issues on github.com/OWNER/REPO.
+implement_batch=1
+pr_base_branch=main
+build_cmd=
+git_hooks_path=
+repo_guidance=AGENTS.md
+lease_ttl_implement=3 hours
+max_item_failures=3
+No human is present: do not ask questions. Runner: NAME.
+If /implement-github-issues is not recognised, call the Skill tool with implement-github-issues, or read its SKILL.md and follow it.
+```
+
+**Shepherding**
+
+```text
+Run /shepherd-github-prs on github.com/OWNER/REPO.
+shepherd_batch=3
+human_reviewer=
+git_hooks_path=
+repo_guidance=AGENTS.md
+lease_ttl_pr=1 hour
+max_shepherd_attempts=3
+max_item_failures=3
+No human is present: do not ask questions. Runner: NAME.
+If /shepherd-github-prs is not recognised, call the Skill tool with shepherd-github-prs, or read its SKILL.md and follow it.
+```
+
+**Reviewing**
+
+```text
+Run /review-github-prs on github.com/OWNER/REPO.
+review_batch=3
+pr_base_branch=main
+merge_method=squash
+human_reviewer=
+git_hooks_path=
+lease_ttl_pr=1 hour
+max_review_rounds=3
+max_item_failures=3
+No human is present: do not ask questions. Runner: NAME.
+If /review-github-prs is not recognised, call the Skill tool with review-github-prs, or read its SKILL.md and follow it.
+```
+
+To run one item by hand, the item skill takes the same lines as its step plus the item itself: `issue=123` for triage or implement, `pr=456` for shepherd or review.
+
 ## When to run each step
 
 The steps never call each other and never wait on each other, so any order works. A starting point:
