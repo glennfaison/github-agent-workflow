@@ -1,5 +1,11 @@
 # github-agent-workflow
 
+## 1.2.0
+
+### Minor Changes
+
+- 256a00e: Complete remaining checklist items: pin mattpocock-skills@1.3.0, replace Python date helpers with Node.js, per-step difficulty log issues, machine-readable YAML log headers
+
 ## 1.1.0
 
 ### Minor Changes
