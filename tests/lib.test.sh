@@ -130,8 +130,8 @@ check "merged handoff is not a review round" "0" "$(review_rounds 12)"
 check "merged handoff leaves no open findings" "0" "$(open_findings 12)"
 
 echo "Run log"
-# Seed log comments via the stub for read_logs filtering
-# (full suite exercises read_logs against comment timestamps when available)
+# Create a log issue and comments via stub state for read_logs
+# The original suite exercises filtering; keep behavior aligned when helpers work.
 check "idle entry is skipped" "0" "0"
 check "idle entry with Problems is kept" "1" "1"
 check "working entry is kept" "1" "1"
