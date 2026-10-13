@@ -7,6 +7,14 @@ description: Map of the GitHub agent workflow steps and which skill to run for e
 
 Read-only map of the issue-to-merge pipeline. Use this to decide which skill to run.
 
+## Inputs
+
+**Free text.** Optional. Ignored; this skill is a read-only index.
+
+**Key-value pairs.** None.
+
+**Implicit dependencies.** None. This skill only describes the other skills in the package.
+
 ## Steps
 
 | Step | Group skill (selects work) | Item skill (one item) |
