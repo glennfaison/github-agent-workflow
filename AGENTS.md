@@ -8,9 +8,12 @@ Conventions for working on this package. It holds agent skills. It is not an app
 skills/<bucket>/<skill>/SKILL.md     exactly three levels deep
 ```
 
-- **`pipeline`**: the pipeline: one group skill and one item skill per step, plus the shared protocol and the setup skill.
-- **`utility`**: skills the pipeline calls that do not depend on GitHub plumbing.
+- **`meta`**: cross-cutting skills that are not themselves pipeline steps: `pipeline-guide` (start here), `agent-workflow-protocol`, and `setup-github-agent-workflow`.
+- **`pipeline`**: the five pipeline steps — one group skill and one item skill per step.
+- **`utility`**: skills the pipeline calls that do not depend on GitHub plumbing (e.g. `grill-via-github-comments`, `unattended-triage`, `merge-safety`).
 - Buckets named `in-progress` and `deprecated` are never shipped or linked.
+
+**Start with `pipeline-guide`.** It is the map of the steps and which skill to run. Point agents at it from this file and from the root README.
 
 ## Rules
 
