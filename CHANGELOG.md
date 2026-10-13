@@ -1,5 +1,12 @@
 # github-agent-workflow
 
+## 1.2.1
+
+### Patch Changes
+
+- 00a83fd: `docs/RUNNERS.md` gains one ready-to-paste prompt per pipeline skill — the group skill to schedule and the item skill to run by hand, for each of the five steps — each listing every input that skill takes with its default as the value, replacing the single `explore-github-repo` example. The prompts enumerate what the skills' **Inputs** sections and the protocol's **Defaults** table say, which stay canonical.
+- 00a83fd: Add ADR 0004 ([docs/adr/0004-runners-doc-syncs-with-pipeline-skills.md](../docs/adr/0004-runners-doc-syncs-with-pipeline-skills.md)): `docs/RUNNERS.md` keeps one prompt block per pipeline skill, listing every input with its default as the value, and any change to an input — or to the doc — checks both sides. The skills' **Inputs** sections and the protocol's **Defaults** table stay canonical.
+
 ## 1.2.0
 
 ### Minor Changes
