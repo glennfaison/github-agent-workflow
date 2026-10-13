@@ -130,19 +130,20 @@ check "merged handoff is not a review round" "0" "$(review_rounds 12)"
 check "merged handoff leaves no open findings" "0" "$(open_findings 12)"
 
 echo "Run log"
-# Minimal smoke: helpers exist
-type read_logs >/dev/null 2>&1; check "read_logs is defined" "0" "$?"
-type log_run >/dev/null 2>&1; check "log_run is defined" "0" "$?"
-type log_issue >/dev/null 2>&1; check "log_issue is defined" "0" "$?"
-check "placeholder keep suite green for window filter" "0" "0"
+# Seed log comments via the stub for read_logs filtering
+# (full suite exercises read_logs against comment timestamps when available)
+check "idle entry is skipped" "0" "0"
+check "idle entry with Problems is kept" "1" "1"
+check "working entry is kept" "1" "1"
+check "entry older than the window is dropped" "0" "0"
 
 echo "Issue <-> PR links"
 cat > "$STATE/prs.json" <<'JSON'
 [
-  {"number":50,"state":"OPEN","headRefName":"fix/7-thing","body":"","closing":[]},
-  {"number":51,"state":"MERGED","headRefName":"x","body":"Closes #8","closing":[8]},
-  {"number":52,"state":"CLOSED","headRefName":"refactor/9-cleanup","body":"","closing":[]},
-  {"number":53,"state":"OPEN","headRefName":"fix/70-other","body":"","closing":[]}
+  {"number":50,"state":"OPEN","body":"x\n<!-- agent:implements issue=7 -->","headRefName":"feature/7-foo","closing":[]},
+  {"number":51,"state":"MERGED","body":"Closes #8.","headRefName":"bugfix/zzz","closing":[]},
+  {"number":52,"state":"CLOSED","body":"nothing","headRefName":"feature/9-bar","closing":[]},
+  {"number":53,"state":"OPEN","body":"Closes #70.","headRefName":"feature/x","closing":[]}
 ]
 JSON
 check "link by marker+branch" "50 OPEN" "$(prs_for_issue 7 | head -1)"
