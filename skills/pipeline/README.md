@@ -2,16 +2,16 @@
 
 The five steps of the issue-to-merge pipeline. Each step has a **group skill** that selects work and an **item skill** that does the work on one issue or PR. Run a group skill on a schedule. Run an item skill by hand on a number.
 
-## Shared
+## Shared (in `skills/meta/`)
 
-- **[pipeline-guide](./pipeline-guide/SKILL.md)**: Map of the steps and which skill to run. Read-only index.
-- **[agent-workflow-protocol](./agent-workflow-protocol/SKILL.md)**: Leases, markers, labels, handoffs, escalation, the run log, the shared defaults and how a skill takes its input. Reference material that every other skill here reads first.
-- **[setup-github-agent-workflow](./setup-github-agent-workflow/SKILL.md)**: Configure a repository for the workflow: settings, labels, pointers. User-invoked. Run once per repo.
+- **[pipeline-guide](../meta/pipeline-guide/SKILL.md)**: Map of the steps and which skill to run. Read-only index. Start here.
+- **[agent-workflow-protocol](../meta/agent-workflow-protocol/SKILL.md)**: Leases, markers, labels, handoffs, escalation, the run log, the shared defaults and how a skill takes its input. Reference material that every other skill here reads first.
+- **[setup-github-agent-workflow](../meta/setup-github-agent-workflow/SKILL.md)**: Configure a repository for the workflow: settings, labels, pointers. User-invoked. Run once per repo.
 
 ## Exploring
 
 - **[explore-github-repo](./explore-github-repo/SKILL.md)**: Explore the live app and the code, rank findings, and file the best as issues.
-- **[file-github-issue](./file-github-issue/SKILL.md)**: File one finding as an issue after a duplicate check.
+- **[file-github-issues](./file-github-issues/SKILL.md)**: File one or more findings as issues after a duplicate check. Supports batch and dry-run.
 
 ## Grooming
 
