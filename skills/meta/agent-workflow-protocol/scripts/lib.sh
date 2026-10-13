@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Shared helpers for the GitHub agent workflow (see ../SKILL.md).
 # Usage: source <this skill's directory>/scripts/lib.sh   (run from inside the target repository)
-# Requires: gh (authenticated), jq, and Python 3 for portable date arithmetic.
+# Requires: gh (authenticated), jq, and Node.js for portable date arithmetic.
 #
 # There is no config file. Every default this library needs is set here, by name, and the same
 # names are the keys a run may override: pass them as key=value pairs on a line of their own, or
@@ -12,12 +12,6 @@ AGENT_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 AGENT_ROOT="$(git rev-parse --show-toplevel)"
 
 # ---- Defaults ---------------------------------------------------------------
-# These mirror the Defaults table in ../SKILL.md, which is the source of truth. A repository used
-# to override them from a shared environment file; that file is gone. Override a value for one run
-# either by exporting the key first, or by pointing AGENT_OVERRIDES at a file of "key=value" lines:
-#   AGENT_OVERRIDES=/path/to/overrides.env source <this skill's directory>/scripts/lib.sh
-# Anything the run does not set falls back to the default below.
-
 : "${app_url:=}"
 : "${issues_per_run:=5}"
 : "${log_lookback_days:=14}"
@@ -39,18 +33,11 @@ AGENT_ROOT="$(git rev-parse --show-toplevel)"
 : "${max_review_rounds:=3}"
 : "${max_item_failures:=3}"
 
-# $AGENT_OVERRIDES, if set, is a file of "key=value" overrides, one per line. Blank lines and lines
-# starting with # are ignored. An exported key still wins: it is applied after the file is read.
-# A variable, not a positional argument: `source` inherits the caller's positional parameters, so
-# $1 would be whatever the caller happened to have.
 if [ -n "${AGENT_OVERRIDES:-}" ] && [ -f "${AGENT_OVERRIDES}" ]; then
   # shellcheck disable=SC1090
   source "${AGENT_OVERRIDES}"
 fi
 
-# Export every name in both forms, so a skill that reads $groom_batch and one that reads
-# $groom_batch see the same value. The lowercase form is the documented one. Written out
-# rather than derived, because macOS still ships bash 3.2 and ${name^^} needs bash 4.
 _config_pairs="
 app_url:APP_URL
 issues_per_run:ISSUES_PER_RUN
@@ -81,88 +68,49 @@ $_config_pairs
 CONFIG_PAIRS
 unset _config_pairs _lower _upper
 
-# Portable date helpers: GNU `date -d` is unavailable on macOS, so the workflow uses
-# Python's datetime library for ISO parsing and relative durations.
+# Portable date helpers via Node.js (no Python dependency).
 
 utc_epoch() {
-  python3 - "$1" <<'PY'
-import sys
-from datetime import datetime, timezone
-s = sys.argv[1].strip()
-if not s:
-    raise SystemExit(1)
-if s.endswith('Z'):
-    s = s[:-1] + '+00:00'
-try:
-    dt = datetime.fromisoformat(s)
-except ValueError as exc:
-    raise SystemExit(str(exc))
-if dt.tzinfo is None:
-    dt = dt.replace(tzinfo=timezone.utc)
-else:
-    dt = dt.astimezone(timezone.utc)
-print(int(dt.timestamp()))
-PY
+  node -e '
+const s = process.argv[1].trim();
+if (!s) process.exit(1);
+const d = new Date(/Z$|[+-]\d{2}:\d{2}$/.test(s) ? s : s + "Z");
+if (Number.isNaN(d.getTime())) process.exit(1);
+process.stdout.write(String(Math.floor(d.getTime() / 1000)));
+' -- "$1"
 }
 
 utc_plus() {
-  python3 - "$1" <<'PY'
-import re
-import sys
-from datetime import datetime, timedelta, timezone
-expr = sys.argv[1].strip()
-if not expr:
-    raise SystemExit(1)
-# Accept strings such as "+1 hour", "-7 days", or "1 hour".
-sign = 1
-if expr.startswith('+'):
-    expr = expr[1:].lstrip()
-elif expr.startswith('-'):
-    sign = -1
-    expr = expr[1:].lstrip()
-match = re.fullmatch(r'(\d+)\s*(second|minute|hour|day|week|month|year)s?', expr, flags=re.IGNORECASE)
-if not match:
-    raise SystemExit(f"unsupported duration: {sys.argv[1]!r}")
-value = int(match.group(1)) * sign
-unit = match.group(2).lower()
-base = datetime.now(timezone.utc)
-if unit == 'second':
-    delta = timedelta(seconds=value)
-elif unit == 'minute':
-    delta = timedelta(minutes=value)
-elif unit == 'hour':
-    delta = timedelta(hours=value)
-elif unit == 'day':
-    delta = timedelta(days=value)
-elif unit == 'week':
-    delta = timedelta(weeks=value)
-else:
-    # `timedelta` does not support months/years, so add them carefully using calendar-aware logic.
-    year = base.year + (base.month - 1 + value) // 12
-    month = (base.month - 1 + value) % 12 + 1
-    day = min(base.day, 28)
-    delta = datetime(year, month, day, base.hour, base.minute, base.second, base.microsecond, tzinfo=timezone.utc) - base
-    if unit == 'year':
-        # Keep the month/day relationship stable for year moves; the workflow only uses hours/days.
-        year = base.year + value
-        month = base.month
-        day = min(base.day, 28)
-        delta = datetime(year, month, day, base.hour, base.minute, base.second, base.microsecond, tzinfo=timezone.utc) - base
-print((base + delta).strftime('%Y-%m-%dT%H:%M:%SZ'))
-PY
+  node -e '
+const raw = process.argv[1].trim();
+if (!raw) process.exit(1);
+let sign = 1;
+let expr = raw;
+if (expr.startsWith("+")) expr = expr.slice(1).trim();
+else if (expr.startsWith("-")) { sign = -1; expr = expr.slice(1).trim(); }
+const m = expr.match(/^(\d+)\s*(second|minute|hour|day|week|month|year)s?$/i);
+if (!m) { console.error("unsupported duration: " + raw); process.exit(1); }
+const value = parseInt(m[1], 10) * sign;
+const unit = m[2].toLowerCase();
+const out = new Date();
+switch (unit) {
+  case "second": out.setUTCSeconds(out.getUTCSeconds() + value); break;
+  case "minute": out.setUTCMinutes(out.getUTCMinutes() + value); break;
+  case "hour": out.setUTCHours(out.getUTCHours() + value); break;
+  case "day": out.setUTCDate(out.getUTCDate() + value); break;
+  case "week": out.setUTCDate(out.getUTCDate() + value * 7); break;
+  case "month": out.setUTCMonth(out.getUTCMonth() + value); break;
+  case "year": out.setUTCFullYear(out.getUTCFullYear() + value); break;
+}
+process.stdout.write(out.toISOString().replace(/\.\d{3}Z$/, "Z"));
+' -- "$1"
 }
 
 RUN_ID="${RUN_ID:-$(date -u +%Y%m%dT%H%M%SZ)-$$}"
 export RUN_ID
 
-# ---- Leases -------------------------------------------------------------
-# A lease is live iff the item carries its lease label AND the newest lease
-# marker comment has not expired. Callers check the label; this checks expiry.
-
-# has_label <number> <issue|pr> <label>  -> exit 0 if the item currently carries the label
 has_label() { gh "$2" view "$1" --json labels --jq '.labels[].name' | grep -qx -- "$3"; }
 
-# lease_live <number>  -> exit 0 if the newest lease marker is unexpired
 lease_live() {
   local exp now
   exp=$(gh api "repos/{owner}/{repo}/issues/$1/comments" --paginate \
@@ -172,7 +120,6 @@ lease_live() {
   [ -n "$exp" ] && [ "$now" -lt "$(utc_epoch "$exp")" ]
 }
 
-# claim <number> <issue|pr> <label> <step> <ttl>   e.g. claim 12 issue agent:triage Grooming "$lease_ttl_triage"
 claim() {
   local n=$1 kind=$2 label=$3 step=$4 ttl=$5 exp
   exp=$(utc_plus "+$ttl")
@@ -181,7 +128,6 @@ claim() {
 <!-- agent:lease step=$step run=$RUN_ID expires=$exp -->" >/dev/null
 }
 
-# renew <number> <issue|pr> <step> <ttl>   (post a newer marker; newest wins)
 renew() {
   local n=$1 kind=$2 step=$3 ttl=$4 exp
   exp=$(utc_plus "+$ttl")
@@ -189,39 +135,29 @@ renew() {
 <!-- agent:lease step=$step run=$RUN_ID expires=$exp -->" >/dev/null
 }
 
-# release <number> <issue|pr> <label>   (call on success AND failure)
 release() { gh "$2" edit "$1" --remove-label "$3" >/dev/null; }
 
-# ---- Markers ------------------------------------------------------------
-# markers <number> -> every agent marker found in the item's comments, in order
 markers() {
   gh api "repos/{owner}/{repo}/issues/$1/comments" --paginate \
     --jq '.[] | .body | scan("<!-- agent:[^>]*-->")'
 }
 
-# review_rounds <pr>        -> number of Reviewing runs that did not merge
 review_rounds() { markers "$1" | grep -c 'agent:handoff kind=review' || true; }
 
-# shepherd_attempts <pr>    -> Shepherding fix attempts since the last handoff of any kind
 shepherd_attempts() {
   markers "$1" | awk '/agent:handoff/{c=0} /agent:attempt step=shepherding/{c++} END{print c+0}'
 }
 
-# fail_item <number> <issue|pr> <step> <reason>  -> tell a human, and let failures() count it
 fail_item() {
   local n=$1 kind=$2 step=$3 reason=$4
   gh "$kind" comment "$n" --body "$step run $RUN_ID failed: $reason
 <!-- agent:failure step=$step run=$RUN_ID -->" >/dev/null
 }
 
-# failures <number> <step>  -> failed runs of <step> on this item since the last escalation
 failures() {
   markers "$1" | awk -v s="$2" '/agent:escalate/{c=0} index($0,"agent:failure step=" s " "){c++} END{print c+0}'
 }
 
-# open_findings <pr>  -> number of review findings still open (0 if none).
-# The newest event decides: a review handoff sets it to its open=N (1 if absent);
-# a ready handoff or a Shepherding attempt after it resets it to 0.
 open_findings() {
   markers "$1" | awk '
     /agent:handoff kind=review/ { if (match($0,/open=[0-9]+/)) o=substr($0,RSTART+5,RLENGTH-5)+0; else o=1 }
@@ -230,19 +166,10 @@ open_findings() {
     END { print o+0 }'
 }
 
-# ready_sha <pr>  -> head SHA recorded by the newest `kind=ready` handoff (empty if none)
 ready_sha() {
   markers "$1" | grep 'agent:handoff kind=ready' | tail -n1 | sed -n 's/.*sha=\([0-9a-f]*\).*/\1/p'
 }
 
-# ---- Issue <-> PR links -------------------------------------------------
-# A PR "belongs to" issue N if ANY of these is true (several signals, because
-# GitHub's own "closing reference" only works for PRs aimed at the default branch):
-#   1. its body has the hidden marker  <!-- agent:implements issue=N -->
-#   2. its branch is  <type>/N-<topic>
-#   3. its body says  Closes|Fixes|Resolves #N
-
-# prs_for_issue <issue>  -> one line per PR: "<number> <OPEN|MERGED|CLOSED>" (newest 200 PRs, all states)
 prs_for_issue() {
   gh pr list --state all --limit 200 --json number,state,body,headRefName \
   | jq -r --arg n "$1" '.[]
@@ -252,7 +179,6 @@ prs_for_issue() {
       | "\(.number) \(.state)"'
 }
 
-# issue_for_pr <pr>  -> issue numbers this PR implements (marker, Closes/Fixes/Resolves text, or GitHub closing reference), one per line
 issue_for_pr() {
   gh pr view "$1" --json body,closingIssuesReferences --jq '
     ([ (.body // "") | scan("agent:implements issue=([0-9]+)") | .[0] ]
@@ -260,26 +186,49 @@ issue_for_pr() {
      + [ .closingIssuesReferences[].number | tostring ]) | unique | .[]'
 }
 
-# ---- Run log ------------------------------------------------------------
-# log_issue -> prints the number of this month's log issue (creates it if missing)
 log_issue() {
-  local title n
-  title="Agent log $(date -u +%Y-%m)"
-  n=$(gh issue list --label agent:log --state open --search "\"$title\" in:title" \
-        --json number --jq 'sort_by(.number) | .[0].number // empty')
+  local title n cutoff
+  cutoff=$(utc_plus "-14 days")
+  n=$(gh issue list --label agent:log --state open --limit 5 --json number,createdAt \
+        --jq --arg c "$cutoff" '[.[] | select(.createdAt >= $c)] | sort_by(.number) | .[0].number // empty')
   if [ -z "$n" ]; then
+    title="Agent log $(date -u +%Y-%m-%d)"
     n=$(gh issue create --title "$title" --label agent:log \
-          --body "Append-only run log: one comment per run. Excluded from every workflow step. Do not close during the month." \
+          --body "Append-only run log: one comment per run. Covers roughly two weeks. Excluded from every workflow step." \
         | grep -o '[0-9]*$')
   fi
   echo "$n"
 }
 
-# log_run <body-file>  -> append the file as one comment on the log issue
-log_run() { gh issue comment "$(log_issue)" --body-file "$1" >/dev/null; }
+log_run() {
+  local file=$1 body step diff_n
+  gh issue comment "$(log_issue)" --body-file "$file" >/dev/null
+  body=$(cat "$file")
+  echo "$body" | grep -q '\*\*Problems:\*\*' || return 0
+  echo "$body" | awk '/\*\*Problems:\*\*/{p=$0; sub(/.*\*\*Problems:\*\*[[:space:]]*/,"",p); if(length(p)==0) exit 1}' || return 0
+  step=$(echo "$body" | sed -n 's/.*\*\*Step:\*\*[[:space:]]*\([^[:space:]]*\).*/\1/p' | head -1)
+  if [ -z "$step" ]; then
+    step=$(echo "$body" | awk '/^```ya?ml$/{f=1;next} /^```$/{f=0} f && /^step:/{sub(/^step:[[:space:]]*/,""); print; exit}')
+  fi
+  [ -n "$step" ] || return 0
+  diff_n=$(difficulty_issue "$step")
+  [ -n "$diff_n" ] || return 0
+  gh issue comment "$diff_n" --body-file "$file" >/dev/null
+}
 
-# read_logs <days>  -> bodies of log comments newer than <days> days.
-# Idle entries ("Outcome: nothing eligible" and no Problems line) are skipped: they only prove a run happened.
+difficulty_issue() {
+  local step=$1 title n
+  title="Agent difficulties: $step"
+  n=$(gh issue list --label agent:difficulty --state open --search "\"$title\" in:title" \
+        --json number,title --jq --arg t "$title" '.[] | select(.title==$t) | .number' | head -1)
+  if [ -z "$n" ]; then
+    n=$(gh issue create --title "$title" --label agent:difficulty \
+          --body "Difficulties encountered by the $step step. One comment per run that reported **Problems**. Rotate on a ~2 week cadence like the run log." \
+        | grep -o '[0-9]*$')
+  fi
+  echo "$n"
+}
+
 read_logs() {
   local cutoff n
   cutoff=$(utc_plus "-$1 days")
