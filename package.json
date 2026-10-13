@@ -12,6 +12,9 @@
     "changeset": "changeset",
     "version": "changeset version && node scripts/sync-plugin-version.mjs"
   },
+  "dependencies": {
+    "mattpocock-skills": "1.3.0"
+  },
   "devDependencies": {
     "@changesets/cli": "2.31.0"
   }

@@ -1,9 +1,12 @@
 {
   "mattpocock-skills": {
     "repository": "https://github.com/mattpocock/skills",
+    "version": "1.3.0",
+    "resolved": "79b34304de6d8c4a900a6e7bccbc831c6e2553d1",
     "install": {
-      "claude-code": "claude plugins install mattpocock-skills",
-      "any-agent": "npx skills@latest add mattpocock/skills"
+      "claude-code": "claude plugins install mattpocock-skills@1.3.0",
+      "npm": "npm install mattpocock-skills@1.3.0",
+      "any-agent": "npx skills@1.3.0 add mattpocock/skills"
     },
     "required": [
       "tdd",
