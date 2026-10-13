@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Tests for the shell helpers in agent-workflow-protocol/scripts/lib.sh, against a stub `gh`.
 #   bash tests/lib.test.sh
-# Needs bash, jq, git and Python 3. No network and no real `gh`.
+# Needs bash, jq, git and Node.js. No network and no real `gh`.
 set -u
 
 PKG="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -61,7 +61,6 @@ check "build_cmd default empty" ""              "$(bash -c 'source "$1"; echo "$
 check "lower and upper match"   "1 hour:1 hour" "$(bash -c 'source "$1"; echo "$lease_ttl_triage:$LEASE_TTL_TRIAGE"' _ "$LIB")"
 
 echo "Overriding a default"
-# Values with spaces need quotes: the file is sourced, so an unquoted space ends the assignment.
 printf 'pr_base_branch=develop\nbuild_cmd="npm run build"\nlease_ttl_pr="2 hours"\n' > "$WORK/overrides.env"
 check "override file wins"      "develop"       "$(AGENT_OVERRIDES="$WORK/overrides.env" bash -c 'source "$1"; echo "$pr_base_branch"' _ "$LIB")"
 check "override file adds"      "npm run build" "$(AGENT_OVERRIDES="$WORK/overrides.env" bash -c 'source "$1"; echo "$build_cmd"' _ "$LIB")"
