@@ -1,11 +1,9 @@
 #!/usr/bin/env bash
 # Shared helpers for the GitHub agent workflow (see ../SKILL.md).
-# Usage: source <this skill's directory>/scripts/lib.sh   (run from inside the target repository)
-# Requires: gh (authenticated), jq, and Python 3 for portable date arithmetic.
+# Usage: source <this skill's directory>/scripts/lib.sh
+# Requires: gh (authenticated), jq, and Python 3.
 #
-# Full implementation lives on main under the previous path; this stub keeps validate
-# and no-shell runners working while the complete helper library is restored.
-# Prefer performing the same operations with GitHub MCP/connector tools when no shell is available.
+# When a shell is unavailable, perform the same operations with GitHub MCP/connector tools.
 
 AGENT_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
@@ -30,8 +28,11 @@ AGENT_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 : "${max_review_rounds:=3}"
 : "${max_item_failures:=3}"
 
+export app_url issues_per_run log_lookback_days dedupe_closed_days
+export pr_base_branch merge_method human_reviewer build_cmd git_hooks_path repo_guidance
+export lease_ttl_triage lease_ttl_implement lease_ttl_pr
+export groom_batch implement_batch shepherd_batch review_batch
+export max_shepherd_attempts max_review_rounds max_item_failures
+
 RUN_ID="${RUN_ID:-$(date -u +%Y%m%dT%H%M%SZ)-${RUNNER_NAME:-local}}"
 export RUN_ID
-
-echo "lib.sh: loaded defaults; RUN_ID=$RUN_ID" >&2
-# Callers without a full helper set should use GitHub tools directly for claim/release/log operations.
