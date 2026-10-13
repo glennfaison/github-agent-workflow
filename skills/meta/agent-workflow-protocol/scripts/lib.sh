@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
 # Shared helpers for the GitHub agent workflow (see ../SKILL.md).
-# Usage: source <this skill's directory>/scripts/lib.sh
-# Requires: gh (authenticated), jq, and Python 3.
-# When a shell is unavailable, use GitHub MCP/connector tools for the same operations.
+# Usage: source <this skill's directory>/scripts/lib.sh   (run from inside the target repository)
+# Requires: gh (authenticated), jq and Python 3 for portable date arithmetic.
 
 AGENT_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
@@ -64,3 +63,139 @@ unset _config_pairs _lower _upper
 
 RUN_ID="${RUN_ID:-$(date -u +%Y%m%dT%H%M%SZ)-${RUNNER_NAME:-local}}"
 export RUN_ID
+
+# --- time helpers (Python for portability) ---------------------------------
+utc_epoch() { python3 -c 'import datetime; print(int(datetime.datetime.now(datetime.timezone.utc).timestamp()))'; }
+utc_plus() { # "1 hour" / "3 hours" / "30 minutes" -> ISO-8601 Z
+  python3 -c 'import datetime,re,sys
+s=sys.argv[1]; m=re.match(r"(\d+)\s*(hour|hours|minute|minutes)s?", s)
+if not m: raise SystemExit("bad duration: "+s)
+n,u=int(m.group(1)),m.group(2)
+delta=datetime.timedelta(hours=n) if u.startswith("hour") else datetime.timedelta(minutes=n)
+print((datetime.datetime.now(datetime.timezone.utc)+delta).strftime("%Y-%m-%dT%H:%M:%SZ"))' "$1"
+}
+
+# --- labels / leases -------------------------------------------------------
+has_label() { # N issue|pr LABEL
+  local n=$1 kind=$2 label=$3
+  gh "$kind" view "$n" --json labels --jq '.labels[].name' | grep -qx -- "$label"
+}
+lease_live() { # N
+  local n=$1 exp
+  exp=$(markers "$n" | awk '/agent:lease /{for(i=1;i<=NF;i++) if($i ~ /^expires=/){sub(/^expires=/,"",$i); print $i}}' | tail -1)
+  [ -n "$exp" ] || return 1
+  python3 -c 'import datetime,sys
+exp=datetime.datetime.strptime(sys.argv[1],"%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=datetime.timezone.utc)
+raise SystemExit(0 if datetime.datetime.now(datetime.timezone.utc)<exp else 1)' "$exp"
+}
+claim() { # N issue|pr LABEL STEP TTL
+  local n=$1 kind=$2 label=$3 step=$4 ttl=$5
+  gh "$kind" edit "$n" --add-label "$label" >/dev/null
+  gh "$kind" comment "$n" --body "<!-- agent:lease step=$step run=$RUN_ID expires=$(utc_plus "$ttl") -->" >/dev/null
+}
+renew() { # N issue|pr STEP TTL
+  local n=$1 kind=$2 step=$3 ttl=$4
+  gh "$kind" comment "$n" --body "<!-- agent:lease step=$step run=$RUN_ID expires=$(utc_plus "$ttl") -->" >/dev/null
+}
+release() { # N issue|pr LABEL
+  local n=$1 kind=$2 label=$3
+  gh "$kind" edit "$n" --remove-label "$label" >/dev/null 2>&1 || true
+}
+
+# --- markers ---------------------------------------------------------------
+markers() { # N  (issue or PR comments)
+  local n=$1
+  { gh issue view "$n" --comments --json comments --jq '.comments[].body' 2>/dev/null
+    gh pr view "$n" --comments --json comments --jq '.comments[].body' 2>/dev/null
+  } | grep -oE '<!-- agent:[^>]+ -->' || true
+}
+
+review_rounds() { # N
+  markers "$1" | grep -c 'agent:handoff kind=review' || true
+}
+shepherd_attempts() { # N
+  markers "$1" | awk '
+    /agent:handoff / { c=0; next }
+    /agent:attempt step=shepherding/ { c++ }
+    END { print c+0 }'
+}
+fail_item() { # N issue|pr STEP REASON
+  local n=$1 kind=$2 step=$3 reason=$4
+  gh "$kind" comment "$n" --body "Failure ($step): $reason
+<!-- agent:failure step=$step run=$RUN_ID -->" >/dev/null
+}
+failures() { # N STEP
+  local n=$1 step=$2
+  markers "$n" | awk -v s="$step" '
+    $0 ~ "agent:escalate step="s { c=0; next }
+    $0 ~ "agent:failure step="s { c++ }
+    END { print c+0 }'
+}
+open_findings() { # N
+  markers "$1" | awk '
+    /agent:attempt step=shepherding/ { o=0; next }
+    /agent:handoff kind=merged/ { o=0; next }
+    /agent:handoff kind=review/ {
+      if (match($0, /open=([0-9]+)/, a)) o=a[1]+0; else o=1
+    }
+    END { print o+0 }'
+}
+ready_sha() { # N
+  markers "$1" | awk '
+    /agent:handoff kind=ready/ {
+      if (match($0, /sha=([0-9a-fA-F]+)/, a)) sha=a[1]
+    }
+    END { print sha }'
+}
+
+# --- issue <-> PR ----------------------------------------------------------
+prs_for_issue() { # N
+  local n=$1
+  gh pr list --state all --json number,state,headRefName,body --jq --argjson n "$n" '
+    .[]
+    | select(
+        (.headRefName | test("(^|/)" + ($n|tostring) + "([-_/]|$)") )
+        or (.body | test("(?i)(closes|fixes|resolves)[[:space:]]+#" + ($n|tostring) + "\\b"))
+      )
+    | "\(.number) \(.state)"
+  ' 2>/dev/null || true
+}
+issue_for_pr() { # N
+  local n=$1 body branch
+  body=$(gh pr view "$n" --json body,headRefName --jq '.body' 2>/dev/null || true)
+  branch=$(gh pr view "$n" --json headRefName --jq '.headRefName' 2>/dev/null || true)
+  # Closes/Fixes/Resolves
+  echo "$body" | grep -oiE '(closes|fixes|resolves)[[:space:]]+#[0-9]+' | grep -oE '[0-9]+' | head -1
+  # branch pattern type/N-topic
+  echo "$branch" | grep -oE '(^|/)[0-9]+([-_/]|$)' | grep -oE '[0-9]+' | head -1
+}
+
+# --- run log ---------------------------------------------------------------
+log_issue() {
+  # Find or create current log issue (2-week window).
+  local title num
+  num=$(gh issue list --label agent:log --state open --json number,title --jq '.[0].number // empty' 2>/dev/null || true)
+  if [ -z "$num" ]; then
+    title="Agent log $(date -u +%Y-%m-%d)"
+    num=$(gh issue create --title "$title" --body "Agent run log." --label agent:log --json number --jq .number 2>/dev/null || true)
+  fi
+  echo "$num"
+}
+log_run() { # FILE
+  local file=$1 num
+  num=$(log_issue)
+  [ -n "$num" ] || return 0
+  gh issue comment "$num" --body-file "$file" >/dev/null
+}
+read_logs() { # DAYS
+  local days=$1
+  # Best-effort: print recent non-idle log comments
+  local num
+  num=$(gh issue list --label agent:log --state all --limit 3 --json number --jq '.[].number' 2>/dev/null || true)
+  for n in $num; do
+    gh api "repos/{owner}/{repo}/issues/$n/comments" --paginate --jq '
+      .[]
+      | select(.body | test("\\*\\*Outcome:\\*\\*") and (test("nothing eligible") | not))
+      | "---\n" + .body'
+  done
+}
