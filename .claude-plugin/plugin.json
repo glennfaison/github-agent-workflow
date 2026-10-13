@@ -23,20 +23,20 @@
   ],
   "skills": [
     "./skills/pipeline/explore-github-repo",
-    "./skills/pipeline/file-github-issue",
-    "./skills/pipeline/agent-workflow-protocol",
+    "./skills/pipeline/file-github-issues",
+    "./skills/meta/agent-workflow-protocol",
     "./skills/pipeline/implement-github-issue",
     "./skills/pipeline/implement-github-issues",
-    "./skills/pipeline/pipeline-guide",
+    "./skills/meta/pipeline-guide",
     "./skills/pipeline/review-github-pr",
     "./skills/pipeline/review-github-prs",
-    "./skills/pipeline/setup-github-agent-workflow",
+    "./skills/meta/setup-github-agent-workflow",
     "./skills/pipeline/shepherd-github-pr",
     "./skills/pipeline/shepherd-github-prs",
     "./skills/pipeline/triage-github-issue",
     "./skills/pipeline/triage-github-issues",
     "./skills/utility/merge-safety",
-    "./skills/utility/unattended-grilling",
+    "./skills/utility/grill-via-github-comments",
     "./skills/utility/unattended-triage"
   ]
 }

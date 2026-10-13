@@ -1,64 +1,81 @@
 ---
 name: explore-github-repo
-description: Explore a repository's live app and its codebase, rank what you find, and file the most valuable findings as unlabelled GitHub issues through file-github-issue. Use when asked to explore the repo or app, hunt for bugs, rough edges or missing features, or run the Exploring step of the GitHub workflow. Read-only on the app and the code.
+description: Explore a repository's live app and its codebase, rank what you find, and file the most valuable findings as unlabelled GitHub issues through file-github-issues. Use when asked to explore the repo or app, hunt for bugs, rough edges or missing features, or run the Exploring step of the GitHub workflow. Read-only on the app and the code.
 ---
 
 # Explore GitHub repo
 
 Explore the live app and the codebase, then file the most valuable findings as issues. This skill applies **no labels**: `triage-github-issues` picks up unlabelled issues.
 
-**Read first:** call the Skill tool with `agent-workflow-protocol`, then read these files in that skill's directory: `references/log.md` and `references/issue-format.md`.
+**Minimum to run:** the rules in this file are enough for a normal Exploring pass. Call the Skill tool with `agent-workflow-protocol` only when you need leases, markers, escalation, or the full shared defaults.
 
 ## Inputs
 
-**Free text.** Any prose. The first URL you find in it is the live app to explore; with no URL, explore the code only and say so in the log. Never ask for a URL.
+**Free text.** Any prose. The first URL you find is the live app to explore; with no URL, explore the code only and say so in the log. Never ask for a URL.
 
-**Key-value pairs.** `key=value` on a line of its own. An input you give this way overrides this skill's default for the same name.
+**Key-value pairs.** `key=value` on a line of its own. Overrides the default for the same name.
 
 | Input | Default | What it does |
 |---|---|---|
-| `app_url` | *(none)* | The live app to browse when the free text gives no URL. Empty means explore the code only |
-| `issues_per_run` | `5` | File at most this many new issues in one run |
-| `log_lookback_days` | `14` | How far back to read the run log, in days |
+| `app_url` | *(none)* | Live app to browse when free text gives no URL. Empty = code only |
+| `issues_per_run` | `5` (or `3` when open backlog is large) | Max new issues to file in one run |
+| `log_lookback_days` | `14` | How far back to read the run log |
+| `dry_run` | `false` | When true, produce the ranked list + log entry but do not file |
 
-**Implicit dependencies.** This skill also needs the run log (see `references/log.md`, `read_logs`), `agent-workflow-protocol` and its shell helpers (`scripts/lib.sh`) when a shell is available. Without one, read the same information and do the same operations with the tools you have.
+**Implicit dependencies.** Run log, GitHub issues, and (when available) shell helpers from `agent-workflow-protocol`. Without a shell, use GitHub MCP/connector tools and browser tools; record any degradation in the log.
 
-## Sources this skill reads
+## Sources
 
-- The monthly run log (`read_logs "$log_lookback_days"`): deferred candidates from earlier Exploring runs, recurring problems (failures, escalations, flaky checks, repeatedly skipped items), and automation suggestions.
-- The live app at the input URL or `$app_url`, if there is one (read-only; test data only).
-- The codebase (read-only).
+- Run log (last `$log_lookback_days` days): deferred candidates, recurring problems, automation suggestions.
+- Live app at the URL / `$app_url` (read-only; test data only).
+- Codebase (read-only).
 
-This skill does **not** select by label, claim work, or take a lease. It only reads.
-
-## Outputs
-
-- Up to `$issues_per_run` new GitHub issues, filed by `file-github-issue` with no labels and no assignee.
-- Comments on existing issues when a candidate is a duplicate (also done by `file-github-issue`). These do not count toward the cap.
-- A run-log entry (`references/log.md`) listing issues filed, dedupe comments, dropped candidates, and **Deferred candidates** (the rest of the ranked list, at most 20 lines).
+This skill does **not** select by label, claim work, or take a lease.
 
 ## Process
 
-1. **Read the run log.** `read_logs "$log_lookback_days"`. Collect:
-   - **Deferred candidates** left by earlier Exploring runs.
-   - **Problems** that recur: repeated failures, escalations, flaky checks, items skipped again and again.
-   - **Automation suggestions**.
+1. **Read the log.** Pull recent Exploring entries. Promote deferred candidates, recurring failures/escalations/flakes, and automation suggestions into the candidate list.
+2. **Explore the live app** (skip and note if no URL or browsing fails).
+   - **Must-probe surfaces** (adapt to the product): empty state, add/create primary object, templates or starters, command palette / search, mode switches (edit/preview), undo/redo appearance, mobile viewport, dark mode, export/share.
+   - Capture 1–2 screenshots only for candidates you actually intend to file.
+   - Code-only exploration is allowed when the live app is slow or flaky; say so in the log.
+3. **Explore the codebase.** Architecture problems, technical debt, missing functionality, obvious gaps relative to the live app.
+4. **Build the candidate list (uncapped).** For each:
+   - title, category (`bugfix` | `feature` | `refactor` | `debt`), area, impact, confidence
+   - evidence that satisfies the category's required sections
+   - for **feature**: write the use case first (who, what they are trying to do, why it falls short). No use case → drop or reword as a log question
+   - a short “Why this is not already covered by #X, #Y” note when related issues exist
+5. **Rank.** Severity × confidence first (user-facing breakage / data loss with reproduction beats guesses). Break ties by value per effort.
+6. **File (or dry-run).** Hand candidates from the top to `file-github-issues` (batch preferred). Count only `filed #N` toward the cap. Duplicates and drops do not count. Stop at `$issues_per_run` or when the list is exhausted.
+   - Prefer commenting new evidence on an existing high-severity open issue over filing a near-duplicate when the backlog in that area is already dense.
+7. **Log.** One comment on the current log issue. Include filed, commented, dropped, and **Deferred candidates** (at most 20, each with a one-line impact × confidence score).
 
-   Each becomes a candidate in step 4.
-2. **Explore the live app.** Open the input URL (or `$app_url`) and use it as a user would. Look for bugs, rough edges and missing features. If there is no URL, or you cannot browse it, skip this step and say so in the log.
-3. **Explore the codebase.** Read for architecture problems, technical debt, refactor opportunities and missing functionality.
-   - The live app and the code are read-only. Use test data only. Take no destructive action against the target.
-4. **Build the candidate list. Do not cap it.** For each: a title, a category (`bugfix`, `feature`, `refactor`, `debt`), the **impact** and **confidence**, and the evidence that category requires (see `references/issue-format.md`: each category has its own required sections, and a candidate that cannot fill them is not ready to file). **For a feature, write the use case before anything else:** who the user is, what they are trying to do, and why that falls short today. If you cannot state a use case, it is not a feature candidate: drop it or reword it as a question in the log. While exploring the live app, capture screenshots for bugs and for the screen where a feature would live.
-5. **Rank the list.** Rank by severity times confidence first (a bug's severity is in its issue format; use impact for the rest): user-facing breakage and data loss, backed by a reproduction, beat guesses. Break ties by value per effort.
-6. **File from the top of the list.** Walk the ranked list in order. Hand each candidate to `file-github-issue` (title, category, area, evidence, related issue numbers, screenshots, `$RUN_ID`). These calls are short, so run them in this context. Keep a tally of each result:
-   - `filed #N` counts toward the cap.
-   - A duplicate (comment added to an existing issue) or a dropped candidate does **not** count. Move on to the next one.
+## Log format (minimum)
 
-   Stop when `$issues_per_run` issues are filed or the list is used up.
-7. **Log it.** Follow `references/log.md`. Include the issues filed, the comments added, the candidates dropped as duplicates or rejected earlier, and **Deferred candidates**: the ranked candidates you did not reach, one line each, at most 20.
+```markdown
+**Step:** Exploring  **Run:** <RUN_ID>  **Runner:** <name>
+**Outcome:** <N> filed, <M> commented, <K> dropped
+**Items:** #N title…, duplicate of #X, dropped: reason…
+**Deferred candidates:**
+- [impact×confidence] title (why deferred)
+**Problems:** degraded: … / failed: …
+**Automation suggestions:** …
+```
+
+Prefer a machine-readable YAML or JSON block at the top of the comment when the runner can produce it. Log issues should cover roughly the last **two weeks** (not a full month); create a new log issue when the current one ages out of the lookback window.
+
+## Success criteria
+
+A good run, even with zero filings:
+
+- Clear log entry with outcome and deferred list
+- High-severity regressions or data-loss risks were either filed or explicitly deferred with reason
+- Live-app vs code-only decision is recorded
+- No labels applied, no destructive actions
 
 ## Never
 
-- Apply, remove or change any label.
-- File more than `$issues_per_run` issues in one run.
-- Comment on, close or edit an issue other than the evidence comments `file-github-issue` adds.
+- Apply, remove or change any label
+- File more than `$issues_per_run` issues
+- Comment on, close or edit an issue other than the evidence comments `file-github-issues` adds
+- Ask the user questions when running unattended / “no human is present”

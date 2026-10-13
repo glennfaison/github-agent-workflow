@@ -1,0 +1,3 @@
+interface:
+  display_name: "File GitHub Issues"
+  short_description: "File one or more findings as deduplicated issues (supports batch and dry-run)"

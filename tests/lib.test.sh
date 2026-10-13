@@ -5,7 +5,7 @@
 set -u
 
 PKG="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-LIB="$PKG/skills/pipeline/agent-workflow-protocol/scripts/lib.sh"
+LIB="$PKG/skills/meta/agent-workflow-protocol/scripts/lib.sh"
 
 WORK="$(mktemp -d)"; trap 'rm -rf "$WORK"' EXIT
 export STATE="$WORK/state"; mkdir -p "$STATE" "$WORK/bin" "$WORK/repo"

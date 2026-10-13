@@ -1,9 +1,9 @@
 ---
-name: unattended-grilling
+name: grill-via-github-comments
 description: Work out everything that must be decided before a plan, request or issue can be acted on, and write every question that is ready to ask as one round, each with a recommended answer. Use when nobody is available to answer live, for example when refining an issue during an automated run. Adapted from the grilling skill in mattpocock/skills (MIT, see CREDITS.md in this repository).
 ---
 
-# Unattended grilling
+# Grill via GitHub comments
 
 Interview-by-comment. A live grilling session asks a round, waits for answers, then asks the next. Nobody is there to answer, so this skill does the thinking up front, asks **one** round, and stops. The answers arrive later, from a human, and a later run continues from them.
 
@@ -41,7 +41,3 @@ Map the subject as a **design tree**: every decision branches into the decisions
 
 ➡️ <your recommended answer>
 ```
-
-## Result
-
-Return the formatted round. Return `no open questions` only if the frontier is empty: every branch visited, nothing left silently assumed. Questions must be specific and answerable. "Please provide more detail" is not a question.

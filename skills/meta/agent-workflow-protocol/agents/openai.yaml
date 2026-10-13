@@ -1,0 +1,3 @@
+interface:
+  display_name: "Agent Workflow Protocol"
+  short_description: "Shared rules for the GitHub issue-to-merge agent workflow"

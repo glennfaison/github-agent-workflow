@@ -1,0 +1,3 @@
+interface:
+  display_name: "Setup GitHub Agent Workflow"
+  short_description: "One-time repository setup for the agent workflow"

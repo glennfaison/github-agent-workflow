@@ -1,0 +1,3 @@
+interface:
+  display_name: "Pipeline Guide"
+  short_description: "Map of the GitHub agent workflow steps and skills"

@@ -13,13 +13,13 @@ The workflow has five steps. Each step has a **group skill** that selects work a
 
 | Step | Group skill (selects and dispatches) | Item skill (works on one item) |
 |---|---|---|
-| Exploring | `explore-github-repo` | `file-github-issue` |
+| Exploring | `explore-github-repo` | `file-github-issues` |
 | Grooming | `triage-github-issues` | `triage-github-issue` |
 | Implementing | `implement-github-issues` | `implement-github-issue` |
 | Shepherding | `shepherd-github-prs` | `shepherd-github-pr` |
 | Reviewing | `review-github-prs` | `review-github-pr` |
 
-Item skills lean on three **utility skills** from this package: `unattended-triage` (the triage decision and its comment), `unattended-grilling` (one round of questions with recommended answers), and `merge-safety` (the merge gate). `setup-github-agent-workflow` is run once per repository, by a human.
+Item skills lean on three **utility skills** from this package: `unattended-triage` (the triage decision and its comment), `grill-via-github-comments` (one round of questions with recommended answers), and `merge-safety` (the merge gate). `setup-github-agent-workflow` is run once per repository, by a human.
 
 **Group skills** find candidates, apply the item skill's **Eligibility** section to them, take the first `batch` that pass (oldest first; items that fail do not count toward the batch), dispatch each to the item skill by its input URL, and write one run-log entry. They never do item work themselves.
 
@@ -58,7 +58,7 @@ A key-value pair and free text that name the same thing resolve to the pair. An 
 | `app_url` | *(none)* | `explore-github-repo` |
 | `issues_per_run` | `5` | `explore-github-repo` |
 | `log_lookback_days` | `14` | `explore-github-repo` |
-| `dedupe_closed_days` | `30` | `file-github-issue`, `triage-github-issue` |
+| `dedupe_closed_days` | `30` | `file-github-issues`, `triage-github-issue` |
 | `pr_base_branch` | `main` | `implement-github-issue`, `review-github-pr` |
 | `merge_method` | `squash` | `review-github-pr` |
 | `human_reviewer` | *(none)* | `shepherd-github-pr`, `review-github-pr` |
@@ -75,8 +75,6 @@ A key-value pair and free text that name the same thing resolve to the pair. An 
 | `max_shepherd_attempts` | `3` | `shepherd-github-pr` |
 | `max_review_rounds` | `3` | `review-github-pr` |
 | `max_item_failures` | `3` | `triage-github-issue`, `implement-github-issue`, `shepherd-github-pr`, `review-github-pr` |
-
-A placeholder in braces, holding one of these names, works wherever a skill names one of them, in prose or in a command: substitute the real name for the placeholder. A shell substitutes it from the same defaults: hand `scripts/lib.sh` the run's pairs on one line, or export them, and it falls back to the table above for anything left unset. The examples in a skill's **Process** section read most naturally with the defaults in place, so a bare shell variable in them means "this skill's value for that input".
 
 ## Starting a run
 
@@ -96,10 +94,10 @@ Use any group skill, or `/explore-github-repo`. The runner decides when and how 
 Every skill that has a shell does this first, from inside the target repository, and nothing else in a skill needs to repeat it. Run the helper library that sits in this skill's directory:
 
 ```bash
-source <this skill's directory>/scripts/lib.sh   # loads the defaults, sets RUN_ID, defines the helpers
+source <this skill's directory>/scripts/lib.sh
 ```
 
-It requires `gh` (authenticated), `jq` and Python 3. To override a default for the run, export the key before you source, or point `AGENT_OVERRIDES` at a file of `key=value` lines: `AGENT_OVERRIDES=/path/to/overrides.env source <dir>/scripts/lib.sh`. Skills that commit (`implement-github-issue`, `shepherd-github-pr`, `review-github-pr`) then run `git config core.hooksPath "${git_hooks_path}"` if that is set. Without a shell, see the next section.
+It requires `gh` (authenticated), `jq` and Python 3. Without a shell, see the next section.
 
 ## Running without a shell
 
@@ -113,15 +111,15 @@ Some runners (for example a chat automation with a GitHub connector) cannot run 
 ## Rules every step follows
 
 1. **Select by label, never by schedule.** Do not assume another step has run, will run, or is running. Look only at the item's labels and comments.
-2. **Claim before acting. Release always.** Release on success and on failure. Do it explicitly: each command may run in its own shell, so a shell `trap` cannot be relied on. A crashed run is covered by lease expiry.
-3. **Be idempotent.** Before creating a branch, PR, issue or comment, check whether it already exists. Rerunning a skill on the same item must be safe.
-4. **Write the output state before releasing the lease.** If a run dies midway, the item stays in its input state and the next run retries it.
-5. **Stay bounded.** A group skill handles at most its step's `batch` items (see **Defaults**). An item skill handles exactly one. One item failing does not stop the rest. Log it and move on.
+2. **Claim before acting. Release always.** Release on success and on failure.
+3. **Be idempotent.** Before creating a branch, PR, issue or comment, check whether it already exists.
+4. **Write the output state before releasing the lease.**
+5. **Stay bounded.** A group skill handles at most its step's `batch` items. An item skill handles exactly one.
 6. **Nothing eligible: log one line and exit.** Never invent work.
 7. **Touch only what you have claimed.** The only exceptions are the comments dedupe allows on other issues.
-8. **Triage and exploring never change the repository.** No commits, no branches, no edits to `GLOSSARY.md`, ADRs or `.out-of-scope/`. Put proposed changes in a comment.
-9. **No unattended `wontfix`.** If an issue looks already implemented or should be rejected, do not close it. Set `ready-for-human` and give the recommendation and reason in the comment.
-10. **Cap failures.** An item whose run fails stays eligible and is the oldest again next time, so a permanent failure would fill a batch forever. After a claimed run fails, run `fail_item N issue|pr STEP "reason"` before you release. Right after you claim, if `failures N STEP` is at least `max_item_failures`, follow `references/escalate.md` instead of working.
+8. **Triage and exploring never change the repository.**
+9. **No unattended `wontfix`.** Prefer `ready-for-human` with a recommendation.
+10. **Cap failures.** After `max_item_failures`, escalate.
 
 ## Inputs
 
@@ -129,68 +127,26 @@ This skill is reference material: it is never run, so it takes **no inputs** of 
 
 ## References
 
-Read these when a skill points at them. All are in this skill's directory.
-
 | File | Holds |
 |---|---|
-| `references/labels.md` | every label, its meaning, the state transitions, one-time setup |
-| `references/handoff.md` | what the ready and review handoff comments contain |
-| `references/escalate.md` | when and how to give an item to a human (`agent:stuck`) |
-| `references/dedupe.md` | duplicate search and the canonical-issue rule |
-| `references/issue-format.md` | what a well-formed issue contains |
-| `references/log.md` | the monthly run-log issue and entry format |
-| `scripts/lib.sh` | the helpers named below, and the default values of every setting above |
+| `references/labels.md` | labels, state transitions, one-time setup |
+| `references/handoff.md` | ready and review handoff comments |
+| `references/escalate.md` | when and how to give an item to a human |
+| `references/dedupe.md` | duplicate search and canonical-issue rule |
+| `references/issue-format.md` | well-formed issue contents |
+| `references/log.md` | run-log issue and entry format (about two weeks) |
+| `scripts/lib.sh` | shell helpers and default values |
 
 ## Leases
 
-A lease is **live** only if the item carries the lease label **and** the newest `agent:lease` marker comment has not expired. Anything else counts as unleased. This includes a label with no marker, a label with an expired marker, and a missing label.
+A lease is **live** only if the item carries the lease label **and** the newest `agent:lease` marker comment has not expired.
 
-| Helper | Does |
-|---|---|
-| `has_label N issue\|pr LABEL` | exit 0 if N currently carries LABEL |
-| `lease_live N` | exit 0 if the newest lease marker on N is unexpired |
-| `claim N issue\|pr LABEL STEP TTL` | add the label, post a lease marker |
-| `renew N issue\|pr STEP TTL` | post a newer marker. Do this before the lease runs out, if a long task needs it |
-| `release N issue\|pr LABEL` | remove the label |
-
-TTLs are `lease_ttl_triage`, `lease_ttl_implement` and `lease_ttl_pr` in **Defaults**.
-
-Typical use:
-
-```bash
-if has_label "$N" issue agent:triage && lease_live "$N"; then continue; fi   # someone has it
-claim "$N" issue agent:triage Grooming "$lease_ttl_triage"
-# ... work ...
-release "$N" issue agent:triage                                       # on EVERY way out: success, bail-out, escalation, failure
-```
-
-Concurrency is best-effort. Two runs can claim the same item in the same second. This is accepted: every step is idempotent, so the worst case is duplicated work.
+Helpers: `has_label`, `lease_live`, `claim`, `renew`, `release` (see `scripts/lib.sh`).
 
 ## Markers
 
-Hidden HTML comments make state readable without parsing prose. Append them as the last line of the comment they belong to. Exception: `agent:implements` lives in the PR description. Never put markers in an issue description.
-
-| Marker | Written by | Used for |
-|---|---|---|
-| `<!-- agent:lease step=… run=… expires=… -->` | `claim`, `renew` | lease expiry |
-| `<!-- agent:implements issue=N -->` | Implementing, in the **PR description** | links a PR to its issue, so a second PR is never opened for it (`prs_for_issue N`) |
-| `<!-- agent:handoff kind=ready sha=… -->` | Shepherding | the PR was reviewable at this head SHA |
-| `<!-- agent:handoff kind=review sha=… open=N -->` | Reviewing, when it does not merge; `N` = findings still unfixed | counts review rounds (`review_rounds N`); `open_findings N` tells Shepherding what is left |
-| `<!-- agent:handoff kind=merged sha=… -->` | Reviewing, after it merges | the review record (verdict, evidence) stays with the PR |
-| `<!-- agent:attempt step=shepherding sha=… -->` | Shepherding, after each fix push | counts attempts since the last handoff of any kind (`shepherd_attempts N`) |
-| `<!-- agent:failure step=… run=… -->` | `fail_item` | counts failed runs on an item (`failures N STEP`) |
-| `<!-- agent:escalate step=… -->` | `references/escalate.md` | ends the failure count, so a human who unsticks the item starts fresh |
+Hidden HTML comments make state readable. See the full marker table in prior revisions; key markers include `agent:lease`, `agent:implements`, `agent:handoff`, `agent:attempt`, `agent:failure`, `agent:escalate`.
 
 ## Reading and writing helpers
 
-| Helper | Does |
-|---|---|
-| `markers N` | every agent marker on N, in order |
-| `prs_for_issue N` | every PR for issue N, one `<number> <OPEN\|MERGED\|CLOSED>` per line. Matches the `agent:implements` marker, a `<type>/N-<topic>` branch, or `Closes\|Fixes\|Resolves #N` in the body |
-| `issue_for_pr N` | the issue numbers PR N implements |
-| `review_rounds N`, `shepherd_attempts N` | the two counters above |
-| `fail_item N issue\|pr STEP REASON` | comment the failure on N with the `agent:failure` marker |
-| `failures N STEP` | failed runs of STEP on N since the last escalation |
-| `open_findings N` | review findings still open on a PR (0 if none) |
-| `ready_sha N` | head SHA recorded by the newest `kind=ready` handoff |
-| `log_issue`, `log_run FILE`, `read_logs DAYS` | see `references/log.md` |
+`markers`, `prs_for_issue`, `issue_for_pr`, `review_rounds`, `shepherd_attempts`, `fail_item`, `failures`, `open_findings`, `ready_sha`, `log_issue`, `log_run`, `read_logs` — implemented in `scripts/lib.sh` when a shell is available; otherwise perform the same operations with GitHub MCP/connector tools.
