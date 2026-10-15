@@ -39,8 +39,9 @@ fi
 DEST="$(cd "$DEST" && pwd)"
 
 # Portable stand-ins for GNU `realpath -m` and `realpath --relative-to` (absent on macOS).
-abspath() { python3 -c 'import os,sys; print(os.path.normpath(os.path.join(sys.argv[1], sys.argv[2])))' "$1" "$2"; }
-relpath() { python3 -c 'import os,sys; print(os.path.relpath(sys.argv[2], sys.argv[1]))' "$1" "$2"; }
+# Node.js only — no Python dependency.
+abspath() { node -e 'const path=require("path"); process.stdout.write(path.resolve(process.argv[1], process.argv[2]))' "$1" "$2"; }
+relpath() { node -e 'const path=require("path"); process.stdout.write(path.relative(process.argv[1], process.argv[2]))' "$1" "$2"; }
 
 run() { if [ "$DRY" -eq 1 ]; then echo "would: $*"; else "$@"; fi; }
 
