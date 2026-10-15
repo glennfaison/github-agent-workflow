@@ -7,6 +7,47 @@ description: Map of the GitHub agent workflow steps and which skill to run for e
 
 Read-only map of the issue-to-merge pipeline. Use this to decide which skill to run.
 
+## Table of Contents
+
+This guide provides navigation to all skills in the GitHub agent workflow package:
+
+### Start Here
+- **[pipeline-guide](./SKILL.md)** — Map of the steps and which skill to run. **Start here.**
+
+### Meta Skills (Cross-cutting)
+- **[agent-workflow-protocol](../agent-workflow-protocol/SKILL.md)** — Shared rules (leases, markers, labels, handoffs, escalation, run log, defaults, degraded/no-shell path). Reference material every other skill reads first.
+- **[setup-github-agent-workflow](../setup-github-agent-workflow/SKILL.md)** — One-time repository setup. User-invoked.
+
+### GitHub Workflow Skills (Pipeline Steps)
+The five steps of the issue-to-merge pipeline:
+
+#### Exploring
+- **[explore-github-repo](../../pipeline/explore-github-repo/SKILL.md)** — Explore the live app and the code, rank findings, and file the best as issues.
+- **[file-github-issues](../../pipeline/file-github-issues/SKILL.md)** — File one or more findings as issues after a duplicate check. Supports batch and dry-run.
+
+#### Grooming
+- **[triage-github-issues](../../pipeline/triage-github-issues/SKILL.md)** — Scan the open issues, tidy finished ones, and dispatch the rest.
+- **[triage-github-issue](../../pipeline/triage-github-issue/SKILL.md)** — Triage one issue to `ready-for-agent`, `ready-for-human` or `needs-info`.
+
+#### Implementing
+- **[implement-github-issues](../../pipeline/implement-github-issues/SKILL.md)** — Pick the `ready-for-agent` issues and dispatch them.
+- **[implement-github-issue](../../pipeline/implement-github-issue/SKILL.md)** — Implement one issue and open a PR.
+
+#### Shepherding
+- **[shepherd-github-prs](../../pipeline/shepherd-github-prs/SKILL.md)** — Pick the PRs that need work and have finished their checks, and dispatch them.
+- **[shepherd-github-pr](../../pipeline/shepherd-github-pr/SKILL.md)** — Get one PR through checks and post the review handoff.
+
+#### Reviewing
+- **[review-github-prs](../../pipeline/review-github-prs/SKILL.md)** — Pick the PRs ready for review and dispatch them.
+- **[review-github-pr](../../pipeline/review-github-pr/SKILL.md)** — Review one PR and merge it, pinned to the reviewed commit, when it is safe.
+
+### Utility Skills (Building Blocks)
+Building blocks the pipeline calls:
+
+- **[unattended-triage](../../utility/unattended-triage/SKILL.md)** — Decide an issue's category and state and write the outcome comment.
+- **[grill-via-github-comments](../../utility/grill-via-github-comments/SKILL.md)** — Work out every open decision and ask the whole ready frontier in one round.
+- **[merge-safety](../../utility/merge-safety/SKILL.md)** — Assess whether a PR is safe for an agent to merge on its own.
+
 ## Inputs
 
 **Free text.** Optional. Ignored; this skill is a read-only index.

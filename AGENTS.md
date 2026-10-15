@@ -15,6 +15,8 @@ skills/<bucket>/<skill>/SKILL.md     exactly three levels deep
 
 **Start with `pipeline-guide`.** It is the map of the steps and which skill to run. Point agents at it from this file and from the root README.
 
+**Agents can quickly look up any skill by reading this index:** The Skill tool with the skill name (e.g. `/setup-github-agent-workflow` triggers the Skill tool with name `setup-github-agent-workflow`, which then calls the `SKILL.md` and follows its instructions). For repository-specific prompts that start with a slash, you can run them directly, or when in doubt, call the Skill tool with that skill name.
+
 ## Rules
 
 - **Add or move a skill, and update four places:** the bucket `README.md`, the root `README.md`, `.claude-plugin/plugin.json`, and the skill's `agents/openai.yaml`. Run `npm run validate`: it checks all of them.
