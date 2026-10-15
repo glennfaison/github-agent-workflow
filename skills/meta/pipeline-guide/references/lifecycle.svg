@@ -1,0 +1,139 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 700" role="img" aria-labelledby="title desc">
+  <title id="title">GitHub agent workflow lifecycle</title>
+  <desc id="desc">Flowchart of the issue-to-merge pipeline showing Exploring, Grooming, Implementing, Shepherding and Reviewing, with state labels, lease labels and handoffs on issues and PRs.</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#334155"/>
+    </marker>
+    <style>
+      .box { fill: #f8fafc; stroke: #334155; stroke-width: 1.5; }
+      .step { fill: #e0f2fe; stroke: #0369a1; stroke-width: 1.75; }
+      .state { fill: #fef3c7; stroke: #b45309; stroke-width: 1.25; }
+      .lease { fill: #fce7f3; stroke: #be185d; stroke-width: 1.25; }
+      .done { fill: #dcfce7; stroke: #15803d; stroke-width: 1.5; }
+      .human { fill: #ede9fe; stroke: #6d28d9; stroke-width: 1.25; }
+      .t { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; fill: #0f172a; }
+      .t-sm { font-size: 11px; }
+      .t-md { font-size: 13px; font-weight: 600; }
+      .t-lg { font-size: 16px; font-weight: 700; }
+      .muted { fill: #64748b; font-size: 11px; }
+      .edge { stroke: #334155; stroke-width: 1.5; fill: none; marker-end: url(#arrow); }
+      .edge-soft { stroke: #94a3b8; stroke-width: 1.25; stroke-dasharray: 5 4; fill: none; marker-end: url(#arrow); }
+    </style>
+  </defs>
+
+  <text x="500" y="30" text-anchor="middle" class="t t-lg">Issue → merge lifecycle</text>
+  <text x="500" y="50" text-anchor="middle" class="t muted">Skills coordinate via labels, leases and handoff markers — they never call each other</text>
+
+  <rect x="30" y="80" width="150" height="50" rx="8" class="step"/>
+  <text x="105" y="100" text-anchor="middle" class="t t-md">1. Exploring</text>
+  <text x="105" y="116" text-anchor="middle" class="t t-sm">explore-github-repo</text>
+
+  <rect x="220" y="80" width="150" height="50" rx="8" class="step"/>
+  <text x="295" y="100" text-anchor="middle" class="t t-md">2. Grooming</text>
+  <text x="295" y="116" text-anchor="middle" class="t t-sm">triage-github-issues</text>
+
+  <rect x="410" y="80" width="160" height="50" rx="8" class="step"/>
+  <text x="490" y="100" text-anchor="middle" class="t t-md">3. Implementing</text>
+  <text x="490" y="116" text-anchor="middle" class="t t-sm">implement-github-issue</text>
+
+  <rect x="610" y="80" width="160" height="50" rx="8" class="step"/>
+  <text x="690" y="100" text-anchor="middle" class="t t-md">4. Shepherding</text>
+  <text x="690" y="116" text-anchor="middle" class="t t-sm">shepherd-github-pr</text>
+
+  <rect x="810" y="80" width="150" height="50" rx="8" class="step"/>
+  <text x="885" y="100" text-anchor="middle" class="t t-md">5. Reviewing</text>
+  <text x="885" y="116" text-anchor="middle" class="t t-sm">review-github-pr</text>
+
+  <path d="M180 105 L220 105" class="edge"/>
+  <path d="M370 105 L410 105" class="edge"/>
+  <path d="M570 105 L610 105" class="edge"/>
+  <path d="M770 105 L810 105" class="edge"/>
+
+  <path d="M105 130 L105 160" class="edge"/>
+  <rect x="30" y="160" width="150" height="70" rx="6" class="box"/>
+  <text x="105" y="182" text-anchor="middle" class="t t-sm">file-github-issues</text>
+  <text x="105" y="200" text-anchor="middle" class="t muted">no labels applied</text>
+  <text x="105" y="216" text-anchor="middle" class="t muted">open issue only</text>
+
+  <path d="M295 130 L295 160" class="edge"/>
+  <rect x="220" y="160" width="150" height="36" rx="6" class="lease"/>
+  <text x="295" y="183" text-anchor="middle" class="t t-sm">lease: agent:triage</text>
+
+  <path d="M295 196 L295 220" class="edge"/>
+  <rect x="200" y="220" width="190" height="90" rx="6" class="box"/>
+  <text x="295" y="242" text-anchor="middle" class="t t-sm">Outcomes (exactly one)</text>
+  <text x="295" y="262" text-anchor="middle" class="t t-sm">• ready-for-agent</text>
+  <text x="295" y="280" text-anchor="middle" class="t t-sm">• ready-for-human</text>
+  <text x="295" y="298" text-anchor="middle" class="t t-sm">• needs-info</text>
+
+  <path d="M490 130 L490 160" class="edge"/>
+  <rect x="410" y="160" width="160" height="36" rx="6" class="lease"/>
+  <text x="490" y="183" text-anchor="middle" class="t t-sm">lease: agent:in-progress</text>
+
+  <path d="M490 196 L490 220" class="edge"/>
+  <rect x="410" y="220" width="160" height="70" rx="6" class="box"/>
+  <text x="490" y="245" text-anchor="middle" class="t t-sm">Open PR → pr_base</text>
+  <text x="490" y="263" text-anchor="middle" class="t t-sm">label issue:</text>
+  <text x="490" y="279" text-anchor="middle" class="t t-sm">agent:pr-open</text>
+
+  <path d="M390 265 L410 255" class="edge"/>
+
+  <path d="M690 130 L690 160" class="edge"/>
+  <rect x="610" y="160" width="160" height="36" rx="6" class="lease"/>
+  <text x="690" y="183" text-anchor="middle" class="t t-sm">lease: agent:pr-open</text>
+
+  <path d="M690 196 L690 220" class="edge"/>
+  <rect x="610" y="220" width="160" height="70" rx="6" class="box"/>
+  <text x="690" y="245" text-anchor="middle" class="t t-sm">CI + review fixes</text>
+  <text x="690" y="263" text-anchor="middle" class="t t-sm">handoff kind=ready</text>
+  <text x="690" y="279" text-anchor="middle" class="t muted">marker + head SHA</text>
+
+  <path d="M570 255 L610 255" class="edge"/>
+
+  <path d="M885 130 L885 160" class="edge"/>
+  <rect x="810" y="160" width="150" height="70" rx="6" class="box"/>
+  <text x="885" y="185" text-anchor="middle" class="t t-sm">merge-safety check</text>
+  <text x="885" y="203" text-anchor="middle" class="t t-sm">merge (squash)</text>
+  <text x="885" y="219" text-anchor="middle" class="t t-sm">handoff kind=merged</text>
+
+  <path d="M770 255 L810 195" class="edge"/>
+
+  <path d="M885 230 L885 280" class="edge"/>
+  <rect x="800" y="280" width="170" height="55" rx="8" class="done"/>
+  <text x="885" y="302" text-anchor="middle" class="t t-md">Merged + issue closed</text>
+  <text x="885" y="320" text-anchor="middle" class="t t-sm">clear agent:pr-open</text>
+
+  <rect x="30" y="360" width="340" height="150" rx="10" class="box"/>
+  <text x="200" y="385" text-anchor="middle" class="t t-md">Human & escalation paths</text>
+  <text x="50" y="410" class="t t-sm">needs-info → human answers, removes label → eligible again</text>
+  <text x="50" y="430" class="t t-sm">ready-for-human → human implements or re-routes</text>
+  <text x="50" y="450" class="t t-sm">agent:stuck after max_item_failures (or explicit escalate)</text>
+  <text x="50" y="470" class="t t-sm">Abandoned PR closed: agent:pr-open → ready-for-human</text>
+  <text x="50" y="490" class="t muted">Bookkeeping (ignored when selecting work): agent:log, agent:difficulty</text>
+
+  <rect x="400" y="360" width="280" height="150" rx="10" class="box"/>
+  <text x="540" y="385" text-anchor="middle" class="t t-md">Handoff markers (PR comments)</text>
+  <text x="420" y="415" class="t t-sm"><!-- agent:handoff kind=ready sha=… --></text>
+  <text x="420" y="440" class="t t-sm"><!-- agent:handoff kind=review sha=… --></text>
+  <text x="420" y="465" class="t t-sm"><!-- agent:handoff kind=merged sha=… --></text>
+  <text x="420" y="490" class="t muted">Leases: <!-- agent:lease step=… expires=… --></text>
+
+  <rect x="710" y="360" width="250" height="150" rx="10" class="box"/>
+  <text x="835" y="385" text-anchor="middle" class="t t-md">Legend</text>
+  <rect x="730" y="400" width="14" height="14" rx="2" class="step"/>
+  <text x="752" y="412" class="t t-sm">Pipeline step</text>
+  <rect x="730" y="425" width="14" height="14" rx="2" class="state"/>
+  <text x="752" y="437" class="t t-sm">State label on issue</text>
+  <rect x="730" y="450" width="14" height="14" rx="2" class="lease"/>
+  <text x="752" y="462" class="t t-sm">Lease label</text>
+  <rect x="730" y="475" width="14" height="14" rx="2" class="done"/>
+  <text x="752" y="487" class="t t-sm">Terminal success</text>
+
+  <text x="500" y="550" text-anchor="middle" class="t muted">Canonical labels: skills/meta/agent-workflow-protocol/references/labels.md</text>
+  <text x="500" y="570" text-anchor="middle" class="t muted">Exploring never applies, removes or changes labels. Only Grooming and later steps do.</text>
+
+  <text x="500" y="620" text-anchor="middle" class="t t-sm">Group skills select work; item skills act on one issue or PR. Schedule the group skill per step.</text>
+  <text x="500" y="640" text-anchor="middle" class="t muted">This diagram adds no transitions beyond the protocol — labels.md remains the source of truth.</text>
+</svg>
