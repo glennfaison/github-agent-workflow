@@ -61,7 +61,7 @@ Rules:
 - Cap **Deferred candidates** at 20. Each line needs a one-line **impact × confidence** score.
 - Under **Automation suggestions**, list repetitive deterministic steps worth scripting. Only suggest; never implement unprompted.
 - A group skill writes one entry per run covering all items it dispatched. An item skill run on its own writes an entry for its one item.
-- Write the entry to a temp file, then run `log_run FILE` (shell) or post the same body with GitHub tools (no-shell).
+- Write the entry to a temp file, then run `log_run FILE` (shell) or post the same body with GitHub tools (no-shell). Use `formatLogComment` from `scripts/helpers.mjs` so the YAML header and field order stay identical across runners.
 
 ## Reading
 

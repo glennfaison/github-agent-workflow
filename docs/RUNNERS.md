@@ -7,7 +7,7 @@ What a scheduler needs to run this package, and how to word its prompts.
 | Capability | Shell runner | No-shell runner (chat automation + GitHub connector) |
 |---|---|---|
 | Loads skills from this package | Yes | Yes (or reads each `SKILL.md` by name) |
-| Runs `scripts/lib.sh`, `gh`, `git`, `npm` | Yes | No. The protocol's [Running without a shell](../skills/meta/agent-workflow-protocol/SKILL.md) applies |
+| Runs `scripts/lib.sh`, `gh`, `git`, `npm` | Yes | No. Follow [Running without a shell](../skills/meta/agent-workflow-protocol/SKILL.md) and the pure-JS reference in `skills/meta/agent-workflow-protocol/scripts/helpers.mjs` |
 | Writes issues, comments, labels, PRs | Yes | Yes |
 
 ## Copy-paste prompts
@@ -35,7 +35,7 @@ No human is present: do not ask questions.
 ```text
 Run /file-github-issues
 title=<one-line title>
-category=bugfix
+category=bug
 area=<part of the product or code>
 impact=<who it hurts and how much>
 confidence=high
