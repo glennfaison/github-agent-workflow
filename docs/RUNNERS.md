@@ -7,7 +7,7 @@ What a scheduler needs to run this package, and how to word its prompts.
 | Capability | Shell runner | No-shell runner (chat automation + GitHub connector) |
 |---|---|---|
 | Loads skills from this package | Yes | Yes (or reads each `SKILL.md` by name) |
-| Runs `scripts/lib.sh`, `gh`, `git`, `npm` | Yes | No. The protocol's [Running without a shell](../skills/meta/agent-workflow-protocol/SKILL.md) applies |
+| Runs `scripts/lib.sh`, `gh`, `git`, `npm` | Yes | No. Follow [Running without a shell](../skills/meta/agent-workflow-protocol/SKILL.md) and the pure-JS reference in `skills/meta/agent-workflow-protocol/scripts/helpers.mjs` |
 | Writes issues, comments, labels, PRs | Yes | Yes |
 
 ## Copy-paste prompts
@@ -35,7 +35,7 @@ No human is present: do not ask questions.
 ```text
 Run /file-github-issues
 title=<one-line title>
-category=bugfix
+category=bug
 area=<part of the product or code>
 impact=<who it hurts and how much>
 confidence=high
@@ -74,16 +74,16 @@ implement_batch=1
 No human is present: do not ask questions.
 ```
 
-`implement-github-issue`, by hand, for one issue:
+`implement-github-issue`, by hand:
 
 ```text
 Run /implement-github-issue 123
+lease_ttl_implement=3 hours
+max_item_failures=3
 pr_base_branch=main
 build_cmd=
 git_hooks_path=
 repo_guidance=AGENTS.md
-lease_ttl_implement=3 hours
-max_item_failures=3
 No human is present: do not ask questions.
 ```
 
@@ -95,14 +95,15 @@ shepherd_batch=3
 No human is present: do not ask questions.
 ```
 
-`shepherd-github-pr`, by hand, for one PR:
+`shepherd-github-pr`, by hand:
 
 ```text
-Run /shepherd-github-pr 124
+Run /shepherd-github-pr 45
 lease_ttl_pr=1 hour
 max_shepherd_attempts=3
 max_item_failures=3
 human_reviewer=
+git_hooks_path=
 repo_guidance=AGENTS.md
 No human is present: do not ask questions.
 ```
@@ -115,30 +116,22 @@ review_batch=3
 No human is present: do not ask questions.
 ```
 
-`review-github-pr`, by hand, for one PR:
+`review-github-pr`, by hand:
 
 ```text
-Run /review-github-pr 124
+Run /review-github-pr 45
 lease_ttl_pr=1 hour
 max_review_rounds=3
 max_item_failures=3
-merge_method=squash
 pr_base_branch=main
+merge_method=squash
 human_reviewer=
+git_hooks_path=
 No human is present: do not ask questions.
 ```
 
-## Inputs
+### One-time setup
 
-The canonical lists are the skills' own **Inputs** sections and the **Defaults** table in [agent-workflow-protocol](../skills/meta/agent-workflow-protocol/SKILL.md). The prompts above enumerate what those say; they stay canonical.
-
-BUCKET is "utility" for merge-safety, unattended-triage and grill-via-github-comments, otherwise "pipeline" or "meta".
-
-## Cadence (starting point)
-
-- Exploring: a few times a week
-- Grooming: daily
-- Implementing: as capacity allows
-- Shepherding / Reviewing: often enough that CI and review do not stall
-
-Adjust to the repository. Skills never depend on the schedule; they select by labels and comments only.
+```text
+Run /setup-github-agent-workflow on github.com/OWNER/REPO
+```
