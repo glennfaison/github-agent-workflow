@@ -106,7 +106,7 @@
   <text x="885" y="320" text-anchor="middle" class="t t-sm">clear agent:pr-open</text>
 
   <rect x="30" y="360" width="340" height="150" rx="10" class="box"/>
-  <text x="200" y="385" text-anchor="middle" class="t t-md">Human & escalation paths</text>
+  <text x="200" y="385" text-anchor="middle" class="t t-md">Human &amp; escalation paths</text>
   <text x="50" y="410" class="t t-sm">needs-info → human answers, removes label → eligible again</text>
   <text x="50" y="430" class="t t-sm">ready-for-human → human implements or re-routes</text>
   <text x="50" y="450" class="t t-sm">agent:stuck after max_item_failures (or explicit escalate)</text>

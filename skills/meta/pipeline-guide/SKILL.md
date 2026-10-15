@@ -17,7 +17,7 @@ Read-only map of the issue-to-merge pipeline. Use this to decide which skill to 
 
 ## Lifecycle
 
-![Issue → merge lifecycle](./references/lifecycle.svg)
+[Issue → merge lifecycle](../agent-workflow-protocol/references/lifecycle.svg)
 
 Plain-text summary of the same flow:
 
