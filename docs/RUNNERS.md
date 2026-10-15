@@ -74,16 +74,16 @@ implement_batch=1
 No human is present: do not ask questions.
 ```
 
-`implement-github-issue`, by hand:
+`implement-github-issue`, by hand, for one issue:
 
 ```text
 Run /implement-github-issue 123
-lease_ttl_implement=3 hours
-max_item_failures=3
 pr_base_branch=main
 build_cmd=
 git_hooks_path=
 repo_guidance=AGENTS.md
+lease_ttl_implement=3 hours
+max_item_failures=3
 No human is present: do not ask questions.
 ```
 
@@ -95,15 +95,14 @@ shepherd_batch=3
 No human is present: do not ask questions.
 ```
 
-`shepherd-github-pr`, by hand:
+`shepherd-github-pr`, by hand, for one PR:
 
 ```text
-Run /shepherd-github-pr 45
+Run /shepherd-github-pr 124
 lease_ttl_pr=1 hour
 max_shepherd_attempts=3
 max_item_failures=3
 human_reviewer=
-git_hooks_path=
 repo_guidance=AGENTS.md
 No human is present: do not ask questions.
 ```
@@ -116,22 +115,30 @@ review_batch=3
 No human is present: do not ask questions.
 ```
 
-`review-github-pr`, by hand:
+`review-github-pr`, by hand, for one PR:
 
 ```text
-Run /review-github-pr 45
+Run /review-github-pr 124
 lease_ttl_pr=1 hour
 max_review_rounds=3
 max_item_failures=3
-pr_base_branch=main
 merge_method=squash
+pr_base_branch=main
 human_reviewer=
-git_hooks_path=
 No human is present: do not ask questions.
 ```
 
-### One-time setup
+## Inputs
 
-```text
-Run /setup-github-agent-workflow on github.com/OWNER/REPO
-```
+The canonical lists are the skills' own **Inputs** sections and the **Defaults** table in [agent-workflow-protocol](../skills/meta/agent-workflow-protocol/SKILL.md). The prompts above enumerate what those say; they stay canonical.
+
+BUCKET is "utility" for merge-safety, unattended-triage and grill-via-github-comments, otherwise "pipeline" or "meta".
+
+## Cadence (starting point)
+
+- Exploring: a few times a week
+- Grooming: daily
+- Implementing: as capacity allows
+- Shepherding / Reviewing: often enough that CI and review do not stall
+
+Adjust to the repository. Skills never depend on the schedule; they select by labels and comments only.
