@@ -1,6 +1,6 @@
 {
   "name": "github-agent-workflow",
-  "version": "1.2.1",
+  "version": "1.2.2",
   "description": "Agent skills that run a GitHub repository's issue-to-merge pipeline unattended: explore, triage, implement, shepherd through CI, review and merge. Each step is a group skill that selects work and an item skill that does it.",
   "author": {
     "name": "Glenn Faison"

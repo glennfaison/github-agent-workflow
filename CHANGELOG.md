@@ -1,5 +1,12 @@
 # github-agent-workflow
 
+## 1.2.2
+
+### Patch Changes
+
+- 995b056: Ship a pure-JS no-shell reference (`scripts/helpers.mjs`) for RUN_ID, dates, lease/log comment shapes, and document the explicit degraded path. Replace the remaining Python usage in `link-skills.sh` with Node so the package no longer depends on Python.
+- 4d74a8c: pipeline-guide: add copy-paste prompts for every pipeline skill (all key-value inputs) and a lifecycle flowchart (`references/lifecycle.svg`) showing labels, leases and handoffs.
+
 ## 1.2.1
 
 ### Patch Changes
