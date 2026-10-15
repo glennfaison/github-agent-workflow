@@ -59,10 +59,16 @@ Requires `gh` (authenticated), `jq` and Node.js. Without a shell, see the next s
 
 ## Running without a shell
 
-1. Helpers and `gh`/`git` commands say *what* to do, not how. Do the same with the tools you have.
-2. Set `RUN_ID` to UTC `YYYYMMDDTHHMMSSZ` plus `-` and the runner name.
-3. Where a skill says to check out a branch and push, commit through your tools instead.
-4. If a required tool is missing, record under **Problems** and move on.
+Explicit fallback when `scripts/lib.sh`, `gh`, or a local clone are unavailable.
+
+1. **Helpers and `gh`/`git` commands say *what* to do, not how.** Perform the same operations with GitHub MCP / connector tools (`search_issues`, `issue_read`, `issue_write`, `add_issue_comment`, label edit, etc.) and any browser tools you have.
+2. **RUN_ID.** Use UTC `YYYYMMDDTHHMMSSZ` plus `-` and the runner name (sanitize non-alphanumeric to `-`). Example: `20261015T134700Z-grok`. The pure-JS helper `makeRunId(runner)` in `scripts/helpers.mjs` produces this format.
+3. **Dates.** Prefer the formulas in `scripts/helpers.mjs` (`utcPlus`, `utcEpoch`) — same Node logic `lib.sh` already uses. No Python.
+4. **Log and markers.** Copy the comment shapes from `formatLogComment`, `leaseComment`, and `failureComment` in `helpers.mjs`. Post them with `add_issue_comment`. Find or create the `agent:log` / `agent:difficulty` issues the same way `log_issue` / `difficulty_issue` do.
+5. **Where a skill says to check out a branch and push,** commit through your tools instead.
+6. **If a required tool is missing,** record under **Problems** (tag `degraded:` or `repo-state:`) and move on. Do not improvise destructive actions.
+
+`scripts/helpers.mjs` is the reference implementation for no-shell runners. It is not executed by the shell path; `lib.sh` remains the shell entry point.
 
 ## Inputs
 
@@ -79,7 +85,10 @@ This skill is reference material: it takes **no inputs** of its own.
 | `references/issue-format.md` | well-formed issue contents |
 | `references/log.md` | run log, difficulty issues, YAML header, 2-week retention |
 | `scripts/lib.sh` | shell helpers (Node.js date math; no Python) |
+| `scripts/helpers.mjs` | pure-JS reference for no-shell runners (RUN_ID, dates, lease/log comment shapes) |
 
 ## Helpers
 
-`markers`, `prs_for_issue`, `issue_for_pr`, `review_rounds`, `shepherd_attempts`, `fail_item`, `failures`, `open_findings`, `ready_sha`, `log_issue`, `log_run`, `difficulty_issue`, `read_logs` — implemented in `scripts/lib.sh` when a shell is available; otherwise perform the same operations with GitHub MCP/connector tools.
+`markers`, `prs_for_issue`, `issue_for_pr`, `review_rounds`, `shepherd_attempts`, `fail_item`, `failures`, `open_findings`, `ready_sha`, `log_issue`, `log_run`, `difficulty_issue`, `read_logs` — implemented in `scripts/lib.sh` when a shell is available.
+
+Without a shell, perform the same operations with GitHub MCP/connector tools. Use `scripts/helpers.mjs` for deterministic `RUN_ID`, date math, lease/failure markers, and the log-comment YAML + prose skeleton so every runner writes the same shapes.
