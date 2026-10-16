@@ -1,6 +1,6 @@
 ---
 name: unattended-triage
-description: Decide an issue's category and state and write the outcome comment (Agent Brief, ready-for-human note or Triage Notes). Use when grooming a single issue with nobody available to answer live. Adapted from the triage skill in mattpocock/skills (MIT, see CREDITS.md in this repository).
+description: Decide an issue's category and state and write the outcome comment (Agent Brief, ready-for-human note or Triage Notes). Use when triaging a single issue with nobody available to answer live. Adapted from the triage skill in mattpocock/skills (MIT, see CREDITS.md in this repository).
 ---
 
 # Unattended triage

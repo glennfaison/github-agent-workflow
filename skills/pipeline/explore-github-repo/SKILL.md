@@ -16,17 +16,18 @@ Explore the live app and the code, rank findings, and file the best as issues th
 | Input | Default | What it does |
 |---|---|---|
 | `app_url` | *(none)* | Live app to browse |
-| `issues_per_run` | `5` (or `3` when open backlog is large) | Max new issues to file in one run |
+| `explore_batch` | `5` (or `3` when open backlog is large) | Max new issues to file in one run |
 | `log_lookback_days` | `14` | How far back to read the run log |
 | `dry_run` | `false` | When true, produce the ranked list + log entry but do not file |
-| `runner` | `unknown` | Name recorded in the run log |
+| `runner` | `unknown` | Name recorded in the run id and the run log |
+| `unattended` | `true` | `true`: no human is present, so never ask (see **Unattended runs** in the protocol). `false`: a human may be asked |
 
-**Implicit dependencies.** `agent-workflow-protocol` (log format, degraded/no-shell path), `file-github-issues`, GitHub issue read/write, and optionally a browser for the live app.
+**Implicit dependencies.** The common ones (**Shell setup** and **Running without a shell** in the protocol), plus `file-github-issues`, GitHub issue read and write, and optionally a browser for the live app.
 
 ## Process
 
 1. **Read recent Exploring log entries** (`log_lookback_days`). Note recurring problems and deferred items.
-2. **Sample the backlog.** If open issues are already dense in an area, prefer commenting over near-duplicate filings. Default `issues_per_run` to 3 when the open backlog is large.
+2. **Sample the backlog.** If open issues are already dense in an area, prefer commenting over near-duplicate filings. Default `explore_batch` to 3 when the open backlog is large.
 3. **Explore the live app** when `app_url` is set. Must-probe for a page-builder style app: empty state, add component, templates, command palette, mode switch, undo/redo appearance, mobile viewport, dark mode, export. Capture 1–2 annotated screenshots only for top filing candidates. If the live app is slow or flaky, switch to code-only and record that under **Problems**.
 4. **Explore the code** for matching rough edges, missing coverage, and debt.
 5. **Rank** by impact × confidence. Cap deferred list at 20 with one-line scores.
@@ -68,6 +69,6 @@ A good run, even with zero filings:
 ## Never
 
 - Apply, remove or change any label
-- File more than `$issues_per_run` issues
+- File more than `$explore_batch` issues
 - Comment on, close or edit an issue other than the evidence comments `file-github-issues` adds
-- Ask the user questions when running unattended / "no human is present"
+- Ask the user questions while `unattended` is `true`
