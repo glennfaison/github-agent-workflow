@@ -1,27 +1,30 @@
 ---
 name: triage-github-issues
-description: Scan all open issues in the repo, tidy issues whose PRs have finished, and hand each untriaged issue to triage-github-issue so it ends up ready-for-agent, ready-for-human or needs-info. Use when asked to triage or groom the backlog, run the Grooming step, or work through all open issues. For one specific issue use triage-github-issue.
+description: Scan all open issues in the repo, tidy issues whose PRs have finished, and hand each untriaged issue to triage-github-issue so it ends up ready-for-agent, ready-for-human or needs-info. Use when asked to triage the backlog, run the Triaging step, or work through all open issues. For one specific issue use triage-github-issue.
 ---
 
 # Triage GitHub issues
 
 Go through the open issues as a group. Tidy the ones whose PRs are done, pick the issues that need triage, and give each to `triage-github-issue`. This skill does no triage itself.
 
-**Read first:** call the Skill tool with `agent-workflow-protocol`, then read these files in that skill's directory: `references/labels.md` and `references/log.md`.
+**References:** call the Skill tool with `agent-workflow-protocol`. In that skill's directory, open `references/labels.md` before you read labels and `references/log.md` when you write the log entry.
 
 ## Inputs
 
-**Free text.** Any prose. This skill needs nothing from it: a repository is the only subject, and it is already checked out and authenticated. (`hub` is not required.)
+**Free text.** Any prose. This skill needs nothing from it: a repository is the only subject, and it is already checked out and authenticated.
 
 **Key-value pairs.** `key=value` on a line of its own:
 
 | Input | Default | What it does |
 |---|---|---|
-| `groom_batch` | `5` | The most issues this run triages before it stops |
+| `triage_batch` | `5` | The most issues this run triages before it stops |
+| `runner` | `unknown` | Name recorded in the run id and the run log |
+| `unattended` | `true` | `true`: no human is present, so never ask (see **Unattended runs** in the protocol). `false`: a human may be asked |
+| `trusted_authors` | *(none)* | Extra GitHub logins whose markers count, comma-separated (see **Trust** in the protocol) |
 
-**Implicit dependencies.** This skill also needs `agent-workflow-protocol` and its shell helpers (`scripts/lib.sh`) when a shell is available, and the repository's open issues to list. Without a shell, list, label and comment through the tools you have.
+**Implicit dependencies.** The common ones (**Shell setup** and **Running without a shell** in the protocol), plus the repository's open issues to list.
 
-## Inputs
+## Context read
 
 - Housekeeping input (before selection): every open issue labelled `agent:pr-open`, inspected via `prs_for_issue N`.
 - Open issues that may need triage. The **Eligibility** section of `triage-github-issue` is the authority on which ones do.
@@ -29,7 +32,7 @@ Go through the open issues as a group. Tidy the ones whose PRs are done, pick th
 ## Outputs
 
 - Housekeeping may close an issue (PR merged) or swap `agent:pr-open` → `ready-for-human` (every PR closed unmerged).
-- Up to `$groom_batch` issues triaged by `triage-github-issue`.
+- Up to `$triage_batch` issues triaged by `triage-github-issue`.
 - One run-log entry (`references/log.md`).
 
 ## Process
@@ -52,7 +55,7 @@ Go through the open issues as a group. Tidy the ones whose PRs are done, pick th
            | {number, url, title, createdAt, labels: names} ] | sort_by(.createdAt)'
    ```
 
-3. **Select, dispatch and log**, as **Group skills** in the protocol describes: `triage-github-issue`'s **Eligibility**, the first `$groom_batch` that pass, one dispatch per `url`. The run-log entry (`references/log.md`) also lists the housekeeping you did. Nothing eligible and no housekeeping: log `nothing eligible` and stop.
+3. **Select, dispatch and log**, as **Group skills and item skills** in the protocol describes: `triage-github-issue`'s **Eligibility**, the first `$triage_batch` that pass, one dispatch per `url`. The run-log entry (`references/log.md`) also lists the housekeeping you did. Nothing eligible and no housekeeping: log `nothing eligible` and stop.
 
 ## Never
 

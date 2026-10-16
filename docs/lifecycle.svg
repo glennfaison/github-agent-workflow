@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 700" role="img" aria-labelledby="title desc">
   <title id="title">GitHub agent workflow lifecycle</title>
-  <desc id="desc">Flowchart of the issue-to-merge pipeline showing Exploring, Grooming, Implementing, Shepherding and Reviewing, with state labels, lease labels and handoffs on issues and PRs.</desc>
+  <desc id="desc">Flowchart of the issue-to-merge pipeline showing Exploring, Triaging, Implementing, Shepherding and Reviewing, with state labels, lease labels and handoffs on issues and PRs.</desc>
   <defs>
     <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
       <path d="M 0 0 L 10 5 L 0 10 z" fill="#334155"/>
@@ -31,7 +31,7 @@
   <text x="105" y="116" text-anchor="middle" class="t t-sm">explore-github-repo</text>
 
   <rect x="220" y="80" width="150" height="50" rx="8" class="step"/>
-  <text x="295" y="100" text-anchor="middle" class="t t-md">2. Grooming</text>
+  <text x="295" y="100" text-anchor="middle" class="t t-md">2. Triaging</text>
   <text x="295" y="116" text-anchor="middle" class="t t-sm">triage-github-issues</text>
 
   <rect x="410" y="80" width="160" height="50" rx="8" class="step"/>
@@ -132,7 +132,7 @@
   <text x="752" y="487" class="t t-sm">Terminal success</text>
 
   <text x="500" y="550" text-anchor="middle" class="t muted">Canonical labels: skills/meta/agent-workflow-protocol/references/labels.md</text>
-  <text x="500" y="570" text-anchor="middle" class="t muted">Exploring never applies, removes or changes labels. Only Grooming and later steps do.</text>
+  <text x="500" y="570" text-anchor="middle" class="t muted">Exploring never applies, removes or changes labels. Only Triaging and later steps do.</text>
 
   <text x="500" y="620" text-anchor="middle" class="t t-sm">Group skills select work; item skills act on one issue or PR. Schedule the group skill per step.</text>
   <text x="500" y="640" text-anchor="middle" class="t muted">This diagram adds no transitions beyond the protocol — labels.md remains the source of truth.</text>

@@ -34,7 +34,7 @@ Fields:
 
 | Key | Required | Meaning |
 |---|---|---|
-| `step` | yes | Exploring, Grooming, Implementing, Shepherding, Reviewing |
+| `step` | yes | Exploring, Triaging, Implementing, Shepherding, Reviewing |
 | `run` | yes | `RUN_ID` |
 | `runner` | yes | Runner name |
 | `outcome` | yes | Short summary string (same facts as **Outcome:**) |

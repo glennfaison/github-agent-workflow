@@ -13,7 +13,7 @@ The five steps of the issue-to-merge pipeline. Each step has a **group skill** t
 - **[explore-github-repo](./explore-github-repo/SKILL.md)**: Explore the live app and the code, rank findings, and file the best as issues.
 - **[file-github-issues](./file-github-issues/SKILL.md)**: File one or more findings as issues after a duplicate check. Supports batch and dry-run.
 
-## Grooming
+## Triaging
 
 - **[triage-github-issues](./triage-github-issues/SKILL.md)**: Scan the open issues, tidy finished ones, and dispatch the rest.
 - **[triage-github-issue](./triage-github-issue/SKILL.md)**: Triage one issue to `ready-for-agent`, `ready-for-human` or `needs-info`.

@@ -2,55 +2,62 @@
 
 Conventions for working on this package. It holds agent skills. It is not an application.
 
+## Finding a skill
+
+**Read `pipeline-guide` first.** It is the table of contents of this package: every skill, what it is for, and when to use it. It is the only skill this file points to, and the only place that lists the others, so do not copy that list here or anywhere else.
+
+To open it, run `/pipeline-guide`. If your harness does not recognise slash commands, call the Skill tool with the name `pipeline-guide`. Any other skill is reached the same way, by name.
+
 ## Layout
 
 ```
 skills/<bucket>/<skill>/SKILL.md     exactly three levels deep
 ```
 
-- **`meta`**: cross-cutting skills that are not themselves pipeline steps: `pipeline-guide` (start here), `agent-workflow-protocol`, and `setup-github-agent-workflow`.
-- **`pipeline`**: the five pipeline steps — one group skill and one item skill per step.
-- **`utility`**: skills the pipeline calls that do not depend on GitHub plumbing (e.g. `grill-via-github-comments`, `unattended-triage`, `merge-safety`).
+- **`meta`**: cross-cutting skills that are not pipeline steps: the guide, the shared protocol, and the user-invoked setup and prompt skills.
+- **`pipeline`**: the five pipeline steps, one group skill and one item skill each.
+- **`utility`**: skills the pipeline calls that do not depend on GitHub plumbing.
 - Buckets named `in-progress` and `deprecated` are never shipped or linked.
-
-**Start with `pipeline-guide`.** It is the map of the steps and which skill to run. Point agents at it from this file and from the root README.
-
-**Agents can quickly look up any skill by reading this index:** The Skill tool with the skill name (e.g. `/setup-github-agent-workflow` triggers the Skill tool with name `setup-github-agent-workflow`, which then calls the `SKILL.md` and follows its instructions). For repository-specific prompts that start with a slash, you can run them directly, or when in doubt, call the Skill tool with that skill name.
 
 ## Rules
 
-- **Add or move a skill, and update four places:** the bucket `README.md`, the root `README.md`, `.claude-plugin/plugin.json`, and the skill's `agents/openai.yaml`. Run `npm run validate`: it checks all of them.
+- **Add or move a skill, and touch these places:** the bucket `README.md`, the root `README.md`, the guide's table, and the skill's `agents/openai.yaml`. Then run `npm run sync`, which regenerates `.claude-plugin/plugin.json` and the runner prompts. `npm run validate` checks all of it.
 - **`name` must equal the directory name.** Harnesses discover skills by directory, so a mismatch hides the skill.
 - **A skill's `description` must never contain an unquoted `: ` or ` #`.** It is invalid YAML and harnesses skip the skill. Reword it.
-- **Skills reach each other through the Skill tool, never through paths.** "Call the Skill tool with `name`". A skill's own files (`references/`, `scripts/`) are read relative to its `SKILL.md`. Where a skill lives depends on how the package was installed.
-- **A user-invoked skill (`disable-model-invocation: true`, with `allow_implicit_invocation: false` in `agents/openai.yaml`) can never be called by another skill.** Only `setup-github-agent-workflow` is user-invoked. Group skills dispatch to item skills, so everything else must be model-invoked.
+- **Skills reach each other through the Skill tool, never through paths or links.** "Call the Skill tool with `name`". A skill's own files (`references/`, `scripts/`) are read relative to its `SKILL.md`. Where a skill lives depends on how the package was installed, and installers flatten the buckets.
+- **A user-invoked skill (`disable-model-invocation: true`, with `allow_implicit_invocation: false` in `agents/openai.yaml`) can never be called by another skill.** The guide marks which skills are user-invoked. Group skills dispatch to item skills, so every skill the pipeline calls must be model-invoked.
 - **Nothing repository-specific in `skills/`, `scripts/` or `tests/`.** Per-repo values are inputs a runner passes, not shipped defaults. The validator fails on references to a particular repository.
-- **Shared files live in the skill that owns them.** Everything the skills share is in `agent-workflow-protocol`.
+- **A section a skill cites must exist.** If a skill says "see **X** in the protocol", the protocol has a heading X. The validator checks it.
+- **Shared files live in the skill that owns them.** Everything the skills share is in the protocol skill.
+- **One implementation per behaviour.** Dates, run ids, comment shapes and marker parsing live in the protocol's `scripts/helpers.mjs`. `lib.sh` calls it. `tests/fixtures/markers.json` is run against both.
 
 ## Inputs and defaults
 
-**Every skill has an `## Inputs` section.** It names the inputs the skill accepts, in two interchangeable forms: **key-value pairs** (`key=value` on a line of its own) and **free text** (whatever the prompt says). It also names the skill's **implicit dependencies**: the tools, skills and repository state it needs that are not inputs.
+**Every skill has an `## Inputs` section.** It names the inputs the skill accepts, in two interchangeable forms: **key-value pairs** (`key=value` on a line of its own) and **free text** (whatever the prompt says). It also names the skill's **implicit dependencies**: the tools, skills and repository state it needs that are not inputs. Every pipeline skill lists `runner` and `unattended`, and every skill that reads markers lists `trusted_authors`.
 
-**There is no config file.** Batch sizes, lease TTLs, limits and repository settings are inputs, each with a default stated in the skill that uses it. `agent-workflow-protocol` holds the shared defaults in its **Defaults** table; `scripts/lib.sh` implements them for the shell. Set a value per run with a key-value pair, or by exporting it before sourcing the library. The validator checks that the three stay in step.
+**There is no config file.** Batch sizes, lease TTLs, limits and repository settings are inputs, each with a default stated in the skill that uses it. The protocol's **Defaults** table holds the shared defaults and names the skills that use each; `scripts/lib.sh` implements them for the shell. Set a value per run with a key-value pair, or by exporting it before sourcing the library. The validator checks that the three agree.
 
-Boilerplate every skill shares lives once in `agent-workflow-protocol`. Do not copy it back into a skill.
+**The runner prompts are generated.** Change an input in a skill's Inputs table, then run `npm run sync`. It rewrites the user-invoked prompts skill's `references/prompts.md` from those tables, and CI fails if it is stale (ADR 0005).
+
+Boilerplate every skill shares lives once in the protocol. Do not copy it back into a skill.
 
 ## Docs
 
-- `README.md`: what the package is, install, inputs.
-- `docs/RUNNERS.md`: what a scheduler needs and how to word its prompt.
+- `README.md`: what the package is, install, inputs. Embeds `docs/lifecycle.svg`.
+- `docs/RUNNERS.md`: what a scheduler needs.
 - `docs/adr/`: design decisions.
 - `skills/*/README.md`: one line per skill.
 
 ## Dependencies
 
-`external-skills.json` lists skills this package needs from elsewhere; `.claude-plugin/plugin.json` declares the plugin dependency.
+`external-skills.json` lists skills this package needs from elsewhere, pinned; `.claude-plugin/plugin.json` declares the plugin dependency.
 
 ## Checks
 
 ```bash
 npm run validate
 npm test
+npm run sync:check
 npm run check-plugin-version
 ```
 

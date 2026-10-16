@@ -6,11 +6,13 @@
   "license": "MIT",
   "scripts": {
     "validate": "node scripts/validate-skills.mjs",
-    "test": "bash tests/lib.test.sh",
+    "test": "bash tests/lib.test.sh && node --test tests/helpers.test.mjs",
     "check-plugin-version": "node scripts/sync-plugin-version.mjs --check",
     "link": "bash scripts/link-skills.sh",
     "changeset": "changeset",
-    "version": "changeset version && node scripts/sync-plugin-version.mjs"
+    "version": "changeset version && node scripts/sync-plugin-version.mjs",
+    "sync": "node scripts/sync.mjs",
+    "sync:check": "node scripts/sync.mjs --check"
   },
   "dependencies": {
     "mattpocock-skills": "1.3.0"

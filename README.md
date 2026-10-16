@@ -2,17 +2,13 @@
 
 Agent skills that run a GitHub repository's issue-to-merge pipeline with nobody at the keyboard. Point a scheduler at one skill per step, and issues flow from "found" to "merged":
 
-```
-explore ──► triage ──► implement ──► shepherd ──► review ──► merged
- files        sorts       opens a      gets it       reviews and
- issues       issues      PR           through CI    merges when safe
-```
+![Lifecycle of an issue from found to merged: Exploring, Triaging, Implementing, Shepherding and Reviewing, with the labels, leases and handoffs each step reads and writes](./docs/lifecycle.svg)
 
 The steps never call each other. They coordinate through GitHub itself: labels, hidden marker comments and a lease on each item, so any step can run at any time, on any schedule, and two runs cannot trip over the same item.
 
 Each step is a pair of skills. A **group skill** selects the work (`/triage-github-issues` looks at every open issue). An **item skill** does the work on one item (`/triage-github-issue 123`). The group skill dispatches to the item skill, so you can also run the item skill by hand on a single issue or PR.
 
-**Start with [`pipeline-guide`](./skills/meta/pipeline-guide/SKILL.md).** It is the map of the steps and which skill to run.
+**Start with [`pipeline-guide`](./skills/meta/pipeline-guide/SKILL.md).** It is the table of contents: which skill to use, and when.
 
 ## Quickstart
 
@@ -24,12 +20,12 @@ Each step is a pair of skills. A **group skill** selects the work (`/triage-gith
    | Step | Prompt |
    |---|---|
    | Exploring | `Run /explore-github-repo on github.com/OWNER/REPO` |
-   | Grooming | `Run /triage-github-issues on github.com/OWNER/REPO` |
+   | Triaging | `Run /triage-github-issues on github.com/OWNER/REPO` |
    | Implementing | `Run /implement-github-issues on github.com/OWNER/REPO` |
    | Shepherding | `Run /shepherd-github-prs on github.com/OWNER/REPO` |
    | Reviewing | `Run /review-github-prs on github.com/OWNER/REPO` |
 
-   The runner owns timing, frequency and triggers (a schedule, a webhook). The skills own what a run does. Add repository settings as key-value inputs on the prompt (see [Inputs and defaults](#inputs-and-defaults)); Exploring browses the live app when one is given. [docs/RUNNERS.md](./docs/RUNNERS.md) covers what a runner needs, copy-paste prompts, and a starting cadence.
+   The runner owns timing, frequency and triggers (a schedule, a webhook). The skills own what a run does. Add repository settings as key-value inputs on the prompt (see [Inputs and defaults](#inputs-and-defaults)); Exploring browses the live app when one is given. Run `/runner-prompts` for the full prompt of every skill, with all its inputs. [docs/RUNNERS.md](./docs/RUNNERS.md) covers what a runner needs and a starting cadence.
 
 ## Skills
 
@@ -37,9 +33,10 @@ Each step is a pair of skills. A **group skill** selects the work (`/triage-gith
 
 Cross-cutting skills that support the pipeline but are not steps themselves.
 
-- **[pipeline-guide](./skills/meta/pipeline-guide/SKILL.md)**: Map of the steps and which skill to run. **Start here.**
-- **[agent-workflow-protocol](./skills/meta/agent-workflow-protocol/SKILL.md)**: Shared rules (leases, markers, labels, handoffs, escalation, run log, defaults, degraded/no-shell path). Every other skill reads it first.
+- **[pipeline-guide](./skills/meta/pipeline-guide/SKILL.md)**: Table of contents: which skill to use, and when. **Start here.**
+- **[agent-workflow-protocol](./skills/meta/agent-workflow-protocol/SKILL.md)**: Shared rules (group and item skills, leases, markers, trust, labels, handoffs, escalation, run log, defaults, degraded/no-shell path). Every other skill reads it.
 - **[setup-github-agent-workflow](./skills/meta/setup-github-agent-workflow/SKILL.md)**: One-time repository setup. User-invoked.
+- **[runner-prompts](./skills/meta/runner-prompts/SKILL.md)**: Ready-to-paste scheduler prompts for every pipeline skill. User-invoked.
 
 ### GitHub workflow ([skills/pipeline](./skills/pipeline/README.md))
 
@@ -90,60 +87,17 @@ Every skill takes its inputs two ways, mixed freely in one prompt:
 - **Key-value pairs**, `key=value` on a line of its own (for example `app_url=https://staging.example.com` or `issue=123`).
 - **Free text**, which each skill knows how to read: a URL or bare number, a sentence describing what you want done.
 
-**There is no config file.** Each skill has an `## Inputs` section listing everything it takes (including implicit dependencies) and the default for every value where one is sensible. `agent-workflow-protocol` collects the shared defaults:
+**There is no config file.** Each skill has an `## Inputs` section listing everything it takes (including implicit dependencies) and the default for every value where one is sensible. The shared defaults are collected in the **Defaults** table of [`agent-workflow-protocol`](./skills/meta/agent-workflow-protocol/SKILL.md), and `scripts/lib.sh` implements them for a shell. `npm run validate` checks that the three agree. Leave an input out and its default applies.
 
-| Input | Default |
-|---|---|
-| `app_url` | *(none)* |
-| `issues_per_run` | `5` |
-| `log_lookback_days` | `14` |
-| `dedupe_closed_days` | `30` |
-| `pr_base_branch` | `main` |
-| `merge_method` | `squash` |
-| `human_reviewer` | *(none)* |
-| `build_cmd` | *(none)* |
-| `git_hooks_path` | *(none)* |
-| `repo_guidance` | `AGENTS.md` |
-| `lease_ttl_triage` | `1 hour` |
-| `lease_ttl_implement` | `3 hours` |
-| `lease_ttl_pr` | `1 hour` |
-| `groom_batch` | `5` |
-| `implement_batch` | `1` |
-| `shepherd_batch` | `3` |
-| `review_batch` | `3` |
-| `max_shepherd_attempts` | `3` |
-| `max_review_rounds` | `3` |
-| `max_item_failures` | `3` |
+`groom_batch` and `issues_per_run` were renamed `triage_batch` and `explore_batch`. The old names still work until the next major version.
 
-Leave an input out and its default applies. For a runner with a shell, `scripts/lib.sh` implements the same defaults and honours an exported override.
+## Security
 
-## Layout
+This pipeline merges code with nobody watching, and anyone can comment on a public issue. So the skills treat issue, PR and comment text as data, never as instructions, and they believe a lease, handoff or failure marker only when a repository owner, member or collaborator, the agent's own account, or a login in `trusted_authors` wrote it. A marker from anyone else is ignored. If the agent runs as a GitHub App, put its bot login in `trusted_authors`. See **Trust** in the protocol, and [ADR 0006](./docs/adr/0006-trust-boundary-for-markers.md).
 
-```
-.claude-plugin/        plugin.json (skills, dependencies) and marketplace.json
-skills/
-  meta/                pipeline-guide, agent-workflow-protocol, setup-github-agent-workflow
-  pipeline/            five steps: group + item skill each
-  utility/             unattended-triage, grill-via-github-comments, merge-safety
-scripts/               link-skills.sh, validate-skills.mjs, sync-plugin-version.mjs
-tests/                 shell helpers against a stub gh
-docs/RUNNERS.md        scheduler needs, copy-paste prompts, cadence
-docs/adr/              design decisions
-external-skills.json   skills needed from elsewhere
-```
+## Contributing
 
-Skills live exactly three levels deep: `skills/<bucket>/<skill>/SKILL.md`. Harnesses discover by directory name; the `name` in frontmatter must match the directory.
-
-## Development
-
-```bash
-npm install
-npm run validate               # structure, front matter, references, manifest, READMEs, inputs
-npm test                       # shell helpers against a stub gh
-npm run check-plugin-version
-```
-
-See [AGENTS.md](./AGENTS.md) for conventions, and [docs/adr](./docs/adr) for why the package is built this way.
+Skills live exactly three levels deep: `skills/<bucket>/<skill>/SKILL.md`. See [AGENTS.md](./AGENTS.md) for conventions and the checks to run (`npm run validate`, `npm test`, `npm run sync:check`), and [docs/adr](./docs/adr) for why the package is built this way.
 
 ## Credits and licence
 
