@@ -13,11 +13,15 @@
 //   - `references/...` and `scripts/...` paths exist in the skill, or in agent-workflow-protocol
 //   - relative markdown links resolve
 //   - nothing repository-specific has leaked into skills/, scripts/ or tests/
+//   - every section a skill cites ("**Trust** in the protocol", "its **X** section") exists
+//   - the protocol's Defaults table names exactly the skills that list each input
 // Package-wide:
 //   - .claude-plugin/plugin.json lists exactly the promoted skills
 //   - bucket READMEs and the root README link every skill
+//   - generated files (plugin.json skills, runner prompts) are current (`node scripts/sync.mjs --check`)
 
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { spawnSync } from "node:child_process";
 import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -221,6 +225,55 @@ if (protocol) {
   }
 }
 
+// ---- cited sections exist --------------------------------------------------------------------
+// "see **Trust** in the protocol", "(its **Triaging's check** section)": a skill that cites a heading
+// that is not there sends the reader nowhere. Earlier refactors deleted sections that skills still cited.
+const headingsOf = (text) =>
+  new Set([...text.matchAll(/^#{1,4}\s+(.+?)\s*$/gm)].map((m) => m[1].replace(/[`*]/g, "").trim().toLowerCase()));
+if (protocol) {
+  const protocolHeadings = headingsOf(read(protocol.md));
+  const scan = (where, text) => {
+    for (const [, group] of text.matchAll(/((?:\*\*[^*\n]+\*\*[\s,]*(?:and\s+|or\s+)?)+)(?:section\s+)?(?:in|of) the protocol/g)) {
+      for (const [, name] of group.matchAll(/\*\*([^*\n]+)\*\*/g)) {
+        if (!protocolHeadings.has(name.trim().toLowerCase())) err(where, `cites **${name}** in the protocol, which has no such heading`);
+      }
+    }
+    for (const [, file, name] of text.matchAll(/`references\/([A-Za-z0-9_.-]+\.md)`\s*\(its \*\*([^*\n]+)\*\* section\)/g)) {
+      const f = join(protocol.dir, "references", file);
+      if (existsSync(f) && !headingsOf(read(f)).has(name.trim().toLowerCase())) err(where, `cites **${name}** in references/${file}, which has no such heading`);
+    }
+  };
+  for (const s of skills) {
+    scan(s.rel, s.body);
+    for (const f of existsSync(join(s.dir, "references")) ? readdirSync(join(s.dir, "references")) : []) {
+      if (f.endsWith(".md")) scan(`${s.rel}/references/${f}`, read(join(s.dir, "references", f)));
+    }
+  }
+}
+
+// ---- the Defaults table names the skills that use each input -----------------------------------
+if (protocol) {
+  const protocolBody = read(protocol.md);
+  const usedBy = new Map(); // input -> Set of skill names, as the Defaults table says
+  for (const m of protocolBody.matchAll(/^\|\s*`([a-z][a-z0-9_]*)`\s*\|[^|]*\|\s*([^|]*)\|\s*$/gm)) {
+    usedBy.set(m[1], new Set([...m[2].matchAll(/`([^`]+)`/g)].map((x) => x[1])));
+  }
+  for (const [input, names] of usedBy) {
+    for (const n of names) {
+      const target = byName.get(n);
+      if (!target) { err(`${protocol.rel}/SKILL.md`, `Defaults row \`${input}\` names \`${n}\`, which is not a skill in this package`); continue; }
+      const section = inputSection(target.body);
+      if (section === null || !section.includes("`" + input + "`")) err(target.rel, `Defaults table says it uses \`${input}\`, but its Inputs section does not list it`);
+    }
+  }
+  for (const s of skills.filter((x) => x.promoted && x.name !== PROTOCOL)) {
+    const section = inputSection(s.body) ?? "";
+    for (const [, key] of section.matchAll(/^\|\s*`([a-z][a-z0-9_]*)`\s*\|/gm)) {
+      if (usedBy.has(key) && !usedBy.get(key).has(s.name)) err(`${protocol.rel}/SKILL.md`, `Defaults row \`${key}\` does not list \`${s.name}\`, whose Inputs section has it`);
+    }
+  }
+}
+
 // ---- plugin manifest -----------------------------------------------------
 const pluginPath = join(root, ".claude-plugin", "plugin.json");
 if (existsSync(pluginPath)) {
@@ -240,6 +293,12 @@ for (const s of skills.filter((x) => x.promoted)) {
   const bucketReadme = join(root, "skills", s.bucket, "README.md");
   if (!existsSync(bucketReadme)) err(`skills/${s.bucket}`, "missing README.md");
   else if (!read(bucketReadme).includes(`](./${s.name}/SKILL.md)`)) err(`skills/${s.bucket}/README.md`, `does not link ./${s.name}/SKILL.md`);
+}
+
+// ---- generated files are current ------------------------------------------------------------------
+{
+  const r = spawnSync(process.execPath, [join(root, "scripts", "sync.mjs"), "--check"], { encoding: "utf8" });
+  if (r.status !== 0) for (const line of (r.stderr || r.stdout).trim().split("\n")) err("generated files", line);
 }
 
 // ---- report --------------------------------------------------------------

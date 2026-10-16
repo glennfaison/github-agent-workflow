@@ -1,6 +1,6 @@
 # The runner doc stays in step with the pipeline skills
 
-Status: accepted
+Status: superseded by [ADR 0005](./0005-runner-prompts-skill.md)
 
 `docs/RUNNERS.md` tells a scheduler what to run, and its prompt blocks are ready to paste: one per pipeline skill, listing every input that skill takes with its default as the value. Those facts — input names, defaults, which skill does what — live canonically in each skill's **Inputs** section, the **Defaults** table in `agent-workflow-protocol`, and `scripts/lib.sh`, which implements them. The doc is therefore a derived view, and a derived view drifts: a block kept after an input is renamed, or prose kept after a skill's behaviour changes, sends a runner a stale prompt. `scripts/validate-skills.mjs` keeps the skill side honest — Inputs sections, Defaults table and shell library must agree — but it does not read `docs/`, and nothing obliges an edit on one side to open the other.
 

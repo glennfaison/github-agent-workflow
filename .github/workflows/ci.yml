@@ -26,7 +26,7 @@ jobs:
       - name: Check plugin version
         run: npm run check-plugin-version
 
-      - name: Test shell helpers
+      - name: Test shell helpers and JS reference
         run: npm test
 
       - name: Check that the link script is idempotent

@@ -1,0 +1,5 @@
+interface:
+  display_name: "Runner Prompts"
+  short_description: "Copy-paste scheduler prompts for every pipeline skill"
+policy:
+  allow_implicit_invocation: false
