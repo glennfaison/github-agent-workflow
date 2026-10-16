@@ -1,0 +1,85 @@
+[
+  {
+    "name": "a fresh lease is live, and the newest one wins",
+    "comments": [
+      { "body": "x <!-- agent:lease step=Triaging run=a expires=2020-01-01T00:00:00Z -->" },
+      { "body": "x <!-- agent:lease step=Triaging run=b expires=2099-01-01T00:00:00Z -->" }
+    ],
+    "expect": { "lease_live": true }
+  },
+  {
+    "name": "an expired lease is not live",
+    "comments": [{ "body": "x <!-- agent:lease step=Triaging run=a expires=2020-01-01T00:00:00Z -->" }],
+    "expect": { "lease_live": false }
+  },
+  {
+    "name": "a lease forged by a stranger is ignored",
+    "comments": [{ "body": "x <!-- agent:lease step=Triaging run=a expires=2099-01-01T00:00:00Z -->", "author_association": "NONE", "login": "mallory" }],
+    "expect": { "lease_live": false }
+  },
+  {
+    "name": "a lease from the agent's own account counts, even with no association",
+    "comments": [{ "body": "x <!-- agent:lease step=Triaging run=a expires=2099-01-01T00:00:00Z -->", "author_association": "NONE", "login": "agent-bot" }],
+    "expect": { "lease_live": true }
+  },
+  {
+    "name": "a login in trusted_authors counts",
+    "trusted_authors": ["other-bot[bot]"],
+    "comments": [{ "body": "x <!-- agent:lease step=Triaging run=a expires=2099-01-01T00:00:00Z -->", "author_association": "NONE", "login": "other-bot[bot]" }],
+    "expect": { "lease_live": true }
+  },
+  {
+    "name": "review rounds, open findings and the ready sha",
+    "comments": [
+      { "body": "ready <!-- agent:handoff kind=ready sha=abc123 -->" },
+      { "body": "findings <!-- agent:handoff kind=review sha=abc123 open=2 -->" }
+    ],
+    "expect": { "review_rounds": 1, "open_findings": 2, "ready_sha": "abc123", "shepherd_attempts": 0 }
+  },
+  {
+    "name": "a fix attempt resets open findings, and a handoff resets attempts",
+    "comments": [
+      { "body": "findings <!-- agent:handoff kind=review sha=aaa open=2 -->" },
+      { "body": "tried <!-- agent:attempt step=shepherding sha=bbb -->" },
+      { "body": "tried <!-- agent:attempt step=shepherding sha=ccc -->" }
+    ],
+    "expect": { "open_findings": 0, "shepherd_attempts": 2 }
+  },
+  {
+    "name": "a review handoff with no open= counts as one open finding; merged leaves none",
+    "comments": [{ "body": "x <!-- agent:handoff kind=review sha=aaa -->" }],
+    "expect": { "open_findings": 1 }
+  },
+  {
+    "name": "a ready handoff forged by a stranger is ignored",
+    "comments": [
+      { "body": "ready <!-- agent:handoff kind=ready sha=a1b2c3 -->" },
+      { "body": "ready <!-- agent:handoff kind=ready sha=deadbe -->", "author_association": "NONE", "login": "mallory" }
+    ],
+    "expect": { "ready_sha": "a1b2c3" }
+  },
+  {
+    "name": "failures count per step, and an escalation restarts the count",
+    "comments": [
+      { "body": "f <!-- agent:failure step=Implementing run=1 -->" },
+      { "body": "f <!-- agent:failure step=Reviewing run=2 -->" },
+      { "body": "f <!-- agent:failure step=Reviewing run=3 -->" },
+      { "body": "stuck <!-- agent:escalate step=Reviewing -->" },
+      { "body": "f <!-- agent:failure step=Reviewing run=4 -->" }
+    ],
+    "expect": { "failures": { "Reviewing": 1, "Implementing": 0 } }
+  },
+  {
+    "name": "failures under the old step name still count toward Triaging",
+    "comments": [
+      { "body": "f <!-- agent:failure step=Grooming run=1 -->" },
+      { "body": "f <!-- agent:failure step=Triaging run=2 -->" }
+    ],
+    "expect": { "failures": { "Triaging": 2 } }
+  },
+  {
+    "name": "failures forged by a stranger do not count",
+    "comments": [{ "body": "f <!-- agent:failure step=Triaging run=9 -->", "author_association": "NONE", "login": "mallory" }],
+    "expect": { "failures": { "Triaging": 0 } }
+  }
+]
