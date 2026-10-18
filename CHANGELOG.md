@@ -1,5 +1,11 @@
 # github-agent-workflow
 
+## 1.4.1
+
+### Patch Changes
+
+- 794561d: Document Exploring preflight and explicit degraded mode when node_modules / Playwright are missing.
+
 ## 1.4.0
 
 ### Minor Changes
