@@ -167,5 +167,5 @@ test('isCompliantBranchName matches the prs_for_issue branch heuristic', () => {
   assert.equal(h.isCompliantBranchName('24-feature-x', 24), false, 'no type prefix');
   assert.equal(h.isCompliantBranchName('feature/N-topic', 24), false);
   assert.equal(h.isCompliantBranchName('', 24), false);
-  assert.equal(h.branchNamePattern(7).source, '^[a-z]+/7-[a-z0-9]+(?:-[a-z0-9]+)*$');
+  assert.equal(h.branchNamePattern(7).source, '^[a-z]+\\/7-[a-z0-9]+(?:-[a-z0-9]+)*$');
 });
