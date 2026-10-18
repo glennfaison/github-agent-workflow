@@ -239,12 +239,16 @@ cat > "$STATE/prs.json" <<'J'
 [{"number":50,"state":"OPEN","body":"x\n<!-- agent:implements issue=7 -->","headRefName":"feature/7-foo","closing":[],"authorAssociation":"OWNER","author":{"login":"maintainer"}},
  {"number":51,"state":"MERGED","body":"Closes #8.","headRefName":"bugfix/zzz","closing":[],"authorAssociation":"OWNER","author":{"login":"maintainer"}},
  {"number":52,"state":"CLOSED","body":"nothing","headRefName":"feature/9-bar","closing":[],"authorAssociation":"OWNER","author":{"login":"maintainer"}},
- {"number":53,"state":"OPEN","body":"Closes #70.","headRefName":"feature/x","closing":[],"authorAssociation":"OWNER","author":{"login":"maintainer"}}]
+ {"number":53,"state":"OPEN","body":"Closes #70.","headRefName":"feature/x","closing":[],"authorAssociation":"OWNER","author":{"login":"maintainer"}},
+ {"number":54,"state":"OPEN","title":"Fixes some/repo#80: thing","body":"nothing","headRefName":"x","closing":[],"authorAssociation":"OWNER","author":{"login":"maintainer"}},
+ {"number":55,"state":"OPEN","title":"Implements #81","body":"nothing","headRefName":"x","closing":[],"authorAssociation":"OWNER","author":{"login":"maintainer"}}]
 J
 check "link by marker+branch"  "50 OPEN"   "$(prs_for_issue 7)"
 check "link by Closes text"    "51 MERGED" "$(prs_for_issue 8)"
 check "link by branch only"    "52 CLOSED" "$(prs_for_issue 9)"
 check "#7 must not match #70"  "53 OPEN"   "$(prs_for_issue 70)"
+check "link by title (owner/repo#N)" "54 OPEN" "$(prs_for_issue 80)"
+check "link by title (Implements #N)" "55 OPEN" "$(prs_for_issue 81)"
 check "issue_for_pr (marker)"  7 "$(issue_for_pr 50)"
 check "issue_for_pr (Closes)"  8 "$(issue_for_pr 51)"
 
