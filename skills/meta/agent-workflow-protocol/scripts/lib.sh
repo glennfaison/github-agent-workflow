@@ -192,12 +192,13 @@ ready_sha() {
 # The branch-name and Closes/Fixes/Resolves matches are the same signals GitHub itself uses.
 
 prs_for_issue() {
-  gh pr list --state all --limit 200 --json number,state,body,headRefName,author,authorAssociation \
+  gh pr list --state all --limit 200 --json number,state,title,body,headRefName,author,authorAssociation \
   | jq -r --arg n "$1" "
       .[] | $(_trusted_json_jq) as \$ok
       | select( ((\$ok) and ((.body // \"\") | contains(\"<!-- agent:implements issue=\" + \$n + \" -->\")))
              or (.headRefName | test(\"^[a-z]+/\" + \$n + \"-\"))
-             or ((.body // \"\") | test(\"(?i)(closes|fixes|resolves)\\\\s+#\" + \$n + \"\\\\b\")) )
+             or ((.body // \"\") | test(\"(?i)(closes|fixes|resolves)\\\\s+#\" + \$n + \"\\\\b\"))
+             or ((.title // \"\") | test(\"(?i)(closes|fixes|resolves|implements)\\\\s+(?:[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)?#\" + \$n + \"\\\\b\")) )
       | \"\\(.number) \\(.state)\""
 }
 
