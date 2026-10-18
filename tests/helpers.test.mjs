@@ -154,3 +154,18 @@ test('touchLogIssueBody fills in a legacy body and names the entry', () => {
   assert.deepEqual(h.parseLogIssueBody(body), { started: '2026-10-16T04:25:01Z', rotatesAfter: '2026-10-30T04:25:01Z', lastEntry: '2026-10-17T18:00:00Z' });
   assert.match(body, /\(Triaging, run R9\)/);
 });
+
+test('isCompliantBranchName matches the prs_for_issue branch heuristic', () => {
+  assert.equal(h.isCompliantBranchName('feature/24-refuse-noncompliant-branch-names', 24), true);
+  assert.equal(h.isCompliantBranchName('bugfix/12-login-timeout', 12), true);
+  assert.equal(h.isCompliantBranchName('debt/3-cleanup', 3), true);
+  assert.equal(h.isCompliantBranchName('feature/24-x', 24), true);
+  assert.equal(h.isCompliantBranchName('Feature/24-x', 24), false, 'type must be lowercase');
+  assert.equal(h.isCompliantBranchName('feature/25-x', 24), false, 'wrong issue number');
+  assert.equal(h.isCompliantBranchName('feature/24', 24), false, 'missing slug');
+  assert.equal(h.isCompliantBranchName('feature/24-', 24), false, 'trailing hyphen only');
+  assert.equal(h.isCompliantBranchName('24-feature-x', 24), false, 'no type prefix');
+  assert.equal(h.isCompliantBranchName('feature/N-topic', 24), false);
+  assert.equal(h.isCompliantBranchName('', 24), false);
+  assert.equal(h.branchNamePattern(7).source, '^[a-z]+\\/7-[a-z0-9]+(?:-[a-z0-9]+)*$');
+});

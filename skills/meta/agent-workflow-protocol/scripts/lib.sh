@@ -203,6 +203,10 @@ ready_sha() {
 # ---- Issue <-> PR links ---------------------------------------------------------------
 # The `agent:implements` marker in a PR description counts only when a trusted account wrote the PR.
 # The branch-name and Closes/Fixes/Resolves matches are the same signals GitHub itself uses.
+# Branch pattern (must match helpers.mjs isCompliantBranchName / prs_for_issue heuristic):
+#   ^[a-z]+/<issueNumber>-<kebab-slug>$
+# e.g. feature/24-refuse-noncompliant-branch-names or bugfix/12-login-timeout
+# Implementing must not push a branch that fails this pattern.
 
 prs_for_issue() {
   gh pr list --state all --limit 200 --json number,state,title,body,headRefName,author,authorAssociation \

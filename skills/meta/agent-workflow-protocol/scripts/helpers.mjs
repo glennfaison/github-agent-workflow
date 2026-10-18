@@ -258,7 +258,7 @@ export function hasLogEntry(commentBodies, entryBody) {
 }
 
 /**
- * Make an entry safe to post: real line breaks where a runner wrote the two characters `\n`
+ * Make an entry safe to post: real line breaks where a runner wrote the two characters `\\n`
  * (every line of the entry ran together that way once), and an `at:` time if it has none.
  */
 export function stampLogEntry(body, now = new Date()) {
@@ -395,6 +395,29 @@ export function openFindings(markers) {
 export function readySha(markers) {
   const ready = markers.filter((m) => m.includes('agent:handoff kind=ready'));
   return ready.length ? (ready[ready.length - 1].match(/sha=([0-9a-f]*)/g)?.pop()?.slice(4) ?? '') : '';
+}
+
+/**
+ * Branch names the package accepts for agent work. Must match the heuristic in
+ * `prs_for_issue` (`^[a-z]+/<issueNumber>-…`) so a PR can be linked back to its
+ * issue by branch name. Type is lowercase letters only (feature, bugfix, …);
+ * the rest is a kebab-case slug.
+ *
+ * Example: feature/24-refuse-noncompliant-branch-names
+ */
+export function branchNamePattern(issueNumber) {
+  const n = String(issueNumber).replace(/\D/g, '');
+  if (!n) throw new Error('branchNamePattern: issue number required');
+  return new RegExp(`^[a-z]+/${n}-[a-z0-9]+(?:-[a-z0-9]+)*$`);
+}
+
+/** True when `name` is a compliant branch for issue `issueNumber`. */
+export function isCompliantBranchName(name, issueNumber) {
+  try {
+    return branchNamePattern(issueNumber).test(String(name ?? ''));
+  } catch {
+    return false;
+  }
 }
 
 /**
