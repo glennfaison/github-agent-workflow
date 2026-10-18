@@ -19,6 +19,7 @@ Pick the `agent:ready-for-review` PRs that can be reviewed now, and give each to
 |---|---|---|
 | `review_batch` | `3` | The most PRs this run dispatches before it stops |
 | `runner` | `unknown` | Name recorded in the run id and the run log |
+| `log_window_days` | `14` | Days one run-log issue is appended to before a new one starts |
 | `unattended` | `true` | `true`: no human is present, so never ask (see **Unattended runs** in the protocol). `false`: a human may be asked |
 | `trusted_authors` | *(none)* | Extra GitHub logins whose markers count, comma-separated (see **Trust** in the protocol) |
 

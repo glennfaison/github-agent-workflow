@@ -75,3 +75,82 @@ test('the CLI is what lib.sh calls', () => {
   assert.equal(run('utc-epoch', '2020-01-01T00:00:00Z'), '1577836800');
   assert.throws(() => run('utc-plus', 'soon'));
 });
+
+// ---- run log ----------------------------------------------------------------------------------
+const day = (d) => new Date(`2026-10-${String(d).padStart(2, '0')}T12:00:00Z`);
+
+test('logWindowDays: whole days, otherwise two weeks', () => {
+  assert.deepEqual(['14', '3', ' 7 ', 5].map(h.logWindowDays), [14, 3, 7, 5]);
+  assert.deepEqual(['0', '-2', '1.5', 'two weeks', '', undefined].map(h.logWindowDays), Array(6).fill(14));
+});
+
+test('log issue body round-trips its dates and names the last entry', () => {
+  const body = h.logIssueBody({ startedIso: '2026-10-16T04:25:01Z', rotatesIso: '2026-10-30T04:25:01Z',
+    lastEntry: { at: '2026-10-17T18:33:40Z', step: 'Triaging', runId: 'R1' } });
+  assert.deepEqual(h.parseLogIssueBody(body), { started: '2026-10-16T04:25:01Z', rotatesAfter: '2026-10-30T04:25:01Z', lastEntry: '2026-10-17T18:33:40Z' });
+  assert.match(body, /Last entry:\*\* 2026-10-17T18:33:40Z \(Triaging, run R1\)/);
+  assert.equal(h.parseLogIssueBody(h.logIssueBody({ startedIso: 'a', rotatesIso: 'b' })).lastEntry, null);
+});
+
+test('currentLogIssue: the lowest open window, else null', () => {
+  const legacy = (number, createdAt) => ({ number, createdAt, body: 'Append-only run log. Covers roughly two weeks.' });
+  assert.equal(h.currentLogIssue([legacy(359, '2026-10-16T10:00:00Z'), legacy(357, '2026-10-16T04:00:00Z')], 14, day(18)), 357);
+  assert.equal(h.currentLogIssue([legacy(300, '2026-09-01T00:00:00Z')], 14, day(18)), null);
+  assert.equal(h.currentLogIssue([], 14, day(18)), null);
+  assert.equal(h.currentLogIssue([legacy(357, '2026-10-16T04:00:00Z')], 14, day(31)), null, 'past two weeks');
+  assert.equal(h.currentLogIssue([legacy(357, '2026-10-16T04:00:00Z')], 30, day(31)), 357, 'a longer window keeps it');
+  const own = { number: 5, createdAt: '2026-10-01T00:00:00Z', body: h.logIssueBody({ startedIso: '2026-10-01T00:00:00Z', rotatesIso: '2026-11-01T00:00:00Z' }) };
+  assert.equal(h.currentLogIssue([own], 14, day(18)), 5, 'the issue own Rotates after wins');
+});
+
+test('stampLogEntry adds at:, keeps an existing one, and repairs literal \\n', () => {
+  const now = new Date('2026-10-17T18:00:00Z');
+  const noAt = '```yaml\nstep: A\nrun: R\nrunner: k\noutcome: "x"\nproblems_count: 0\n```\n**Outcome:** x';
+  assert.match(h.stampLogEntry(noAt, now), /runner: k\nat: 2026-10-17T18:00:00Z\noutcome/);
+  const full = h.formatLogComment({ step: 'A', runId: 'R', runner: 'k', outcome: 'x', at: now });
+  assert.equal(h.stampLogEntry(full, new Date()), full);
+  const escaped = '\\n\\n**Step:** B  **Run:** R2  **Runner:** k\\n**Outcome:** y\\n';
+  const fixed = h.stampLogEntry(escaped, now);
+  assert.match(fixed, /^\*\*At:\*\* 2026-10-17T18:00:00Z\n\*\*Step:\*\* B/);
+  assert.ok(!fixed.includes('\\n'));
+});
+
+test('hasLogEntry: one entry per run and step', () => {
+  const e = (step, run) => h.formatLogComment({ step, runId: run, runner: 'k', outcome: 'x' });
+  assert.equal(h.hasLogEntry([e('Triaging', 'R1')], e('Triaging', 'R1')), true);
+  assert.equal(h.hasLogEntry([e('Triaging', 'R1')], e('Triaging', 'R2')), false);
+  assert.equal(h.hasLogEntry([e('Triaging', 'R1')], e('Reviewing', 'R1')), false);
+  assert.equal(h.hasLogEntry([e('Triaging', 'R1')], 'no header at all'), false);
+});
+
+test('formatLogComment: at:, and both Problems and Things to improve unless idle', () => {
+  const at = new Date('2026-10-17T18:00:00Z');
+  const work = h.formatLogComment({ step: 'Triaging', runId: 'R', runner: 'k', outcome: '1 triaged', at });
+  assert.match(work, /^at: 2026-10-17T18:00:00Z$/m);
+  assert.match(work, /\*\*Problems:\*\* none\n\*\*Things to improve:\*\* none/);
+  const idle = h.formatLogComment({ step: 'Triaging', runId: 'R', runner: 'k', outcome: 'nothing eligible', at });
+  assert.ok(!idle.includes('Problems') && !idle.includes('Things to improve'));
+  assert.match(h.formatLogComment({ step: 'A', runId: 'R', runner: 'k', outcome: 'x', automation: 'script it', at }), /Things to improve:\*\* script it/);
+});
+
+test('isIdleEntry and readableLogEntries', () => {
+  const idle = h.formatLogComment({ step: 'Triaging', runId: 'R', runner: 'k', outcome: 'nothing eligible' });
+  assert.equal(h.isIdleEntry(idle), true);
+  assert.equal(h.isIdleEntry('**Outcome:** nothing eligible\n**Problems:** none\n**Things to improve:** none'), true);
+  assert.equal(h.isIdleEntry('**Outcome:** nothing eligible\n**Problems:** failed: #4 x'), false);
+  assert.equal(h.isIdleEntry('**Outcome:** nothing eligible\n**Things to improve:** script it'), false);
+  assert.equal(h.isIdleEntry('**Outcome:** 1 merged'), false);
+  const got = h.readableLogEntries([
+    { body: idle, createdAt: '2026-10-17T00:00:00Z' },
+    { body: '**Outcome:** 1 merged', createdAt: '2026-10-17T00:00:00Z' },
+    { body: '**Outcome:** 1 merged (old)', createdAt: '2026-01-01T00:00:00Z' },
+  ], '2026-10-01T00:00:00Z');
+  assert.deepEqual(got, ['**Outcome:** 1 merged']);
+});
+
+test('touchLogIssueBody fills in a legacy body and names the entry', () => {
+  const entry = h.formatLogComment({ step: 'Triaging', runId: 'R9', runner: 'k', outcome: 'x', at: new Date('2026-10-17T18:00:00Z') });
+  const body = h.touchLogIssueBody({ body: 'old', createdAt: '2026-10-16T04:25:01Z' }, entry, 14);
+  assert.deepEqual(h.parseLogIssueBody(body), { started: '2026-10-16T04:25:01Z', rotatesAfter: '2026-10-30T04:25:01Z', lastEntry: '2026-10-17T18:00:00Z' });
+  assert.match(body, /\(Triaging, run R9\)/);
+});

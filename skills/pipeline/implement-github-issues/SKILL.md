@@ -19,6 +19,7 @@ Pick the `ready-for-agent` issues that an agent can start now, and give each to 
 |---|---|---|
 | `implement_batch` | `1` | The most issues this run dispatches before it stops |
 | `runner` | `unknown` | Name recorded in the run id and the run log |
+| `log_window_days` | `14` | Days one run-log issue is appended to before a new one starts |
 | `unattended` | `true` | `true`: no human is present, so never ask (see **Unattended runs** in the protocol). `false`: a human may be asked |
 | `trusted_authors` | *(none)* | Extra GitHub logins whose markers count, comma-separated (see **Trust** in the protocol) |
 

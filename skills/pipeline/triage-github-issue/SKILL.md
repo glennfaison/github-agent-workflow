@@ -24,6 +24,7 @@ Make one issue ready for an agent to implement, or route it to a human.
 | `max_item_failures` | `3` | Failed runs of one step on one item before it is escalated |
 | `dedupe_closed_days` | `30` | The "recently closed" window the duplicate search runs over |
 | `runner` | `unknown` | Name recorded in the run id and the run log |
+| `log_window_days` | `14` | Days one run-log issue is appended to before a new one starts |
 | `unattended` | `true` | `true`: no human is present, so never ask (see **Unattended runs** in the protocol). `false`: a human may be asked |
 | `trusted_authors` | *(none)* | Extra GitHub logins whose markers count, comma-separated (see **Trust** in the protocol) |
 
@@ -31,7 +32,7 @@ Make one issue ready for an agent to implement, or route it to a human.
 
 ## Eligibility
 
-- `N` is an open issue with **none** of: `ready-for-agent`, `ready-for-human`, `needs-info`, `agent:pr-open`, `agent:stuck`, `agent:log`. A human takes an issue out of `needs-info` by removing the label after answering; from then on it is eligible like any other.
+- `N` is an open issue with **none** of: `ready-for-agent`, `ready-for-human`, `needs-info`, `agent:pr-open`, `agent:stuck`, `agent:log`, `agent:difficulty`. A human takes an issue out of `needs-info` by removing the label after answering; from then on it is eligible like any other.
 - `needs-triage` does not exclude it. It means an earlier pass did not finish.
 - If it carries `agent:triage` or `agent:in-progress` and `lease_live N` succeeds, someone has it: skip. A lease label with no live lease does not count.
 

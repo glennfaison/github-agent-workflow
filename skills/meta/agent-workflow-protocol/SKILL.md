@@ -15,7 +15,7 @@ The workflow has five steps: Exploring, Triaging, Implementing, Shepherding, Rev
 
 **Item skills** take exactly one issue or PR, as a URL or a number (`N` is the last path segment of a URL). Every item skill has the same frame, and its own **Process** fills in the middle:
 
-1. **Eligibility.** Check it yourself, so a direct call or a double dispatch is safe. If it fails, claim nothing and return `#N skipped: <reason>`.
+1. **Eligibility.** Check it yourself, so a direct call or a double dispatch is safe. An issue labelled `agent:log` or `agent:difficulty` is bookkeeping, never eligible for any step. If it fails, claim nothing and return `#N skipped: <reason>`.
 2. **Claim.** `claim N issue|pr LABEL STEP TTL` (the step's lease TTL). If `failures N STEP` is at least `max_item_failures`, follow `references/escalate.md` and stop.
 3. **Work.** The skill's own steps.
 4. **Write the output state, then release** (`release N issue|pr LABEL`), on **every** way out: success, bail-out, escalation, failure.
@@ -44,11 +44,11 @@ Every skill lists its inputs in an **`## Inputs`** section. Two forms are accept
 
 A key-value pair and free text that name the same thing resolve to the pair. An input a skill does not list is ignored, not an error.
 
-**Common inputs.** Every pipeline skill lists `runner` and `unattended`, and every skill that reads markers lists `trusted_authors`, in its own Inputs table. They mean the same everywhere: `runner` is the name recorded in the run id and the run log; `unattended` says whether a human is present (**Unattended runs**); `trusted_authors` extends **Trust**.
+**Common inputs.** Every pipeline skill lists `runner` and `unattended`, and every skill that reads markers lists `trusted_authors`, in its own Inputs table. They mean the same everywhere: `runner` is the name recorded in the run id and the run log; `unattended` says whether a human is present (**Unattended runs**); `trusted_authors` extends **Trust**. Every pipeline skill that writes a run-log entry also lists `log_window_days`, so all steps agree on when a log issue rotates.
 
 **Durations** (`lease_ttl_*`) take `1 hour`, `3 hours`, `30m`, `2d` or ISO 8601 (`PT1H`).
 
-**Renamed inputs.** `groom_batch` is now `triage_batch` and `issues_per_run` is now `explore_batch`. The old names are still read when the new one is not set, and will be dropped in the next major version.
+**Renamed inputs.** `groom_batch` is now `triage_batch`, `issues_per_run` is now `explore_batch` and `log_lookback_days` is now `log_window_days`. The old names are still read when the new one is not set, and will be dropped in the next major version.
 
 ## Defaults
 
@@ -58,7 +58,7 @@ A key-value pair and free text that name the same thing resolve to the pair. An 
 |---|---|---|
 | `app_url` | *(none)* | `explore-github-repo` |
 | `explore_batch` | `5` | `explore-github-repo` |
-| `log_lookback_days` | `14` | `explore-github-repo` |
+| `log_window_days` | `14` | `explore-github-repo`, `triage-github-issues`, `triage-github-issue`, `implement-github-issues`, `implement-github-issue`, `shepherd-github-prs`, `shepherd-github-pr`, `review-github-prs`, `review-github-pr` |
 | `dedupe_closed_days` | `30` | `file-github-issues`, `triage-github-issue` |
 | `pr_base_branch` | `main` | `implement-github-issue`, `review-github-pr` |
 | `merge_method` | `squash` | `review-github-pr` |
@@ -166,7 +166,7 @@ Hidden HTML comments make state readable without parsing prose. Append them as t
 | `failures N STEP` | failed runs of STEP on N since the last escalation |
 | `open_findings N` | review findings still open on a PR (0 if none) |
 | `ready_sha N` | head SHA recorded by the newest trusted `kind=ready` handoff |
-| `log_issue`, `log_run FILE`, `read_logs DAYS` | see `references/log.md` |
+| `log_issue`, `log_run FILE`, `log_status`, `read_logs DAYS` | see `references/log.md` |
 
 ## Inputs
 
@@ -183,6 +183,6 @@ This skill is reference material: it is never run, so it takes **no inputs** of 
 | `references/escalate.md` | when and how to give an item to a human |
 | `references/dedupe.md` | duplicate search and the canonical-issue rule |
 | `references/issue-format.md` | well-formed issue contents and Triaging's check |
-| `references/log.md` | run-log issue and entry format (about two weeks) |
+| `references/log.md` | run-log issue, its window and last-entry line, and the entry format |
 | `scripts/lib.sh` | shell helpers and default values |
 | `scripts/helpers.mjs` | the single implementation of dates, run ids, comment shapes, marker parsing and trust; also the no-shell reference |
