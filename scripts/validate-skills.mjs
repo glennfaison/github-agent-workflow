@@ -141,6 +141,16 @@ for (const s of skills) {
   }
 }
 // reference docs too
+// Bookkeeping issues: a skill that excludes agent:log from work selection must exclude
+// agent:difficulty too. Triage once skipped the second and treated difficulty issues as work.
+for (const s of skills) {
+  s.body.split("\n").forEach((line, i) => {
+    if (line.includes("agent:log") && !line.includes("agent:difficulty") && /none of|IN\(/.test(line)) {
+      err(relative(root, join(s.dir, "SKILL.md")), `line ${i + 1} excludes agent:log but not agent:difficulty`);
+    }
+  });
+}
+
 for (const s of skills) {
   for (const f of existsSync(join(s.dir, "references")) ? readdirSync(join(s.dir, "references")) : []) {
     const text = read(join(s.dir, "references", f));

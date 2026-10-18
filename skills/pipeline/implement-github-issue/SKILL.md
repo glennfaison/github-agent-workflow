@@ -27,6 +27,7 @@ Implement one `ready-for-agent` issue and open a PR. Getting the PR through chec
 | `lease_ttl_implement` | `3 hours` | How long the Implementing lease stays valid without a renewal |
 | `max_item_failures` | `3` | Failed runs of one step on one item before it is escalated |
 | `runner` | `unknown` | Name recorded in the run id and the run log |
+| `log_window_days` | `14` | Days one run-log issue is appended to before a new one starts |
 | `unattended` | `true` | `true`: no human is present, so never ask (see **Unattended runs** in the protocol). `false`: a human may be asked |
 | `trusted_authors` | *(none)* | Extra GitHub logins whose markers count, comma-separated (see **Trust** in the protocol) |
 

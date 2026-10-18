@@ -13,7 +13,7 @@
 #          markers review_rounds shepherd_attempts failures    reading markers
 #          open_findings ready_sha fail_item                   handoffs and failures
 #          prs_for_issue issue_for_pr                          issue <-> PR links
-#          log_issue log_run difficulty_issue read_logs        run log
+#          log_issue log_run log_status read_logs              run log
 # Every marker is read through trusted_jq / _trusted_logins: a marker written by an account that is
 # not trusted (see "Trust" in ../SKILL.md) is ignored.
 
@@ -24,7 +24,7 @@ AGENT_ROOT="$(git rev-parse --show-toplevel)"
 # ---- Defaults ---------------------------------------------------------------
 : "${app_url:=}"
 : "${explore_batch:=${issues_per_run:-5}}"      # issues_per_run is the deprecated name
-: "${log_lookback_days:=14}"
+: "${log_window_days:=${log_lookback_days:-14}}"  # log_lookback_days is the deprecated name
 : "${dedupe_closed_days:=30}"
 : "${pr_base_branch:=main}"
 : "${merge_method:=squash}"
@@ -54,7 +54,7 @@ fi
 _config_pairs="
 app_url:APP_URL
 explore_batch:EXPLORE_BATCH
-log_lookback_days:LOG_LOOKBACK_DAYS
+log_window_days:LOG_WINDOW_DAYS
 dedupe_closed_days:DEDUPE_CLOSED_DAYS
 pr_base_branch:PR_BASE_BRANCH
 merge_method:MERGE_METHOD
@@ -210,57 +210,78 @@ issue_for_pr() {
 }
 
 # ---- Run log -------------------------------------------------------------------------
+# One open agent:log issue at a time, appended to until its window (log_window_days) ends. Which
+# issue is current, the issue body and the entry stamping all come from helpers.mjs, so this file
+# and a runner with no shell cannot disagree. Details: ../references/log.md.
+# gh's --jq takes exactly one expression and has no --arg. Pass it nothing else: an earlier version
+# did, the lookup failed silently every time, and every run opened a new log issue.
 
+_log_issues() { gh issue list --label agent:log --state open --limit 30 --json number,createdAt,body; }
+
+# The number of the log issue to append to. Creates one only when no open window exists.
 log_issue() {
-  local title n cutoff
-  cutoff=$(utc_plus "-14 days")
-  n=$(gh issue list --label agent:log --state open --limit 5 --json number,createdAt \
-        --jq --arg c "$cutoff" '[.[] | select(.createdAt >= $c)] | sort_by(.number) | .[0].number // empty')
+  local win n mine now
+  win=$(node "$AGENT_HELPERS" log-window "$log_window_days") || return 1
+  n=$(_log_issues | node "$AGENT_HELPERS" log-current "$win") || return 1
   if [ -z "$n" ]; then
-    title="Agent log $(date -u +%Y-%m-%d)"
-    n=$(gh issue create --title "$title" --label agent:log \
-          --body "Append-only run log: one comment per run. Covers roughly two weeks. Excluded from every workflow step." \
-        | grep -o '[0-9]*$')
+    now=$(utc_plus "0s")
+    gh label create "agent:log" --color C5DEF5 --description "Agent run log" >/dev/null 2>&1 || true
+    mine=$(gh issue create --title "$(node "$AGENT_HELPERS" log-title)" --label agent:log \
+             --body "$(node "$AGENT_HELPERS" log-body "$now" "$(utc_plus "$win days")")" \
+           | grep -o '[0-9]*$' | tail -n1) || true
+    [ -n "$mine" ] || { echo "log_issue: could not create the log issue" >&2; return 1; }
+    n=$mine
+    # Two runs can start in the same second and both create one. The lowest number wins and the
+    # other run closes its own, so every later run appends to the same issue.
+    local lowest
+    lowest=$(_log_issues | node "$AGENT_HELPERS" log-current "$win") || lowest=
+    if [ -n "$lowest" ] && [ "$lowest" -lt "$mine" ]; then
+      gh issue close "$mine" --reason "not planned" \
+        --comment "Duplicate of #$lowest: there is one run log per window." >/dev/null 2>&1 || true
+      n=$lowest
+    fi
   fi
   echo "$n"
 }
 
+_log_has_entry() { # N FILE -> yes|no: this run and step already have an entry on log issue N
+  gh api "repos/{owner}/{repo}/issues/$1/comments" --paginate --jq '.[].body | @json' \
+    | node "$AGENT_HELPERS" log-has-entry "$2"
+}
+
+# Post FILE as this run's entry on the current log issue, then bring the issue body's "Last entry"
+# up to date. Safe to run twice: one entry per run and step. Difficulties are part of the entry
+# (Problems, Things to improve); there is no separate difficulty issue.
 log_run() {
-  local file=$1 body step diff_n
-  gh issue comment "$(log_issue)" --body-file "$file" >/dev/null
-  body=$(cat "$file")
-  echo "$body" | grep -q '\*\*Problems:\*\*' || return 0
-  echo "$body" | awk '/\*\*Problems:\*\*/{p=$0; sub(/.*\*\*Problems:\*\*[[:space:]]*/,"",p); if(length(p)==0) exit 1}' || return 0
-  step=$(echo "$body" | sed -n 's/.*\*\*Step:\*\*[[:space:]]*\([^[:space:]]*\).*/\1/p' | head -1)
-  if [ -z "$step" ]; then
-    step=$(echo "$body" | awk '/^```ya?ml$/{f=1;next} /^```$/{f=0} f && /^step:/{sub(/^step:[[:space:]]*/,""); print; exit}')
+  local file=$1 n entry
+  [ -f "$file" ] || { echo "log_run: no such file: $file" >&2; return 1; }
+  n=$(log_issue) || return 1
+  [ -n "$n" ] || { echo "log_run: no log issue" >&2; return 1; }
+  if [ "$(_log_has_entry "$n" "$file")" = yes ]; then return 0; fi
+  entry=$(mktemp) || return 1
+  if ! { node "$AGENT_HELPERS" log-stamp < "$file" > "$entry" && gh issue comment "$n" --body-file "$entry" >/dev/null; }; then
+    rm -f "$entry"; return 1
   fi
-  [ -n "$step" ] || return 0
-  diff_n=$(difficulty_issue "$step")
-  [ -n "$diff_n" ] || return 0
-  gh issue comment "$diff_n" --body-file "$file" >/dev/null
+  if gh issue view "$n" --json body,createdAt | node "$AGENT_HELPERS" log-touch "$entry" "$log_window_days" > "$entry.body"; then
+    gh issue edit "$n" --body-file "$entry.body" >/dev/null || echo "log_run: posted, but could not update issue #$n" >&2
+  fi
+  rm -f "$entry" "$entry.body"
 }
 
-difficulty_issue() {
-  local step=$1 title n
-  title="Agent difficulties: $step"
-  n=$(gh issue list --label agent:difficulty --state open --search "\"$title\" in:title" \
-        --json number,title --jq --arg t "$title" '.[] | select(.title==$t) | .number' | head -1)
-  if [ -z "$n" ]; then
-    n=$(gh issue create --title "$title" --label agent:difficulty \
-          --body "Difficulties encountered by the $step step. One comment per run that reported **Problems**. Rotate on a ~2 week cadence like the run log." \
-        | grep -o '[0-9]*$')
-  fi
-  echo "$n"
+# When the current log issue last got an entry, and when it rotates. Creates nothing.
+log_status() {
+  local n=${1:-}
+  [ -n "$n" ] || n=$(_log_issues | node "$AGENT_HELPERS" log-current "$(node "$AGENT_HELPERS" log-window "$log_window_days")")
+  [ -n "$n" ] || { echo "no open log issue"; return 1; }
+  echo "issue=$n"
+  gh issue view "$n" --json body,createdAt,updatedAt | node "$AGENT_HELPERS" log-meta
 }
 
+# Every non-idle entry of the last DAYS days, across the most recent log issues.
 read_logs() {
   local cutoff n
   cutoff=$(utc_plus "-$1 days")
-  for n in $(gh issue list --label agent:log --state all --limit 3 --json number --jq '.[].number'); do
-    gh issue view "$n" --json comments \
-      --jq ".comments[] | select(.createdAt > \"$cutoff\")
-            | select((.body | contains(\"Outcome:** nothing eligible\") and (contains(\"**Problems:**\") | not)) | not)
-            | \"---\n\" + .body"
+  for n in $(gh issue list --label agent:log --state all --limit 5 --json number --jq '.[].number'); do
+    gh issue view "$n" --json comments | node "$AGENT_HELPERS" log-read "$cutoff"
   done
 }

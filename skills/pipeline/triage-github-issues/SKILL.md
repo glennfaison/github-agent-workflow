@@ -19,6 +19,7 @@ Go through the open issues as a group. Tidy the ones whose PRs are done, pick th
 |---|---|---|
 | `triage_batch` | `5` | The most issues this run triages before it stops |
 | `runner` | `unknown` | Name recorded in the run id and the run log |
+| `log_window_days` | `14` | Days one run-log issue is appended to before a new one starts |
 | `unattended` | `true` | `true`: no human is present, so never ask (see **Unattended runs** in the protocol). `false`: a human may be asked |
 | `trusted_authors` | *(none)* | Extra GitHub logins whose markers count, comma-separated (see **Trust** in the protocol) |
 
@@ -51,7 +52,7 @@ Go through the open issues as a group. Tidy the ones whose PRs are done, pick th
    ```bash
    gh issue list --state open --limit 200 --json number,url,title,createdAt,labels --jq '
      def names: [.labels[].name];
-     [ .[] | select((names | map(IN("agent:log","agent:stuck","agent:pr-open","needs-info","ready-for-agent","ready-for-human")) | any) | not)
+     [ .[] | select((names | map(IN("agent:log","agent:difficulty","agent:stuck","agent:pr-open","needs-info","ready-for-agent","ready-for-human")) | any) | not)
            | {number, url, title, createdAt, labels: names} ] | sort_by(.createdAt)'
    ```
 

@@ -14,7 +14,7 @@ If `/skill-name` is not recognised by your runner, call the Skill tool with that
 Run /explore-github-repo on github.com/OWNER/REPO
 app_url=
 explore_batch=5
-log_lookback_days=14
+log_window_days=14
 dry_run=false
 runner=NAME
 unattended=true
@@ -48,6 +48,7 @@ unattended=true
 Run /triage-github-issues on github.com/OWNER/REPO
 triage_batch=5
 runner=NAME
+log_window_days=14
 unattended=true
 trusted_authors=
 ```
@@ -60,6 +61,7 @@ lease_ttl_triage=1 hour
 max_item_failures=3
 dedupe_closed_days=30
 runner=NAME
+log_window_days=14
 unattended=true
 trusted_authors=
 ```
@@ -72,6 +74,7 @@ trusted_authors=
 Run /implement-github-issues on github.com/OWNER/REPO
 implement_batch=1
 runner=NAME
+log_window_days=14
 unattended=true
 trusted_authors=
 ```
@@ -87,6 +90,7 @@ repo_guidance=AGENTS.md
 lease_ttl_implement=3 hours
 max_item_failures=3
 runner=NAME
+log_window_days=14
 unattended=true
 trusted_authors=
 ```
@@ -99,6 +103,7 @@ trusted_authors=
 Run /shepherd-github-prs on github.com/OWNER/REPO
 shepherd_batch=3
 runner=NAME
+log_window_days=14
 unattended=true
 trusted_authors=
 ```
@@ -114,6 +119,7 @@ human_reviewer=
 repo_guidance=AGENTS.md
 git_hooks_path=
 runner=NAME
+log_window_days=14
 unattended=true
 trusted_authors=
 ```
@@ -126,6 +132,7 @@ trusted_authors=
 Run /review-github-prs on github.com/OWNER/REPO
 review_batch=3
 runner=NAME
+log_window_days=14
 unattended=true
 trusted_authors=
 ```
@@ -142,6 +149,7 @@ pr_base_branch=main
 human_reviewer=
 git_hooks_path=
 runner=NAME
+log_window_days=14
 unattended=true
 trusted_authors=
 ```

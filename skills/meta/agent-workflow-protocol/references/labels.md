@@ -27,8 +27,8 @@ Single source of truth for every label the workflow reads or writes. If a skill 
 | `agent:needs-work` | PR | state | Not reviewable yet: checks failing, checks unfinished, or review findings open | Implementing, Reviewing | Shepherding, when it posts the ready handoff |
 | `agent:ready-for-review` | PR | state | Checks are green and the handoff is posted | Shepherding | Reviewing |
 | `agent:stuck` | issue, PR | escalation | An agent gave up and a human must act. Every step ignores it | `escalate.md` | a human |
-| `agent:log` | issue | bookkeeping | Run-log issue (about two weeks). Every step ignores it | the first run after the previous log expires | never |
-| `agent:difficulty` | issue | bookkeeping | One issue per step that collects its reported **Problems**. Every step ignores it | the first run that reports a problem | never |
+| `agent:log` | issue | bookkeeping | Run-log issue, one per `log_window_days` (default 14). Records what ran, **Problems** and **Things to improve**. Every step ignores it | the first run after the previous log's window ends | never |
+| `agent:difficulty` | issue | bookkeeping | Legacy: no longer created. Difficulties are part of the run log. Every step still ignores any that exist | nothing | never |
 
 ## Transitions
 
@@ -56,7 +56,6 @@ gh label create "agent:needs-work"       --color D93F0B --description "PR not ye
 gh label create "agent:ready-for-review" --color 0E8A16 --description "PR ready for agent review" --force
 gh label create "agent:stuck"            --color B60205 --description "Agent gave up; human needed" --force
 gh label create "agent:log"              --color C5DEF5 --description "Agent run log" --force
-gh label create "agent:difficulty"       --color C5DEF5 --description "Per-step difficulties" --force
 # The triage labels. These commands fail harmlessly if the labels already exist.
 gh label create "needs-info"       2>/dev/null
 gh label create "ready-for-agent"  2>/dev/null

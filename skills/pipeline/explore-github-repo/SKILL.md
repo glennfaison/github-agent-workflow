@@ -17,7 +17,7 @@ Explore the live app and the code, rank findings, and file the best as issues th
 |---|---|---|
 | `app_url` | *(none)* | Live app to browse |
 | `explore_batch` | `5` (or `3` when open backlog is large) | Max new issues to file in one run |
-| `log_lookback_days` | `14` | How far back to read the run log |
+| `log_window_days` | `14` | Days one run-log issue is appended to before a new one starts. Also how far back this step reads the log |
 | `dry_run` | `false` | When true, produce the ranked list + log entry but do not file |
 | `runner` | `unknown` | Name recorded in the run id and the run log |
 | `unattended` | `true` | `true`: no human is present, so never ask (see **Unattended runs** in the protocol). `false`: a human may be asked |
@@ -26,7 +26,7 @@ Explore the live app and the code, rank findings, and file the best as issues th
 
 ## Process
 
-1. **Read recent Exploring log entries** (`log_lookback_days`). Note recurring problems and deferred items.
+1. **Read recent Exploring log entries** (`log_window_days`). Note recurring problems and deferred items.
 2. **Sample the backlog.** If open issues are already dense in an area, prefer commenting over near-duplicate filings. Default `explore_batch` to 3 when the open backlog is large.
 3. **Explore the live app** when `app_url` is set. Must-probe for a page-builder style app: empty state, add component, templates, command palette, mode switch, undo/redo appearance, mobile viewport, dark mode, export. Capture 1–2 annotated screenshots only for top filing candidates. If the live app is slow or flaky, switch to code-only and record that under **Problems**.
 4. **Explore the code** for matching rough edges, missing coverage, and debt.
@@ -43,6 +43,7 @@ Start with the required YAML header from `agent-workflow-protocol/references/log
 step: Exploring
 run: <RUN_ID>
 runner: <name>
+at: <UTC time>
 outcome: "<N> filed, <M> commented, <K> dropped"
 problems_count: <n>
 ```
@@ -51,11 +52,11 @@ problems_count: <n>
 **Items:** #N title…, duplicate of #X, dropped: reason…
 **Deferred candidates:**
 - [impact×confidence] title (why deferred)
-**Problems:** degraded: … / failed: …
-**Automation suggestions:** …
+**Problems:** degraded: … / failed: … (or `none`)
+**Things to improve:** … (or `none`)
 ```
 
-Non-empty **Problems** are also copied to the step difficulty issue (`agent:difficulty`) by `log_run`. Log issues cover roughly the last **two weeks**.
+Difficulties stay in this entry; there is no separate difficulty issue. One log issue covers `log_window_days` (two weeks by default).
 
 ## Success criteria
 
