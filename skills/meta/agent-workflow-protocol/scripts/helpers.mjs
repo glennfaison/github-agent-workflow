@@ -89,8 +89,8 @@ export function parseDuration(raw) {
  * @param {Date} [now=new Date()]
  */
 export function utcPlus(duration, now = new Date()) {
-  const { sign, parts } = parseDuration(duration);
   const out = new Date(now.getTime());
+  const { sign, parts } = parseDuration(duration);
   for (const { n, unit } of parts) {
     const v = n * sign;
     switch (unit) {
@@ -409,6 +409,7 @@ export const NO_SHELL_OPS = {
   claim: 'Add the lease label, then add_issue_comment with leaseComment(..., "claim").',
   renew: 'add_issue_comment with leaseComment(..., "renew").',
   release: 'Remove the lease label.',
+  clear_stale_lease: 'If leaseState is not live, remove agent:triage and agent:in-progress labels (call during eligibility/selection).',
   lease_live: 'leaseState on the issue comments; skip the item if live.',
   fail_item: 'add_issue_comment with failureComment.',
   markers: 'markersOf on the comments.',
@@ -437,15 +438,19 @@ function cli(argv) {
       const bodies = stdin().split('\n').filter(Boolean).map((l) => JSON.parse(l));
       return hasLogEntry(bodies, readFileSync(a[0], 'utf8')) ? 'yes' : 'no';
     }
-    case 'log-touch': return touchLogIssueBody(JSON.parse(stdin()), readFileSync(a[0], 'utf8'), a[1]);
+    case 'log-touch': return touchLogIssueBody(JSON.parse(stdin() || '{}'), readFileSync(a[0], 'utf8'), a[1]);
     case 'log-meta': {
-      const issue = JSON.parse(stdin());
-      const m = parseLogIssueBody(issue.body);
-      return [`started=${m.started ?? toIso(issue.createdAt)}`, `rotates_after=${m.rotatesAfter ?? ''}`,
-        `last_entry=${m.lastEntry ?? (issue.updatedAt ? toIso(issue.updatedAt) : '')}`].join('\n');
+      const issue = JSON.parse(stdin() || '{}');
+      const meta = parseLogIssueBody(issue.body);
+      return [
+        `started=${meta.started ?? ''}`,
+        `rotates_after=${meta.rotatesAfter ?? ''}`,
+        `last_entry=${meta.lastEntry ?? ''}`,
+      ].join('\n');
     }
-    case 'log-read': return readableLogEntries(JSON.parse(stdin()).comments, a[0] ?? '').map((b) => `---\n${b}`).join('\n');
-    default: throw new Error(`usage: helpers.mjs run-id|utc-plus|utc-epoch|lease-body|failure-body|log-* ...`);
+    case 'log-read': return readableLogEntries(JSON.parse(stdin() || '{}').comments, a[0]).join('\n---\n');
+    default:
+      throw new Error(`unknown command: ${cmd}`);
   }
 }
 

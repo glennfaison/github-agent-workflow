@@ -9,7 +9,7 @@
 # export them first. Whatever the run does not set falls back to the default below, exactly as
 # ../SKILL.md's Defaults table describes.
 #
-# Helpers: has_label lease_live claim renew release            leases
+# Helpers: has_label lease_live claim renew release clear_stale_lease   leases
 #          markers review_rounds shepherd_attempts failures    reading markers
 #          open_findings ready_sha fail_item                   handoffs and failures
 #          prs_for_issue issue_for_pr                          issue <-> PR links
@@ -146,6 +146,19 @@ renew() {
 }
 
 release() { gh "$2" edit "$1" --remove-label "$3" >/dev/null; }
+
+# Remove lease labels whose marker has expired or is missing. Call during eligibility /
+# selection so a dead runner or an expired TTL does not leave agent:triage / agent:in-progress
+# on the board. Selection is unchanged: an item with only a stale label remains unleased.
+clear_stale_lease() {
+  local n=$1 kind=$2
+  lease_live "$n" && return 0
+  for label in agent:triage agent:in-progress; do
+    if has_label "$n" "$kind" "$label"; then
+      release "$n" "$kind" "$label"
+    fi
+  done
+}
 
 # ---- Markers -----------------------------------------------------------------------
 

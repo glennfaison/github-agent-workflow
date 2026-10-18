@@ -37,6 +37,7 @@ Review one PR and merge it if an agent can safely do so. If not, record why and,
 ## Eligibility
 
 - `N` is an open, non-draft PR labelled `agent:ready-for-review`, without `agent:stuck`.
+- Call `clear_stale_lease N pr` first: if the item still carries `agent:in-progress` only because a previous lease expired (or the runner died), the label is removed.
 - If it carries `agent:in-progress` and `lease_live N` succeeds, someone has it: skip.
 
 The head SHA must match `ready_sha N` and checks must be green. Step 4 enforces that after you claim.

@@ -36,6 +36,7 @@ Take one PR from "opened" to "reviewable": get checks green, address open review
 ## Eligibility
 
 - `N` is an open PR labelled `agent:needs-work`, without `agent:stuck`.
+- Call `clear_stale_lease N pr` first: if the item still carries `agent:in-progress` only because a previous lease expired (or the runner died), the label is removed.
 - If it carries `agent:in-progress` and `lease_live N` succeeds, someone has it: skip.
 - Check state is `failing` or `green`. Read it like this (ignore the command's exit code, which is non-zero while checks run):
 
