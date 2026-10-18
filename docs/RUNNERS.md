@@ -11,6 +11,15 @@ What a scheduler needs to run this package, and how to word its prompts.
 | Writes issues, comments, labels, PRs | Yes | Yes |
 | Posts as an account the repository trusts | Yes | Yes. A GitHub App's bot login goes in `trusted_authors` (see **Trust** in the protocol) |
 
+### Exploring: full vs HTTP-only
+
+| Mode | Needs | What Exploring can do |
+|---|---|---|
+| **Full Exploring** (interactive UI, canvas, command palette, screenshots) | Shell runner; product `node_modules` (or equivalent) installed in the target repo; browser binary (e.g. Playwright) present | Must-probe interactive surfaces; capture screenshots for top candidates |
+| **Degraded / HTTP-only** | Skills readable; GitHub + HTTP access only (typical no-shell or under-provisioned shell) | Route / SSR / static probes only. Log `degraded: no browser` (or `degraded: no node_modules`) under **Problems** and continue |
+
+This package stays runner-agnostic: it does not run a product `npm ci` or install browsers for you. A shell runner that wants full Exploring installs the product deps and browser stack itself (example: `npm ci && npx playwright install`). See the **Preflight** step in `explore-github-repo`.
+
 ## Prompts
 
 Schedule the **group skill** of each step. Run an **item skill** by hand, with its issue or PR as a number or URL on the command line (or as `issue=N` / `pr=N` on a line of its own).
