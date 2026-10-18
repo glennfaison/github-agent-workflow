@@ -34,7 +34,8 @@ Make one issue ready for an agent to implement, or route it to a human.
 
 - `N` is an open issue with **none** of: `ready-for-agent`, `ready-for-human`, `needs-info`, `agent:pr-open`, `agent:stuck`, `agent:log`, `agent:difficulty`. A human takes an issue out of `needs-info` by removing the label after answering; from then on it is eligible like any other.
 - `needs-triage` does not exclude it. It means an earlier pass did not finish.
-- If it carries `agent:triage` or `agent:in-progress` and `lease_live N` succeeds, someone has it: skip. A lease label with no live lease does not count.
+- Call `clear_stale_lease N issue` first: if the item still carries `agent:triage` or `agent:in-progress` only because a previous lease expired (or the runner died), the label is removed. Selection is unchanged — a stale label alone does not make the item leased.
+- If it carries `agent:triage` or `agent:in-progress` and `lease_live N` succeeds, someone has it: skip.
 
 ## Outputs
 

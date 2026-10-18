@@ -36,6 +36,7 @@ Implement one `ready-for-agent` issue and open a PR. Getting the PR through chec
 ## Eligibility
 
 - `N` is an open issue labelled `ready-for-agent`, without `agent:stuck`.
+- Call `clear_stale_lease N issue` first: if the item still carries `agent:in-progress` only because a previous lease expired (or the runner died), the label is removed.
 - If it carries `agent:in-progress` and `lease_live N` succeeds, someone has it: skip.
 
 ## Context read
