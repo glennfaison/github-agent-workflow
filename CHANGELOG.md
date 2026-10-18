@@ -1,5 +1,11 @@
 # github-agent-workflow
 
+## 1.5.0
+
+### Minor Changes
+
+- 92c3f87: Implementing refuses to push a branch that does not match the documented `type/N-slug` pattern.
+
 ## 1.4.1
 
 ### Patch Changes
