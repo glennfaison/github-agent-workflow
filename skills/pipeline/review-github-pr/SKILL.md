@@ -48,7 +48,7 @@ The head SHA must match `ready_sha N` and checks must be green. Step 4 enforces 
 
 ## Outputs
 
-- Mergeable: merged, pinned to the reviewed SHA, with a "merged" note. Each linked issue loses `agent:pr-open` and is closed.
+- Mergeable: merged, pinned to the reviewed SHA, source branch deleted, with a "merged" note. Each linked issue loses `agent:pr-open` and is closed.
 - Not mergeable: an optional small fix (no design decision, only code this PR already changes), a "review" handoff, and a swap `agent:ready-for-review` → `agent:needs-work`.
 - Escalation to `agent:stuck` if `review_rounds N` is at least `$max_review_rounds` or the PR is a fork.
 - Lease released.
@@ -63,7 +63,7 @@ The head SHA must match `ready_sha N` and checks must be green. Step 4 enforces 
    - **Agent PR body check.** If the PR carries a trusted `agent:implements` marker, also check `references/pr-format.md`: one core problem, evidence of before/after in an accepted form, ADR check statement present and free of unresolved conflict, and the implements / Closes linkage. Missing or clearly false items are findings that block merge.
 6. **Decide.** If `merge-safety` and `code-review` both pass **and** (for agent PRs) the pr-format checklist is satisfied, go to step 7. Otherwise go to step 8.
 7. **Merge.**
-   1. Merge pinned to the reviewed commit: `gh pr merge N --match-head-commit "$SHA" --"$merge_method"`. If your tools cannot pin a merge to a commit, re-read the head SHA immediately before merging and stop if it is not `$SHA`.
+   1. Merge pinned to the reviewed commit and delete the head branch: `gh pr merge N --match-head-commit "$SHA" --"$merge_method" --delete-branch`. If your tools cannot pin a merge to a commit, re-read the head SHA immediately before merging and stop if it is not `$SHA`. If your tools cannot pass `--delete-branch`, merge first, then delete the head ref with the equivalent API call; failure to delete the branch is non-fatal — note it under **Problems** and continue.
    2. If the merge fails, do not retry. When someone pushed meanwhile, that is all: the next run sees the new head. For any other reason, run `fail_item N pr Reviewing "merge failed: <reason>"`, release and return `#N failed: <reason>`.
    3. After a successful merge, post the "merged" note (`references/handoff.md`), ending with `<!-- agent:handoff kind=merged sha=$SHA -->`.
    4. For each issue `M` printed by `issue_for_pr N`: `gh issue edit M --remove-label agent:pr-open` and `gh issue close M --comment "Implemented in #N."`. GitHub only closes the issue itself from `Closes #M` when the PR merges into the repository's default branch, which may not be `$pr_base_branch`. Close it explicitly anyway: it does no harm if already closed, and it covers a PR whose body lacked the keyword.
@@ -86,3 +86,4 @@ Return one line: `#N merged`, `#N sent back: <open findings>`, `#N escalated: <r
 - Retry a failed merge in the same run.
 - Merge a fork PR, a draft, or a PR labelled `agent:stuck`.
 - Merge an agent PR that fails the `pr-format.md` checklist (missing evidence, no ADR check, multiple unrelated problems, unchecked verification claim).
+- Leave the head branch around after a successful merge when the tools support deleting it.
