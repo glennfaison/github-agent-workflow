@@ -182,7 +182,8 @@ This skill is reference material: it is never run, so it takes **no inputs** of 
 | `references/handoff.md` | ready, review and merged handoff comments |
 | `references/escalate.md` | when and how to give an item to a human |
 | `references/dedupe.md` | duplicate search and the canonical-issue rule |
-| `references/issue-format.md` | well-formed issue contents and Triaging's check |
+| `references/issue-format.md` | well-formed issue contents (by category) and Triaging's check |
+| `references/pr-format.md` | agent PR body checklist; client templates take precedence |
 | `references/log.md` | run-log issue, its window and last-entry line, and the entry format |
 | `scripts/lib.sh` | shell helpers and default values |
 | `scripts/helpers.mjs` | the single implementation of dates, run ids, comment shapes, marker parsing and trust; also the no-shell reference |

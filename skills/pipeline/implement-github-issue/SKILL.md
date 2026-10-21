@@ -9,7 +9,7 @@ Implement one `ready-for-agent` issue and open a PR. Getting the PR through chec
 
 **Input:** one `ready-for-agent` GitHub issue, as a URL or a number. Required.
 
-**References:** call the Skill tool with `agent-workflow-protocol`. In that skill's directory, open `references/labels.md` before you set a label, `references/issue-format.md` at step 3, `references/escalate.md` if you escalate, and `references/log.md` when you write the log entry. Also read the repository's own contributor rules, the files listed in `$repo_guidance`.
+**References:** call the Skill tool with `agent-workflow-protocol`. In that skill's directory, open `references/labels.md` before you set a label, `references/issue-format.md` at step 3, `references/pr-format.md` at step 8, `references/escalate.md` if you escalate, and `references/log.md` when you write the log entry. Also read the repository's own contributor rules, the files listed in `$repo_guidance`.
 
 ## Inputs
 
@@ -45,7 +45,7 @@ Implement one `ready-for-agent` issue and open a PR. Getting the PR through chec
 
 ## Outputs
 
-- On success: a new PR against `$pr_base_branch` with a body ending in `<!-- agent:implements issue=N -->` and containing `Closes #N.`, labelled `agent:needs-work`. The issue loses `ready-for-agent` and gains `agent:pr-open`.
+- On success: a new PR against `$pr_base_branch` with a body that satisfies `references/pr-format.md` (client PR template first, then any missing checklist items), ending in `<!-- agent:implements issue=N -->` and containing `Closes #N.`, labelled `agent:needs-work`. The issue loses `ready-for-agent` and gains `agent:pr-open`.
 - An existing OPEN PR for the issue: no second PR. Swap the issue to `agent:pr-open`, and make sure the PR has `agent:needs-work` if it carries the implements marker.
 - A MERGED PR already: close the issue.
 - Only CLOSED PRs: swap to `ready-for-human` (do not retry unattended).
@@ -60,7 +60,7 @@ Implement one `ready-for-agent` issue and open a PR. Getting the PR through chec
    - **Any `MERGED`:** the work has shipped. `gh issue close N --comment "Implemented in #P."`, remove `ready-for-agent`, release and stop.
    - **Only `CLOSED`:** an earlier PR was abandoned. Do not try again on your own. Comment with the PR number, swap `ready-for-agent` for `ready-for-human`, release and stop.
    - **None:** continue. If a branch for the issue already exists (`git ls-remote --heads origin "*/N-*"`), check it out and carry on from it.
-3. **Read context.** Find the latest `## Agent Brief` comment. **It is the contract**; the description and discussion are context. If there is no brief, the description may itself be the specification (an issue filed from the "Ready for agent" template has acceptance criteria and no brief). Then read the open comments, the ADRs it links, and the relevant code. **View every image** in the issue and its comments (screenshots, mockups): for a feature they show the intended result. Read the use case first, and build for it rather than for the letter of the proposal.
+3. **Read context.** Find the latest `## Agent Brief` comment. **It is the contract**; the description and discussion are context. If there is no brief, the description may itself be the specification (an issue filed from the "Ready for agent" template has acceptance criteria and no brief). Then read the open comments, the ADRs it links, and the relevant code. **View every image** in the issue and its comments (screenshots, mockups): for a feature they show the intended result. Read the use case first, and build for it rather than for the letter of the proposal. Respect the issue's `Category:` (bugfix vs feature vs refactor vs debt) — different categories have different required evidence in `issue-format.md`.
 4. **Bail out if the issue is not actually ready.** If you find missing information or a decision only a human can make, post a comment in the **Triage Notes** format from `unattended-triage` (what is established, what is still needed, specific questions) and swap `ready-for-agent` for `needs-info` (or `ready-for-human`). Release and stop for this issue.
 5. **Implement.** Branch name **must** match the package pattern used by `prs_for_issue`: `^[a-z]+/N-<kebab-slug>$` (e.g. `feature/N-<topic>` or `bugfix/N-<topic>`, lowercase). Prefer the form the repository's `$repo_guidance` documents when it is still compliant with that pattern. Helpers: `isCompliantBranchName` / `branchNamePattern` in `agent-workflow-protocol/scripts/helpers.mjs`. Build what the brief asks, and nothing it puts out of scope:
    - Build test-first where you can, at seams the brief or the code makes obvious: call the Skill tool with `tdd`. Follow the issue's `Category:` line: for a bug, first write a test that fails because of it. For a refactor or debt issue, behaviour must not change: run the tests the brief names before and after, and do not edit them.
@@ -73,7 +73,11 @@ Implement one `ready-for-agent` issue and open a PR. Getting the PR through chec
    - Prefer renaming or recreating the branch to a compliant name (`feature/N-<slug>` or `bugfix/N-<slug>` from the issue title, lowercase kebab-case) and continue, **or**
    - Fail the item: do **not** push, run `fail_item N issue Implementing "branch name does not match type/N-slug pattern: <name>"`, record `repo-state: noncompliant branch <name>` under **Problems**, release, and return `#N failed: noncompliant branch name`.
    Never push a non-compliant branch name. Repos that only enforce naming in CI still get this check from the skill; the skill does not depend on a specific CI vendor.
-8. **Open the PR.** First run `prs_for_issue N` again: another run may have opened one while you worked. If an `OPEN` PR now exists, stop and do not create another. Otherwise `gh pr create --base "$pr_base_branch"` with a body that links the issue using `Closes #N.` (one `Closes` statement per issue) and ends with the line `<!-- agent:implements issue=N -->`.
+8. **Open the PR.** First run `prs_for_issue N` again: another run may have opened one while you worked. If an `OPEN` PR now exists, stop and do not create another. Otherwise build the PR body from `references/pr-format.md`:
+   - If the repository has a PR template (`.github/PULL_REQUEST_TEMPLATE.md` or similar), start from it and fill its fields.
+   - Ensure every **Required** item in `pr-format.md` is present: one core problem, `Closes #N.`, summary, evidence of before/after (screenshots, test output, or a checked verification box only if you actually verified), ADR check statement, verification notes, and out-of-scope notes when relevant.
+   - End the body with the line `<!-- agent:implements issue=N -->`.
+   - Then `gh pr create --base "$pr_base_branch"` with that body.
 9. **Transition.** Add `agent:needs-work` to the PR. On the issue, run one command: `gh issue edit N --remove-label ready-for-agent --add-label agent:pr-open`. Then `release N issue agent:in-progress`.
 
 ## Result
@@ -86,3 +90,5 @@ Return one line: `#N PR #P opened`, `#N existing PR #P`, `#N already merged in #
 - Commit or push to `$pr_base_branch` directly, or open a PR against any other branch. Work lands on a branch, through the PR.
 - Open a second PR for an issue that already has one.
 - Push a branch whose name does not match `^[a-z]+/N-<kebab-slug>$` (the `prs_for_issue` heuristic). Rename or fail first.
+- Stack multiple unrelated issues or drive-by changes into one PR (see **One core problem** in `pr-format.md`).
+- Claim verification you did not perform.

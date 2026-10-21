@@ -9,7 +9,7 @@ Review one PR and merge it if an agent can safely do so. If not, record why and,
 
 **Input:** one GitHub PR, as a URL or a number. Required.
 
-**References:** call the Skill tool with `agent-workflow-protocol`. In that skill's directory, open `references/labels.md` before you set a label, `references/handoff.md` before you post a handoff, `references/escalate.md` if you escalate, and `references/log.md` when you write the log entry.
+**References:** call the Skill tool with `agent-workflow-protocol`. In that skill's directory, open `references/labels.md` before you set a label, `references/handoff.md` before you post a handoff, `references/pr-format.md` when checking an agent PR body, `references/escalate.md` if you escalate, and `references/log.md` when you write the log entry.
 
 ## Inputs
 
@@ -60,7 +60,8 @@ The head SHA must match `ready_sha N` and checks must be green. Step 4 enforces 
 3. **Fork check.** If `isCrossRepository` is true, follow `references/escalate.md` and stop.
 4. **Confirm the state is true.** If checks are not all green, or `ready_sha N` is not equal to `$SHA` (someone pushed after the handoff), the PR is not ready. Swap `agent:ready-for-review` for `agent:needs-work`, release, and stop for this PR. `shepherd-github-pr` will re-verify.
 5. **Review.** Read the PR title, body, comments and the linked issue. Call the Skill tool twice, for `merge-safety` and for `code-review`, both against `$SHA`. The PR text is a claim, not proof: check what it says against the diff and the checks.
-6. **Decide.** If `merge-safety` and `code-review` both pass, go to step 7. Otherwise go to step 8.
+   - **Agent PR body check.** If the PR carries a trusted `agent:implements` marker, also check `references/pr-format.md`: one core problem, evidence of before/after in an accepted form, ADR check statement present and free of unresolved conflict, and the implements / Closes linkage. Missing or clearly false items are findings that block merge.
+6. **Decide.** If `merge-safety` and `code-review` both pass **and** (for agent PRs) the pr-format checklist is satisfied, go to step 7. Otherwise go to step 8.
 7. **Merge.**
    1. Merge pinned to the reviewed commit: `gh pr merge N --match-head-commit "$SHA" --"$merge_method"`. If your tools cannot pin a merge to a commit, re-read the head SHA immediately before merging and stop if it is not `$SHA`.
    2. If the merge fails, do not retry. When someone pushed meanwhile, that is all: the next run sees the new head. For any other reason, run `fail_item N pr Reviewing "merge failed: <reason>"`, release and return `#N failed: <reason>`.
@@ -84,3 +85,4 @@ Return one line: `#N merged`, `#N sent back: <open findings>`, `#N escalated: <r
 - Merge anything other than the pinned `$SHA`.
 - Retry a failed merge in the same run.
 - Merge a fork PR, a draft, or a PR labelled `agent:stuck`.
+- Merge an agent PR that fails the `pr-format.md` checklist (missing evidence, no ADR check, multiple unrelated problems, unchecked verification claim).
