@@ -1,0 +1,93 @@
+name: Feature request
+description: Propose a new capability with a clear user use case.
+title: "[what the user can do]"
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Describe the problem first. A feature with no use case is not ready.
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      description: Part of the product or codebase affected.
+      options:
+        - Skills / pipeline
+        - Protocol / helpers
+        - Setup / labels
+        - Docs / ADRs
+        - CI / packaging
+        - Other
+      default: 0
+    validations:
+      required: true
+
+  - type: textarea
+    id: impact
+    attributes:
+      label: Impact
+      description: Who benefits and how much it matters (one line).
+    validations:
+      required: true
+
+  - type: dropdown
+    id: confidence
+    attributes:
+      label: Confidence
+      options:
+        - reproduced
+        - traced
+        - suspected
+      default: 2
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem (the use case)
+      description: Who the user is, what they are trying to get done, what they must do today, and why that falls short. Concrete scenario preferred.
+      placeholder: "A designer building a pricing page wants X, but today must Y."
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposed-solution
+    attributes:
+      label: Proposed solution
+      description: The behaviour the user should see, in user terms (not implementation details).
+    validations:
+      required: true
+
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: Testable outcomes as a checklist.
+      placeholder: |
+        - [ ] User can do X from the Y screen
+        - [ ] Error Z is handled with a clear message
+    validations:
+      required: false
+
+  - type: textarea
+    id: non-goals
+    attributes:
+      label: Non-goals
+      description: What this should not grow into.
+    validations:
+      required: false
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+    validations:
+      required: false
+
+  - type: markdown
+    attributes:
+      value: |
+        Agents will add a `Category: feature` line during triage. Prefer one focused capability per issue.

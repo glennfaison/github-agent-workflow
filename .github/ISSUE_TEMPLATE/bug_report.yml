@@ -1,0 +1,128 @@
+name: Bug report
+description: Report a defect with clear reproduction steps and impact.
+title: "[area]: [symptom]"
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting a bug. Fill every required field so triage and agents can act without extra questions. One bug per issue.
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      description: Part of the product or codebase affected.
+      options:
+        - Skills / pipeline
+        - Protocol / helpers
+        - Setup / labels
+        - Docs / ADRs
+        - CI / packaging
+        - Other
+      default: 0
+    validations:
+      required: true
+
+  - type: textarea
+    id: impact
+    attributes:
+      label: Impact
+      description: Who or what is affected, and how badly (one line).
+      placeholder: "Agents cannot open PRs for ready-for-agent issues; all implementation is blocked."
+    validations:
+      required: true
+
+  - type: dropdown
+    id: confidence
+    attributes:
+      label: Confidence
+      description: How sure you are that the bug exists.
+      options:
+        - reproduced
+        - traced
+        - suspected
+      default: 0
+    validations:
+      required: true
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened, and what was expected
+      description: Observed behaviour vs expected behaviour.
+      placeholder: |
+        Expected: The image uploads successfully and updates the profile view.
+        Actual: The app freezes on a spinning loading indicator and throws error code 500.
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Strict numbered list. Start from a URL or known state. Do not combine steps.
+      placeholder: |
+        1. Log into a premium user account.
+        2. Navigate to Account Settings.
+        3. Click "Upload Profile Picture" and select a 15MB PNG.
+        4. Click Submit.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: severity
+    attributes:
+      label: Severity
+      options:
+        - data-loss
+        - crash-or-blocked
+        - wrong-result
+        - degraded
+        - cosmetic
+      default: 2
+    validations:
+      required: true
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: OS, browser/app version, environment (dev/staging/prod), URL or commit if known.
+      placeholder: |
+        - OS: macOS 15
+        - Browser: Chrome 131
+        - Environment: Staging
+        - Commit / deployment: abc1234
+    validations:
+      required: true
+
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidence
+      description: Error messages, stack traces, logs, failing tests. Redact secrets. Attach screenshots or recordings if possible.
+      placeholder: "Console shows TypeError: ... at line 42"
+    validations:
+      required: false
+
+  - type: textarea
+    id: frequency
+    attributes:
+      label: Frequency and reach
+      description: Always / intermittent (how often) / once. Who is affected.
+    validations:
+      required: false
+
+  - type: textarea
+    id: regression
+    attributes:
+      label: Regression
+      description: Since which commit or version, if known.
+    validations:
+      required: false
+
+  - type: markdown
+    attributes:
+      value: |
+        Agents will add a `Category: bugfix` line and map fields to the canonical issue format during triage. Do not apply extra labels yourself unless you are a maintainer.
