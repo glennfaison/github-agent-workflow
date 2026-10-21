@@ -2,7 +2,7 @@
 
 What a well-formed issue contains. `file-github-issues` **writes** to this format, `triage-github-issue` **checks** against it, and `implement-github-issue` **reads** it.
 
-If the repository has issue templates (`.github/ISSUE_TEMPLATE/`), use their headings and field names for the sections below, so agent-filed and human-filed issues look alike. The tables name what each section must hold; the template decides what it is called.
+If the repository has issue templates (`.github/ISSUE_TEMPLATE/`), use their headings and field names for the sections below, so agent-filed and human-filed issues look alike. The tables name what each section must hold; the template decides what it is called. This package ships templates under `.github/ISSUE_TEMPLATE/` that match the tables; client repositories may replace or extend them.
 
 Agents never apply labels when filing. (The templates add `bug` and `enhancement` for humans; agent-filed issues get their labels during Triaging.) Put the category on a `Category:` line in the body instead. Triaging maps it to a label: `bugfix` is `bug`; `feature`, `refactor` and `debt` are `enhancement`.
 
@@ -27,14 +27,14 @@ Title: `<area>: <symptom>`
 
 | Section | Content |
 |---|---|
-| **What happened, and what was expected.** Required | The observed behaviour and the expected one |
-| **Steps to reproduce.** Required | Numbered, starting from a URL or page state. If you could not run it, give a **Trace** instead: the code path that causes it, by symbol, and set Confidence to `traced` |
+| **What happened, and what was expected.** Required | The observed behaviour and the expected one (Expected vs Actual) |
+| **Steps to reproduce.** Required | Numbered, starting from a URL or page state. Do not combine multiple actions into one step. If you could not run it, give a **Trace** instead: the code path that causes it, by symbol, and set Confidence to `traced` |
 | **Severity.** Required | One of `data-loss`, `crash-or-blocked`, `wrong-result`, `degraded`, `cosmetic` |
+| **Environment.** Required when known | OS & device, browser/app version, environment (dev / staging / production), URL or commit if known |
 | Frequency and reach | Always, intermittent (how often) or once. Who is affected |
 | Reproduction input | The smallest input that reproduces it (a file, payload, saved document or page state), if relevant |
 | Evidence | The error message, the log or console lines, the stack trace or the failing test. Redact secrets and personal data |
 | Regression | Since which commit or version, if known. Otherwise leave it out |
-| Environment | Browser and version, OS, the URL tested and the commit or deployment if known |
 | Visuals | See **Visuals** |
 
 ### Feature (`Category: feature`)
@@ -89,6 +89,13 @@ For a bug, a screenshot of the broken state. For a feature, one of: an annotated
 - **`gh` cannot upload images.** Attach a screenshot only if your runner has a way to put it on GitHub (for example a browser tool that drags it into the issue editor). Never link to a local file path, and do not commit images to the repository for this.
 - If you cannot attach it, say so under **Visuals**: `Not attached: <what a human should capture and where>`. Then describe the screen in words (what is on it, where the change goes). Do not skip the section.
 - **A missing image never blocks an issue. A missing Required section always does.**
+
+## Golden rules (for humans and agents)
+
+- **One bug (or one problem) per ticket.** Unrelated issues get separate tickets.
+- **Search first.** Check the issue tracker before filing; append evidence to an existing open issue instead of duplicating.
+- **Isolate and verify.** Prefer `reproduced` confidence. Intermittent bugs should say how often.
+- **Separate fact from speculation.** Observations and evidence belong in the body; theories about root cause belong in comments or the Agent Brief, not as unlabelled assertions.
 
 ## Triaging's check
 
