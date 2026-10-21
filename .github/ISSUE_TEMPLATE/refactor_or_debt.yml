@@ -1,0 +1,119 @@
+name: Refactor or tech debt
+description: Propose structural improvement or debt reduction with a clear cost of leaving it alone.
+title: "Refactor [what] to [benefit] / [what] costs [cost]"
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this for pure structural work or measurable debt. Behaviour must not change for refactors.
+
+  - type: dropdown
+    id: category
+    attributes:
+      label: Category
+      options:
+        - refactor
+        - debt
+      default: 0
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Skills / pipeline
+        - Protocol / helpers
+        - Setup / labels
+        - Docs / ADRs
+        - CI / packaging
+        - Other
+      default: 0
+    validations:
+      required: true
+
+  - type: textarea
+    id: impact
+    attributes:
+      label: Impact
+      description: Who or what is affected, and how badly.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: confidence
+    attributes:
+      label: Confidence
+      options:
+        - reproduced
+        - traced
+        - suspected
+      default: 1
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What is wrong with the current structure, tests, tooling or docs.
+    validations:
+      required: true
+
+  - type: textarea
+    id: cost
+    attributes:
+      label: Cost of leaving it
+      description: What it slows down, breaks or risks. Prefer a number or concrete example.
+    validations:
+      required: true
+
+  - type: textarea
+    id: where
+    attributes:
+      label: Where
+      description: File paths and symbols.
+    validations:
+      required: true
+
+  - type: textarea
+    id: behaviour-guard
+    attributes:
+      label: Behaviour guard (required for refactor)
+      description: How anyone can tell behaviour did not change (existing tests, or a characterization test to write first).
+    validations:
+      required: false
+
+  - type: dropdown
+    id: size
+    attributes:
+      label: Size
+      options:
+        - small
+        - medium
+        - large
+      default: 0
+    validations:
+      required: false
+
+  - type: textarea
+    id: done-when
+    attributes:
+      label: Done when
+      description: Measurable end state (especially useful for debt).
+    validations:
+      required: false
+
+  - type: textarea
+    id: suggested-direction
+    attributes:
+      label: Suggested direction
+    validations:
+      required: false
+
+  - type: markdown
+    attributes:
+      value: |
+        Agents map the Category dropdown to `Category: refactor` or `Category: debt`.
