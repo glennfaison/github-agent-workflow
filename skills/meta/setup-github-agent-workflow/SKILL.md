@@ -12,7 +12,7 @@ Run once per repository, by a maintainer, before any other skill in this package
 
 **Free text.** Anything the maintainer says. This skill is interactive, so treat every answer as the next input.
 
-**Key-value pairs.** `key=value` on a line of its own. Optional overrides for the shared defaults in `agent-workflow-protocol`: `pr_base_branch`, `app_url`, `merge_method`, `human_reviewer`, `build_cmd`, `git_hooks_path`, `repo_guidance`, `trusted_authors`.
+**Key-value pairs.** `key=value` on a line of its own. Optional overrides for the shared defaults in `agent-workflow-protocol`: `pr_base_branch`, `app_url`, `merge_method`, `human_reviewer`, `human_merge_paths`, `build_cmd`, `git_hooks_path`, `repo_guidance`, `trusted_authors`.
 
 **Implicit dependencies.** There is **no config file**: the skills' defaults are the source of truth, so this skill installs nothing for a value. It needs `gh` (authenticated), `jq` and Node.js for the checks below, write access to the repository, permission to create labels, and the rest of this package installed so the pipeline skills are available.
 
@@ -24,7 +24,8 @@ Run once per repository, by a maintainer, before any other skill in this package
    - the branch agent PRs target (`pr_base_branch`, default `main`)
    - the URL of the deployed app that Exploring should browse (`app_url`), or none (Exploring then reads the code only)
    - the merge method (`merge_method`: `squash`, `merge` or `rebase`)
-   - the GitHub user to request review from when an item is escalated (`human_reviewer`), or none
+   - the GitHub user to request review from when an item is escalated or handed to a person to merge (`human_reviewer`), or none
+   - the paths an agent must never merge, as gitignore-style patterns (`human_merge_paths`), or none. Suggest the files that govern the agents themselves and the release, for example the skills, the scripts and the CI workflows. A PR that changes one is reviewed by the agents and then handed to a person.
    - the build command to run before opening a PR (`build_cmd`), or none (CI is then the only build gate)
    - a git hooks directory to use when committing (`git_hooks_path`), or none
    - the files that hold the repository's contributor rules (`repo_guidance`, default `AGENTS.md`). Offer `CLAUDE.md` if that is what exists.

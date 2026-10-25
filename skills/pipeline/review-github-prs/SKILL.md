@@ -33,7 +33,7 @@ Pick the `agent:ready-for-review` PRs that can be reviewed now, and give each to
    gh pr list --state open --label agent:ready-for-review --limit 100 \
      --json number,url,title,createdAt,labels,isDraft,isCrossRepository --jq '
      def names: [.labels[].name];
-     [ .[] | select((.isDraft | not) and ((names | any(. == "agent:stuck")) | not))
+     [ .[] | select((.isDraft | not) and ((names | any(. == "agent:stuck" or . == "agent:human-merge")) | not))
            | {number, url, title, createdAt, fork: .isCrossRepository} ] | sort_by(.createdAt)'
    ```
 

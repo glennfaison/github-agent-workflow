@@ -48,6 +48,7 @@ Idempotent: a second run finds at most one state label and does nothing. Non-tri
 | `agent:needs-work` | PR | state | Not reviewable yet: checks failing, checks unfinished, review findings open, the branch is behind its base, or another PR holds the merge lane | Implementing, Reviewing | Shepherding, when it posts the ready handoff |
 | `agent:ready-for-review` | PR | state | Checks are green, the branch is current and the handoff is posted. Holds the merge lane | Shepherding | Reviewing |
 | `agent:stuck` | issue, PR | escalation | An agent gave up and a human must act. Every step ignores it | `escalate.md` | a human |
+| `agent:human-merge` | PR | escalation | An agent reviewed it and a person should review and merge it: review rounds ran out, or it changes a file in `human_merge_paths`. Shepherding and Reviewing ignore it, and it holds no merge lane | `human-merge.md` | a human, by merging, or by removing it and adding `agent:needs-work` |
 | `agent:log` | issue | bookkeeping | Run-log issue, one per `log_window_days` (default 14). Records what ran, **Problems** and **Things to improve**. Every step ignores it | the first run after the previous log's window ends | never |
 | `agent:difficulty` | issue | bookkeeping | Legacy: no longer created. Difficulties are part of the run log. Every step still ignores any that exist | nothing | never |
 
@@ -63,9 +64,11 @@ Each row happens inside a lease held by the step named (except Triaging housekee
 | Issue | `ready-for-agent` | Implementing (bail-out) | `needs-info` or `ready-for-human` |
 | Issue | `agent:pr-open`, every PR closed unmerged | Triaging (housekeeping) | `ready-for-human` |
 | Issue | two or more mutex state labels, or clear label/comment drift | Triaging (housekeeping, label repair) | single consistent state per the priority order above |
-| Issue | `ready-for-agent` or `agent:pr-open`, a PR already merged | Implementing or Triaging | closed |
+| Issue | `ready-for-agent` or `agent:pr-open`, a PR already merged | Implementing or Triaging | closed, and it loses `agent:pr-open` |
 | PR | `agent:needs-work` | Shepherding | pushes a fix or a branch update and stays `agent:needs-work`, waits there while another PR holds the merge lane, or becomes `agent:ready-for-review` |
 | PR | `agent:ready-for-review` | Reviewing | merged (its issue is then closed and loses `agent:pr-open`), or `agent:needs-work` (with or without a fix pushed, or deferred because the base moved, which uses no review round) |
+| PR | `agent:ready-for-review` | Reviewing | `agent:human-merge`, when review passed but the PR changes a file in `human_merge_paths`, or review rounds ran out |
+| PR | `agent:human-merge` | a human | merged, or `agent:needs-work` after they push fixes or ask for changes |
 | Issue or PR | any | any step | `agent:stuck` |
 
 ## Setup (run once)
@@ -77,6 +80,7 @@ gh label create "agent:pr-open"          --color 0E8A16 --description "Issue has
 gh label create "agent:needs-work"       --color D93F0B --description "PR not yet reviewable" --force
 gh label create "agent:ready-for-review" --color 0E8A16 --description "PR ready for agent review" --force
 gh label create "agent:stuck"            --color B60205 --description "Agent gave up; human needed" --force
+gh label create "agent:human-merge"      --color 5319E7 --description "Agent reviewed it; a person should merge" --force
 gh label create "agent:log"              --color C5DEF5 --description "Agent run log" --force
 # The triage labels. These commands fail harmlessly if the labels already exist.
 gh label create "needs-info"       2>/dev/null

@@ -236,5 +236,60 @@
     "expect": {
       "review_rounds": 1
     }
+  },
+  {
+    "name": "a hand-off to a human restarts review rounds, attempts and failures",
+    "comments": [
+      {
+        "body": "r <!-- agent:handoff kind=review sha=aaa open=2 -->"
+      },
+      {
+        "body": "r <!-- agent:handoff kind=review sha=bbb open=1 -->"
+      },
+      {
+        "body": "a <!-- agent:attempt step=shepherding sha=ccc -->"
+      },
+      {
+        "body": "f <!-- agent:failure step=Reviewing run=1 -->"
+      },
+      {
+        "body": "h <!-- agent:human-merge reason=review-rounds sha=ccc -->"
+      },
+      {
+        "body": "r <!-- agent:handoff kind=review sha=ddd open=1 -->"
+      },
+      {
+        "body": "a <!-- agent:attempt step=shepherding sha=eee -->"
+      },
+      {
+        "body": "f <!-- agent:failure step=Reviewing run=2 -->"
+      }
+    ],
+    "expect": {
+      "review_rounds": 1,
+      "shepherd_attempts": 1,
+      "failures": {
+        "Reviewing": 1
+      }
+    }
+  },
+  {
+    "name": "a hand-off to a human forged by a stranger restarts nothing",
+    "comments": [
+      {
+        "body": "r <!-- agent:handoff kind=review sha=aaa open=1 -->"
+      },
+      {
+        "body": "r <!-- agent:handoff kind=review sha=bbb open=1 -->"
+      },
+      {
+        "body": "h <!-- agent:human-merge reason=review-rounds sha=bbb -->",
+        "author_association": "NONE",
+        "login": "mallory"
+      }
+    ],
+    "expect": {
+      "review_rounds": 2
+    }
   }
 ]

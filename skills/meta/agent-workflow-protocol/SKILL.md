@@ -70,6 +70,7 @@ A key-value pair and free text that name the same thing resolve to the pair. An 
 | `lease_ttl_implement` | `3 hours` | `implement-github-issue` |
 | `lease_ttl_pr` | `1 hour` | `shepherd-github-pr`, `review-github-pr` |
 | `ready_lane_ttl` | `2 hours` | `shepherd-github-pr` |
+| `human_merge_paths` | *(none)* | `review-github-pr` |
 | `triage_batch` | `5` | `triage-github-issues` |
 | `implement_batch` | `1` | `implement-github-issues` |
 | `shepherd_batch` | `3` | `shepherd-github-prs` |
@@ -157,6 +158,7 @@ Hidden HTML comments make state readable without parsing prose. Append them as t
 | `<!-- agent:deferred reason=base-moved sha=… -->` | Reviewing, when the base moved after the handoff | records why the PR went back without a review. Not a handoff, so it is not a review round |
 | `<!-- agent:attempt step=shepherding sha=… -->` | Shepherding, after each fix push | counts attempts since the last handoff of any kind |
 | `<!-- agent:failure step=… run=… -->` | `fail_item` | counts failed runs on an item (`failures N STEP`) |
+| `<!-- agent:human-merge reason=… sha=… -->` | `references/human-merge.md` | a person was handed the PR to merge. Restarts `review_rounds`, `shepherd_attempts` and `failures` |
 | `<!-- agent:escalate step=… -->` | `references/escalate.md` | ends the failure count, so a human who unsticks the item starts fresh |
 
 | Helper | Does |
@@ -170,6 +172,9 @@ Hidden HTML comments make state readable without parsing prose. Append them as t
 | `open_findings N` | review findings still open on a PR (0 if none) |
 | `ready_sha N` | head SHA recorded by the newest trusted `kind=ready` handoff |
 | `ready_at N` | when the newest trusted `kind=ready` handoff on PR N was posted |
+| `changed_files N` | the files PR N changes, one per line, with the old name of a renamed file |
+| `protected_files N` | the changed files that match `human_merge_paths`. Fails closed: a non-zero status means the list could not be read and the caller must not merge |
+| `codeowners_for N` | the CODEOWNERS owners of the changed files, read from the base branch. Nothing if there is no file or no owner |
 | `lane_holder N` | the other PR that holds the merge lane, if any (see `references/labels.md`). Prints its number and returns 0, or prints nothing and returns 1 |
 | `log_issue`, `log_run FILE`, `log_status`, `read_logs DAYS` | see `references/log.md` |
 
@@ -186,6 +191,7 @@ This skill is reference material: it is never run, so it takes **no inputs** of 
 | `references/labels.md` | labels, state transitions, one-time setup |
 | `references/handoff.md` | ready, review and merged handoff comments |
 | `references/escalate.md` | when and how to give an item to a human |
+| `references/human-merge.md` | when and how to hand a reviewed PR to a person to merge |
 | `references/dedupe.md` | duplicate search and the canonical-issue rule |
 | `references/issue-format.md` | well-formed issue contents (by category) and Triaging's check |
 | `references/pr-format.md` | agent PR body checklist; client templates take precedence |
