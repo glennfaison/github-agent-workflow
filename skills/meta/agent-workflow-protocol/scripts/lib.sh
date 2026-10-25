@@ -10,6 +10,7 @@
 # ../SKILL.md's Defaults table describes.
 #
 # Helpers: has_label lease_live claim renew release clear_stale_lease   leases
+#          lane_holder ready_at                                  the merge lane
 #          markers review_rounds shepherd_attempts failures    reading markers
 #          open_findings ready_sha fail_item                   handoffs and failures
 #          prs_for_issue issue_for_pr                          issue <-> PR links
@@ -35,6 +36,7 @@ AGENT_ROOT="$(git rev-parse --show-toplevel)"
 : "${lease_ttl_triage:=1 hour}"
 : "${lease_ttl_implement:=3 hours}"
 : "${lease_ttl_pr:=1 hour}"
+: "${ready_lane_ttl:=2 hours}"
 : "${triage_batch:=${groom_batch:-5}}"          # groom_batch is the deprecated name
 : "${implement_batch:=1}"
 : "${shepherd_batch:=3}"
@@ -65,6 +67,7 @@ repo_guidance:REPO_GUIDANCE
 lease_ttl_triage:LEASE_TTL_TRIAGE
 lease_ttl_implement:LEASE_TTL_IMPLEMENT
 lease_ttl_pr:LEASE_TTL_PR
+ready_lane_ttl:READY_LANE_TTL
 triage_batch:TRIAGE_BATCH
 implement_batch:IMPLEMENT_BATCH
 shepherd_batch:SHEPHERD_BATCH
@@ -171,6 +174,29 @@ review_rounds() { markers "$1" | grep -c 'agent:handoff kind=review' || true; }
 
 shepherd_attempts() {
   markers "$1" | awk '/agent:handoff/{c=0} /agent:attempt step=shepherding/{c++} END{print c+0}'
+}
+
+# When the newest trusted `kind=ready` handoff on PR $1 was posted, or nothing if it has none.
+ready_at() {
+  gh api "repos/{owner}/{repo}/issues/$1/comments" --paginate \
+    --jq ".[] | select($(trusted_jq)) | select(.body | contains(\"agent:handoff kind=ready\")) | .created_at" \
+    | tail -n1
+}
+
+# The merge lane. Prints the number of another PR that holds it and returns 0, or prints nothing and
+# returns 1 when it is free. A PR holds it while it is open, labelled agent:ready-for-review, not a
+# draft, not agent:stuck, and its ready handoff is younger than $ready_lane_ttl (see laneHolder in
+# helpers.mjs). Shepherding calls this before it updates a branch or posts a ready handoff.
+lane_holder() {
+  local self=$1 n at list="" holder
+  for n in $(gh pr list --state open --label agent:ready-for-review --limit 100 --json number,isDraft,labels \
+      | jq -r '.[] | select((.isDraft | not) and (([.labels[].name] | index("agent:stuck")) | not)) | .number'); do
+    [ "$n" = "$self" ] && continue
+    at=$(ready_at "$n")
+    list="$list{\"number\":$n,\"readyAt\":\"$at\"},"
+  done
+  holder=$(printf '[%s]' "${list%,}" | node "$AGENT_HELPERS" lane-holder "$self" "$ready_lane_ttl")
+  [ -n "$holder" ] && printf '%s\n' "$holder"
 }
 
 fail_item() {
