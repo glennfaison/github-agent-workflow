@@ -398,6 +398,31 @@ export function readySha(markers) {
 }
 
 /**
+ * Which other PR holds the merge lane, or null. The lane is the one place a PR waits to be merged:
+ * with a base branch that must be up to date before a merge, two ready PRs cannot both merge, so
+ * Shepherding hands off one at a time. A PR holds the lane while it is open, labelled
+ * `agent:ready-for-review`, not a draft, not `agent:stuck`, and its newest trusted `kind=ready`
+ * handoff is younger than `ttl`. The TTL means a holder nobody reviews cannot block the rest forever.
+ * @param {{ number: number, readyAt: string }[]} candidates open PRs already filtered to the label,
+ *   each with the time of its newest trusted ready handoff ('' if none)
+ * @param {number|string} self the PR asking, never its own holder
+ * @param {string} ttl a duration, e.g. "2 hours"
+ * @param {Date} [now]
+ * @returns {number|null} the holder with the oldest handoff
+ */
+export function laneHolder(candidates, self, ttl, now = new Date()) {
+  const cutoff = utcEpoch(utcPlus(ttl.replace(/^[+-]?/, '-'), now));
+  let best = null;
+  for (const c of candidates) {
+    if (String(c.number) === String(self) || !c.readyAt) continue;
+    const at = utcEpoch(c.readyAt);
+    if (at <= cutoff) continue;
+    if (!best || at < best.at) best = { number: Number(c.number), at };
+  }
+  return best ? best.number : null;
+}
+
+/**
  * Branch names the package accepts for agent work. Must match the heuristic in
  * `prs_for_issue` (`^[a-z]+/<issueNumber>-…`) so a PR can be linked back to its
  * issue by branch name. Type is lowercase letters only (feature, bugfix, …);
@@ -436,6 +461,7 @@ export const NO_SHELL_OPS = {
   lease_live: 'leaseState on the issue comments; skip the item if live.',
   fail_item: 'add_issue_comment with failureComment.',
   markers: 'markersOf on the comments.',
+  lane_holder: 'list_pull_requests (state open) filtered to the label agent:ready-for-review, no draft, no agent:stuck. For each, the created_at of its newest trusted comment holding a kind=ready handoff. laneHolder(candidates, N, ready_lane_ttl) gives the other PR that holds the merge lane, or null.',
 };
 
 // ---- CLI ----------------------------------------------------------------------------------
@@ -448,6 +474,7 @@ function cli(argv) {
     case 'run-id': return makeRunId(a[0] || 'unknown');
     case 'utc-plus': return utcPlus(a[0] ?? '', a[1] ? new Date(a[1]) : undefined);
     case 'utc-epoch': return String(utcEpoch(a[0] ?? ''));
+    case 'lane-holder': return String(laneHolder(JSON.parse(stdin() || '[]'), a[0], a[1] ?? '2 hours') ?? '');
     case 'lease-body': return leaseComment(a[0], a[1], a[2], a[3] === 'renew' ? 'renew' : 'claim').body;
     case 'failure-body': return failureComment(a[0], a[1], a[2] ?? '').body;
     case 'log-window': return String(logWindowDays(a[0]));

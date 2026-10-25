@@ -89,6 +89,7 @@ check "triage_batch default"     "5"             "$(bash -c 'source "$1"; echo "
 check "merge_method default"    "squash"        "$(bash -c 'source "$1"; echo "$merge_method"' _ "$LIB")"
 check "build_cmd default empty" ""              "$(bash -c 'source "$1"; echo "$build_cmd"' _ "$LIB")"
 check "lower and upper match"   "1 hour:1 hour" "$(bash -c 'source "$1"; echo "$lease_ttl_triage:$LEASE_TTL_TRIAGE"' _ "$LIB")"
+check "ready_lane_ttl default"   "2 hours:2 hours" "$(bash -c 'source "$1"; echo "$ready_lane_ttl:$READY_LANE_TTL"' _ "$LIB")"
 
 echo "Overriding a default"
 printf 'pr_base_branch=develop\nbuild_cmd="npm run build"\nlease_ttl_pr="2 hours"\n' > "$WORK/overrides.env"
@@ -148,6 +149,32 @@ check "counting restarts after it"      1 "$(failures 20 Triaging)"
 c 22 "merged <!-- agent:handoff kind=merged sha=abc -->"
 check "merged handoff is not a review round" 0 "$(review_rounds 22)"
 check "merged handoff leaves no open findings" 0 "$(open_findings 22)"
+
+echo "Merge lane"
+cp "$STATE/prs.json" "$STATE/prs.saved"
+cr() { local cf="$STATE/comments_$1.json"; [ -f "$cf" ] || echo '[]' > "$cf"   # cr N body created_at [association] [login]
+       jq --arg b "$2" --arg t "$3" --arg a "${4:-OWNER}" --arg l "${5:-maintainer}" \
+          '. + [{body:$b, author_association:$a, user:{login:$l}, created_at:$t}]' "$cf" > "$cf.t"; mv "$cf.t" "$cf"; }
+rdy() { echo '{"number":'"$1"',"isDraft":'"${2:-false}"',"labels":[{"name":"agent:ready-for-review"}'"${3:-}"']}'; }
+printf '[%s,%s,%s,%s]\n' "$(rdy 50)" "$(rdy 51 true)" "$(rdy 52 false ',{"name":"agent:stuck"}')" "$(rdy 53)" > "$STATE/prs.json"
+READY="ready <!-- agent:handoff kind=ready sha=aaa -->"
+cr 50 "$READY" "$(utc_plus '-30 minutes')"
+cr 51 "$READY" "$(utc_plus '-5 minutes')"
+cr 52 "$READY" "$(utc_plus '-5 minutes')"
+cr 53 "$READY" "$(utc_plus '-5 minutes')" NONE mallory
+check "a fresh ready PR holds the lane; a draft, a stuck PR and a stranger's marker do not" 50 "$(lane_holder 60)"
+lane_holder 60 >/dev/null;  check "lane_holder returns 0 when held" 0 $?
+check "a PR is never its own holder" "" "$(lane_holder 50)"
+lane_holder 50 >/dev/null;  check "lane_holder returns 1 when free" 1 $?
+rm -f "$STATE/comments_50.json"; cr 50 "$READY" "$(utc_plus '-3 hours')"
+check "a handoff past ready_lane_ttl no longer holds the lane" "" "$(lane_holder 60)"
+check "ready_at is the handoff time" "$(jq -r '.[0].created_at' "$STATE/comments_50.json")" "$(ready_at 50)"
+ready_lane_ttl="4 hours"
+check "a longer ready_lane_ttl keeps it held" 50 "$(lane_holder 60)"
+ready_lane_ttl="2 hours"
+echo '[]' > "$STATE/prs.json"
+check "no ready PRs, a free lane" "" "$(lane_holder 60)"
+cp "$STATE/prs.saved" "$STATE/prs.json"
 
 echo "Run log"
 rm -f "$STATE"/comments_*.json   # earlier sections used the same issue numbers

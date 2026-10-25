@@ -113,6 +113,7 @@ trusted_authors=
 ```
 Run /shepherd-github-pr 124
 lease_ttl_pr=1 hour
+ready_lane_ttl=2 hours
 max_shepherd_attempts=3
 max_item_failures=3
 human_reviewer=

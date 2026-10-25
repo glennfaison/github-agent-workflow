@@ -169,3 +169,22 @@ test('isCompliantBranchName matches the prs_for_issue branch heuristic', () => {
   assert.equal(h.isCompliantBranchName('', 24), false);
   assert.equal(h.branchNamePattern(7).source, '^[a-z]+\\/7-[a-z0-9]+(?:-[a-z0-9]+)*$');
 });
+
+test('laneHolder: the oldest live ready handoff of another PR holds the lane', () => {
+  const now = new Date('2026-10-25T12:00:00Z');
+  const pr = (number, readyAt) => ({ number, readyAt });
+  assert.equal(h.laneHolder([pr(6, '2026-10-25T11:30:00Z'), pr(5, '2026-10-25T11:00:00Z')], 7, '2 hours', now), 5);
+  assert.equal(h.laneHolder([pr(5, '2026-10-25T11:00:00Z')], 5, '2 hours', now), null, 'a PR never blocks itself');
+  assert.equal(h.laneHolder([pr(5, '2026-10-25T09:59:00Z')], 7, '2 hours', now), null, 'a handoff past the TTL no longer holds it');
+  assert.equal(h.laneHolder([pr(5, '2026-10-25T10:00:00Z')], 7, '2 hours', now), null, 'the TTL boundary is exclusive');
+  assert.equal(h.laneHolder([pr(5, '2026-10-25T09:00:00Z')], 7, '4 hours', now), 5, 'a longer TTL keeps it');
+  assert.equal(h.laneHolder([pr(5, '')], 7, '2 hours', now), null, 'no trusted ready handoff, no hold');
+  assert.equal(h.laneHolder([], 7, '2 hours', now), null);
+  assert.equal(h.laneHolder([pr('5', '2026-10-25T11:00:00Z')], '5', '2 hours', now), null, 'numbers compare as text or number');
+});
+
+test('lane-holder CLI reads candidates from stdin and prints the holder or nothing', () => {
+  const run = (input) => execFileSync('node', [helpersPath, 'lane-holder', '7', '100 years'], { input, encoding: 'utf8' }).trim();
+  assert.equal(run('[{"number":5,"readyAt":"2099-01-01T00:00:00Z"}]'), '5');
+  assert.equal(run('[]'), '');
+});

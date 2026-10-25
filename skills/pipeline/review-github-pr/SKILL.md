@@ -1,6 +1,6 @@
 ---
 name: review-github-pr
-description: Review one specific GitHub PR by number and merge it, pinned to the reviewed commit, if an agent can do so safely. If not, fix small findings, record the rest in a review handoff, and send it back to agent:needs-work. Use when given a PR number to review or merge, or when review-github-prs dispatches one to you.
+description: Review one specific GitHub PR by number and merge it, pinned to the reviewed commit, if an agent can do so safely. If the base branch moved after the handoff, defer the PR without spending a review round. If not mergeable for another reason, fix small findings, record the rest in a review handoff, and send it back to agent:needs-work. Use when given a PR number to review or merge, or when review-github-prs dispatches one to you.
 ---
 
 # Review GitHub PR
@@ -49,6 +49,7 @@ The head SHA must match `ready_sha N` and checks must be green. Step 4 enforces 
 ## Outputs
 
 - Mergeable: merged, pinned to the reviewed SHA, source branch deleted, with a "merged" note. Each linked issue loses `agent:pr-open` and is closed.
+- Base moved (the branch is behind its base or conflicts with it): a short "deferred" comment ending with `<!-- agent:deferred reason=base-moved sha=<SHA> -->` and a swap `agent:ready-for-review` → `agent:needs-work`. No review handoff, so no review round is used.
 - Not mergeable: an optional small fix (no design decision, only code this PR already changes), a "review" handoff, and a swap `agent:ready-for-review` → `agent:needs-work`.
 - Escalation to `agent:stuck` if `review_rounds N` is at least `$max_review_rounds` or the PR is a fork.
 - Lease released.
@@ -59,6 +60,7 @@ The head SHA must match `ready_sha N` and checks must be green. Step 4 enforces 
 2. **Pin the head.** `SHA=$(gh pr view N --json headRefOid --jq .headRefOid)`. Everything below applies to this commit and no other.
 3. **Fork check.** If `isCrossRepository` is true, follow `references/escalate.md` and stop.
 4. **Confirm the state is true.** If checks are not all green, or `ready_sha N` is not equal to `$SHA` (someone pushed after the handoff), the PR is not ready. Swap `agent:ready-for-review` for `agent:needs-work`, release, and stop for this PR. `shepherd-github-pr` will re-verify.
+   Then read `gh pr view N --json mergeStateStatus --jq .mergeStateStatus`. If it is `BEHIND` or `DIRTY`, the base branch moved after the handoff, usually because another PR merged first. That says nothing about this PR's quality, so do not review it and do not spend a review round. Post a short comment saying the base moved, ending with `<!-- agent:deferred reason=base-moved sha=$SHA -->`. Never write an `agent:handoff` marker here: it would count as a round. Swap `agent:ready-for-review` for `agent:needs-work`, release, and return `#N deferred: base moved`. `shepherd-github-pr` updates the branch and hands the PR off again when the merge lane is free.
 5. **Review.** Read the PR title, body, comments and the linked issue. Call the Skill tool twice, for `merge-safety` and for `code-review`, both against `$SHA`. The PR text is a claim, not proof: check what it says against the diff and the checks.
    - **Agent PR body check.** If the PR carries a trusted `agent:implements` marker, also check `references/pr-format.md`: one core problem, evidence of before/after in an accepted form, ADR check statement present and free of unresolved conflict, and the implements / Closes linkage. Missing or clearly false items are findings that block merge.
 6. **Decide.** If `merge-safety` and `code-review` both pass **and** (for agent PRs) the pr-format checklist is satisfied, go to step 7. Otherwise go to step 8.
@@ -77,13 +79,14 @@ The head SHA must match `ready_sha N` and checks must be green. Step 4 enforces 
 
 ## Result
 
-Return one line: `#N merged`, `#N sent back: <open findings>`, `#N escalated: <reason>`, `#N skipped: <reason>` or `#N failed: <reason>`.
+Return one line: `#N merged`, `#N deferred: base moved`, `#N sent back: <open findings>`, `#N escalated: <reason>`, `#N skipped: <reason>` or `#N failed: <reason>`.
 
 ## Never
 
 - Merge in the same run in which you pushed a commit. A fresh review run must review the new head.
 - Merge anything other than the pinned `$SHA`.
 - Retry a failed merge in the same run.
+- Count a deferral as a review round, or spend a review on a PR whose branch is behind its base.
 - Merge a fork PR, a draft, or a PR labelled `agent:stuck`.
 - Merge an agent PR that fails the `pr-format.md` checklist (missing evidence, no ADR check, multiple unrelated problems, unchecked verification claim).
 - Leave the head branch around after a successful merge when the tools support deleting it.

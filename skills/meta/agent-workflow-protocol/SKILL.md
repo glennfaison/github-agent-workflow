@@ -69,6 +69,7 @@ A key-value pair and free text that name the same thing resolve to the pair. An 
 | `lease_ttl_triage` | `1 hour` | `triage-github-issue` |
 | `lease_ttl_implement` | `3 hours` | `implement-github-issue` |
 | `lease_ttl_pr` | `1 hour` | `shepherd-github-pr`, `review-github-pr` |
+| `ready_lane_ttl` | `2 hours` | `shepherd-github-pr` |
 | `triage_batch` | `5` | `triage-github-issues` |
 | `implement_batch` | `1` | `implement-github-issues` |
 | `shepherd_batch` | `3` | `shepherd-github-prs` |
@@ -152,6 +153,8 @@ Hidden HTML comments make state readable without parsing prose. Append them as t
 | `<!-- agent:handoff kind=ready sha=… -->` | Shepherding | the PR was reviewable at this head SHA |
 | `<!-- agent:handoff kind=review sha=… open=N -->` | Reviewing, when it does not merge; `N` = findings still unfixed | counts review rounds; `open_findings N` tells Shepherding what is left |
 | `<!-- agent:handoff kind=merged sha=… -->` | Reviewing, after it merges | the review record stays with the PR |
+| `<!-- agent:branch-update sha=… -->` | Shepherding, after it brings a behind branch up to date | records the update. Not an attempt, and not a handoff, so no counter moves |
+| `<!-- agent:deferred reason=base-moved sha=… -->` | Reviewing, when the base moved after the handoff | records why the PR went back without a review. Not a handoff, so it is not a review round |
 | `<!-- agent:attempt step=shepherding sha=… -->` | Shepherding, after each fix push | counts attempts since the last handoff of any kind |
 | `<!-- agent:failure step=… run=… -->` | `fail_item` | counts failed runs on an item (`failures N STEP`) |
 | `<!-- agent:escalate step=… -->` | `references/escalate.md` | ends the failure count, so a human who unsticks the item starts fresh |
@@ -166,6 +169,8 @@ Hidden HTML comments make state readable without parsing prose. Append them as t
 | `failures N STEP` | failed runs of STEP on N since the last escalation |
 | `open_findings N` | review findings still open on a PR (0 if none) |
 | `ready_sha N` | head SHA recorded by the newest trusted `kind=ready` handoff |
+| `ready_at N` | when the newest trusted `kind=ready` handoff on PR N was posted |
+| `lane_holder N` | the other PR that holds the merge lane, if any (see `references/labels.md`). Prints its number and returns 0, or prints nothing and returns 1 |
 | `log_issue`, `log_run FILE`, `log_status`, `read_logs DAYS` | see `references/log.md` |
 
 ## Inputs
