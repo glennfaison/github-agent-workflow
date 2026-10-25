@@ -1,6 +1,6 @@
 {
   "name": "github-agent-workflow",
-  "version": "1.6.0",
+  "version": "1.7.0",
   "private": true,
   "description": "Agent skills that run a GitHub repository's issue-to-merge pipeline unattended",
   "license": "MIT",
