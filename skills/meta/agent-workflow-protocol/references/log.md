@@ -51,7 +51,7 @@ problems_count: 1
 |---|---|---|
 | `step` | yes | Exploring, Triaging, Implementing, Shepherding, Reviewing |
 | `run` | yes | `RUN_ID` |
-| `runner` | yes | Runner name |
+| `runner` | yes | Runner name (from the `runner` input; default `unknown`). Required so log and issue comments can be attributed |
 | `at` | yes | When the entry was written, UTC ISO-8601 (`log_run` adds it if missing) |
 | `outcome` | yes | Short summary string (same facts as **Outcome:**) |
 | `problems_count` | yes | Number of tagged problem lines (0 if none) |
@@ -79,6 +79,7 @@ Rules:
 - **One entry per run and step.** `log_run` skips an entry whose `run` and `step` are already on the log issue, so a retry is safe. A runner with no shell checks the issue's comments (`hasLogEntry`) first.
 - Write real line breaks, never the two characters backslash and `n`. `log_run` repairs an entry written that way, but do not rely on it.
 - Write the entry to a temp file, then run `log_run FILE` (shell) or post the same body with GitHub tools (no-shell). Use `formatLogComment` from `scripts/helpers.mjs` so the header and field order stay identical across runners.
+- The prose header line must include `**Runner:**` with the same value as the YAML `runner` key. Agent comments on issues and PRs (outside the log) follow the same rule; see `references/handoff.md`.
 
 ## Reading
 
