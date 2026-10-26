@@ -41,7 +41,7 @@ Go through the open issues as a group. Tidy the ones whose PRs are done, repair 
 1. **Housekeeping, before selecting.**
 
    **1a. PR-linked issues.** For each open issue labelled `agent:pr-open`, run `prs_for_issue N`:
-   - Any PR is `MERGED`: close the issue (`gh issue close N --comment "Implemented in #P."`).
+   - Any PR is `MERGED`: remove `agent:pr-open` if the issue has it, and close the issue (`gh issue close N --comment "Implemented in #P."`). A person may have merged it (`agent:human-merge`), and then no agent ran the merge path that does this.
    - Any PR is `OPEN`: leave it alone.
    - Every PR is `CLOSED` (none open or merged): the work was abandoned. In one command swap `agent:pr-open` for `ready-for-human`, and comment "PR #P was closed without merging. A human should decide whether to retry." Do not send it back to an agent: that is how the same fix gets re-attempted in a loop.
    - No PR found at all: leave it alone and note it under **Problems** in the log (`repo-state`).

@@ -188,3 +188,54 @@ test('lane-holder CLI reads candidates from stdin and prints the holder or nothi
   assert.equal(run('[{"number":5,"readyAt":"2099-01-01T00:00:00Z"}]'), '5');
   assert.equal(run('[]'), '');
 });
+
+test('pathPatternToRegExp: the gitignore-style subset', () => {
+  const hit = (pattern, path) => h.pathPatternToRegExp(pattern).test(path);
+  assert.ok(hit('skills/**/SKILL.md', 'skills/a/SKILL.md'));
+  assert.ok(hit('skills/**/SKILL.md', 'skills/a/b/SKILL.md'));
+  assert.ok(hit('skills/**/SKILL.md', 'skills/SKILL.md'), '** also matches no directory');
+  assert.ok(!hit('skills/**/SKILL.md', 'other/skills/a/SKILL.md'), 'a pattern with a slash is anchored');
+  assert.ok(hit('/scripts/', 'scripts/lib.sh') && hit('/scripts/', 'scripts/a/b.sh'));
+  assert.ok(!hit('/scripts/', 'a/scripts/x.sh'), 'a leading slash anchors at the root');
+  assert.ok(hit('scripts/', 'a/scripts/x.sh'), 'a bare directory name matches at any depth');
+  assert.ok(!hit('scripts/', 'scripts'), 'a trailing slash means a directory, so not a file of that name');
+  assert.ok(hit('*.js', 'a/b/c.js') && !hit('*.js', 'c.json'));
+  assert.ok(hit('docs/*', 'docs/a.md') && !hit('docs/*', 'docs/n/b.md'), 'a wildcard last segment stays in one directory');
+  assert.ok(hit('docs/**', 'docs/n/b.md'));
+  assert.ok(hit('README.md', 'x/README.md') && hit('/README.md', 'README.md') && !hit('/README.md', 'x/README.md'));
+  assert.ok(hit('.github/workflows/', '.github/workflows/ci.yml'));
+  assert.ok(hit('src/a?.ts', 'src/ab.ts') && !hit('src/a?.ts', 'src/a/.ts'));
+  assert.ok(hit('a+b.txt', 'a+b.txt') && !hit('a+b.txt', 'aab.txt'), 'regex characters are literal');
+  for (const none of ['', '   ', '# a comment', '!negated', '/']) assert.equal(h.pathPatternToRegExp(none), null, JSON.stringify(none));
+});
+
+test('protectedFiles: matches any pattern, and refuses a pattern it cannot read', () => {
+  const files = ['README.md', 'skills/a/SKILL.md', 'scripts/lib.sh', 'docs/a.md'];
+  assert.deepEqual(h.protectedFiles('skills/**/SKILL.md, /scripts/', files), ['skills/a/SKILL.md', 'scripts/lib.sh']);
+  assert.deepEqual(h.protectedFiles('skills/**/SKILL.md\n/scripts/', files), ['skills/a/SKILL.md', 'scripts/lib.sh'], 'newline separated too');
+  assert.deepEqual(h.protectedFiles('nothing/here', files), []);
+  assert.deepEqual(h.protectedFiles('', files), [], 'no patterns protect nothing');
+  assert.throws(() => h.protectedFiles('skills/, !docs/', files), /unsupported path pattern: !docs\//, 'it must not silently match nothing');
+});
+
+test('codeownersFor: the last matching rule wins, and a rule with no owner leaves a file unowned', () => {
+  const text = [
+    '# owners', '* @root', '/docs/ @docs-team @org/writers  # trailing comment', '*.js @js', 'skills/', 'lib/ a@example.com', '',
+  ].join('\n');
+  assert.deepEqual(h.codeownersFor(text, ['README.md']), ['@root']);
+  assert.deepEqual(h.codeownersFor(text, ['docs/a.md']), ['@docs-team', '@org/writers']);
+  assert.deepEqual(h.codeownersFor(text, ['m.js']), ['@js'], '*.js comes after * and wins');
+  assert.deepEqual(h.codeownersFor(text, ['skills/x/SKILL.md']), [], 'skills/ names no owner, so the file is unowned');
+  assert.deepEqual(h.codeownersFor(text, ['lib/a.js']), ['a@example.com'], 'lib/ comes after *.js, so the later rule wins');
+  assert.deepEqual(h.codeownersFor(text, ['docs/a.md', 'm.js', 'README.md', 'm.js']), ['@docs-team', '@org/writers', '@js', '@root'], 'in order, without repeats');
+  assert.deepEqual(h.codeownersFor('', ['a']), []);
+  assert.deepEqual(h.codeownersFor(undefined, ['a']), []);
+});
+
+test('protected-files and codeowners CLI read JSON from stdin', () => {
+  const run = (args, input) => execFileSync('node', [helpersPath, ...args], { input, encoding: 'utf8' }).trim();
+  assert.equal(run(['protected-files', 'skills/'], '["skills/a.md","b.md"]'), 'skills/a.md');
+  assert.equal(run(['protected-files', 'skills/'], '["b.md"]'), '');
+  assert.equal(run(['codeowners'], JSON.stringify({ text: '* @a @b', files: ['x'] })), '@a\n@b');
+  assert.throws(() => execFileSync('node', [helpersPath, 'protected-files', '!x'], { input: '["a"]', stdio: 'pipe' }), /unsupported path pattern/);
+});

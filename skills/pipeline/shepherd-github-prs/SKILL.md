@@ -33,7 +33,7 @@ Pick the `agent:needs-work` PRs that can be worked on now, and give each to `she
    gh pr list --state open --label agent:needs-work --limit 100 \
      --json number,url,title,createdAt,labels,isCrossRepository --jq '
      def names: [.labels[].name];
-     [ .[] | select((names | any(. == "agent:stuck")) | not)
+     [ .[] | select((names | any(. == "agent:stuck" or . == "agent:human-merge")) | not)
            | {number, url, title, createdAt, fork: .isCrossRepository} ] | sort_by(.createdAt)'
    ```
 

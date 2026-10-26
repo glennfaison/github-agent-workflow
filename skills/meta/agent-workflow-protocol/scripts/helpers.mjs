@@ -357,24 +357,32 @@ export function leaseState(comments, trust, now = new Date()) {
   return { expires: last, live: Math.floor(now.getTime() / 1000) < utcEpoch(last) };
 }
 
-export const reviewRounds = (markers) => markers.filter((m) => m.includes('agent:handoff kind=review')).length;
+/** Review handoffs since the last hand-off to a human. A person who takes a PR over starts it afresh. */
+export function reviewRounds(markers) {
+  let c = 0;
+  for (const m of markers) {
+    if (m.includes('agent:human-merge')) c = 0;
+    if (m.includes('agent:handoff kind=review')) c += 1;
+  }
+  return c;
+}
 
-/** Fix attempts since the last handoff of any kind. */
+/** Fix attempts since the last handoff of any kind, or the last hand-off to a human. */
 export function shepherdAttempts(markers) {
   let c = 0;
   for (const m of markers) {
-    if (m.includes('agent:handoff')) c = 0;
+    if (m.includes('agent:handoff') || m.includes('agent:human-merge')) c = 0;
     if (m.includes('agent:attempt step=shepherding')) c += 1;
   }
   return c;
 }
 
-/** Failed runs of `step` since the last escalation. Failures under a step's old name count too. */
+/** Failed runs of `step` since the last escalation or hand-off to a human. Failures under a step's old name count too. */
 export function failures(markers, step) {
   const names = [step, LEGACY_STEP_NAMES[step]].filter(Boolean);
   let c = 0;
   for (const m of markers) {
-    if (m.includes('agent:escalate')) c = 0;
+    if (m.includes('agent:escalate') || m.includes('agent:human-merge')) c = 0;
     if (names.some((n) => m.includes(`agent:failure step=${n} `))) c += 1;
   }
   return c;
@@ -401,7 +409,7 @@ export function readySha(markers) {
  * Which other PR holds the merge lane, or null. The lane is the one place a PR waits to be merged:
  * with a base branch that must be up to date before a merge, two ready PRs cannot both merge, so
  * Shepherding hands off one at a time. A PR holds the lane while it is open, labelled
- * `agent:ready-for-review`, not a draft, not `agent:stuck`, and its newest trusted `kind=ready`
+ * `agent:ready-for-review`, not a draft, not `agent:stuck` or `agent:human-merge`, and its newest trusted `kind=ready`
  * handoff is younger than `ttl`. The TTL means a holder nobody reviews cannot block the rest forever.
  * @param {{ number: number, readyAt: string }[]} candidates open PRs already filtered to the label,
  *   each with the time of its newest trusted ready handoff ('' if none)
@@ -420,6 +428,85 @@ export function laneHolder(candidates, self, ttl, now = new Date()) {
     if (!best || at < best.at) best = { number: Number(c.number), at };
   }
   return best ? best.number : null;
+}
+
+/**
+ * One gitignore-style path pattern as a RegExp over a repository-relative path, or null for a line
+ * that is not a pattern (blank, a comment, a negation). A subset of gitignore and CODEOWNERS
+ * matching: `*` (not across `/`), `**`, `?`, a leading `/` (anchor at the root), and a trailing `/`
+ * (a directory and everything below it). A pattern with no `/` other than a trailing one matches at
+ * any depth. A final segment with no wildcard also matches a directory of that name and what is below
+ * it; one with a wildcard matches only what it names, so `docs/*` is the files directly in `docs`.
+ * There are no character classes and no escapes.
+ */
+export function pathPatternToRegExp(raw) {
+  let p = String(raw).trim();
+  if (!p || p.startsWith('#') || p.startsWith('!')) return null;
+  const dirOnly = p.endsWith('/');
+  if (dirOnly) p = p.slice(0, -1);
+  const anchored = p.includes('/');
+  p = p.replace(/^\//, '');
+  if (!p) return null;
+  let re = '';
+  for (let i = 0; i < p.length; i += 1) {
+    const ch = p[i];
+    if (ch === '*' && p[i + 1] === '*') {
+      if ((i === 0 || p[i - 1] === '/') && p[i + 2] === '/') { re += '(?:.*/)?'; i += 2; } else { re += '.*'; i += 1; }
+    } else if (ch === '*') re += '[^/]*';
+    else if (ch === '?') re += '[^/]';
+    else re += ch.replace(/[.+^${}()|[\]\\]/g, '\\$&');
+  }
+  const wildcardLast = /[*?]/.test(p.split('/').pop());
+  const tail = dirOnly ? '/.*' : wildcardLast ? '' : '(?:/.*)?';
+  return new RegExp(`^${anchored ? '' : '(?:.*/)?'}${re}${tail}$`);
+}
+
+/** Split a `human_merge_paths` value, which is comma or newline separated. */
+export const splitPatterns = (s) => String(s ?? '').split(/[\n,]/).map((x) => x.trim()).filter(Boolean);
+
+/**
+ * The files that match any of the patterns. Throws on a pattern it cannot read, because a pattern
+ * that silently matches nothing would let a protected file through.
+ * @param {string} patterns
+ * @param {string[]} files repository-relative paths, including the old name of a renamed file
+ */
+export function protectedFiles(patterns, files) {
+  const res = splitPatterns(patterns).map((raw) => {
+    const re = pathPatternToRegExp(raw);
+    if (!re) throw new Error(`unsupported path pattern: ${raw}`);
+    return re;
+  });
+  return files.filter((f) => res.some((r) => r.test(f)));
+}
+
+/** The rules of a CODEOWNERS file, in order. Blank and comment lines are skipped. */
+export function parseCodeowners(text) {
+  const rules = [];
+  for (const line of String(text ?? '').split(/\r?\n/)) {
+    const t = line.replace(/(^|\s)#.*$/, '').trim();
+    if (!t) continue;
+    const [pattern, ...owners] = t.split(/\s+/);
+    const re = pathPatternToRegExp(pattern);
+    if (re) rules.push({ re, owners });
+  }
+  return rules;
+}
+
+/**
+ * The owners of a set of files: for each file the last matching rule wins, and a rule with no owners
+ * leaves the file unowned. Owners are as written (`@user`, `@org/team`, an email), without repeats.
+ * @param {string} text the CODEOWNERS file, as read from the PR's base branch
+ * @param {string[]} files
+ */
+export function codeownersFor(text, files) {
+  const rules = parseCodeowners(text);
+  const owners = [];
+  for (const f of files) {
+    let hit = null;
+    for (const r of rules) if (r.re.test(f)) hit = r;
+    for (const o of hit?.owners ?? []) if (!owners.includes(o)) owners.push(o);
+  }
+  return owners;
 }
 
 /**
@@ -461,7 +548,10 @@ export const NO_SHELL_OPS = {
   lease_live: 'leaseState on the issue comments; skip the item if live.',
   fail_item: 'add_issue_comment with failureComment.',
   markers: 'markersOf on the comments.',
-  lane_holder: 'list_pull_requests (state open) filtered to the label agent:ready-for-review, no draft, no agent:stuck. For each, the created_at of its newest trusted comment holding a kind=ready handoff. laneHolder(candidates, N, ready_lane_ttl) gives the other PR that holds the merge lane, or null.',
+  changed_files: 'list_pull_request_files for the PR, paginated: each filename, and the previous_filename of a renamed file.',
+  protected_files: 'changed_files, then protectedFiles(human_merge_paths, files). Empty when human_merge_paths is empty. If the file list cannot be read, or a pattern is unsupported, it is an error: fail_item and never merge.',
+  codeowners_for: 'Read CODEOWNERS from the PR base branch (.github/CODEOWNERS, then CODEOWNERS, then docs/CODEOWNERS; never the PR head), then codeownersFor(text, changed_files). No file means no owners.',
+  lane_holder: 'list_pull_requests (state open) filtered to the label agent:ready-for-review, no draft, no agent:stuck or agent:human-merge. For each, the created_at of its newest trusted comment holding a kind=ready handoff. laneHolder(candidates, N, ready_lane_ttl) gives the other PR that holds the merge lane, or null.',
 };
 
 // ---- CLI ----------------------------------------------------------------------------------
@@ -475,6 +565,11 @@ function cli(argv) {
     case 'utc-plus': return utcPlus(a[0] ?? '', a[1] ? new Date(a[1]) : undefined);
     case 'utc-epoch': return String(utcEpoch(a[0] ?? ''));
     case 'lane-holder': return String(laneHolder(JSON.parse(stdin() || '[]'), a[0], a[1] ?? '2 hours') ?? '');
+    case 'protected-files': return protectedFiles(a[0] ?? '', JSON.parse(stdin() || '[]')).join('\n');
+    case 'codeowners': {
+      const j = JSON.parse(stdin() || '{}');
+      return codeownersFor(j.text, j.files ?? []).join('\n');
+    }
     case 'lease-body': return leaseComment(a[0], a[1], a[2], a[3] === 'renew' ? 'renew' : 'claim').body;
     case 'failure-body': return failureComment(a[0], a[1], a[2] ?? '').body;
     case 'log-window': return String(logWindowDays(a[0]));

@@ -11,6 +11,7 @@
 #
 # Helpers: has_label lease_live claim renew release clear_stale_lease   leases
 #          lane_holder ready_at                                  the merge lane
+#          changed_files protected_files codeowners_for          paths and owners
 #          markers review_rounds shepherd_attempts failures    reading markers
 #          open_findings ready_sha fail_item                   handoffs and failures
 #          prs_for_issue issue_for_pr                          issue <-> PR links
@@ -37,6 +38,7 @@ AGENT_ROOT="$(git rev-parse --show-toplevel)"
 : "${lease_ttl_implement:=3 hours}"
 : "${lease_ttl_pr:=1 hour}"
 : "${ready_lane_ttl:=2 hours}"
+: "${human_merge_paths:=}"
 : "${triage_batch:=${groom_batch:-5}}"          # groom_batch is the deprecated name
 : "${implement_batch:=1}"
 : "${shepherd_batch:=3}"
@@ -68,6 +70,7 @@ lease_ttl_triage:LEASE_TTL_TRIAGE
 lease_ttl_implement:LEASE_TTL_IMPLEMENT
 lease_ttl_pr:LEASE_TTL_PR
 ready_lane_ttl:READY_LANE_TTL
+human_merge_paths:HUMAN_MERGE_PATHS
 triage_batch:TRIAGE_BATCH
 implement_batch:IMPLEMENT_BATCH
 shepherd_batch:SHEPHERD_BATCH
@@ -170,10 +173,11 @@ markers() {
     --jq ".[] | select($(trusted_jq)) | .body | scan(\"<!-- agent:[^>]*-->\")"
 }
 
-review_rounds() { markers "$1" | grep -c 'agent:handoff kind=review' || true; }
+# Review handoffs since the last hand-off to a human (agent:human-merge).
+review_rounds() { markers "$1" | awk '/agent:human-merge/{c=0} /agent:handoff kind=review/{c++} END{print c+0}'; }
 
 shepherd_attempts() {
-  markers "$1" | awk '/agent:handoff/{c=0} /agent:attempt step=shepherding/{c++} END{print c+0}'
+  markers "$1" | awk '/agent:handoff/{c=0} /agent:human-merge/{c=0} /agent:attempt step=shepherding/{c++} END{print c+0}'
 }
 
 # When the newest trusted `kind=ready` handoff on PR $1 was posted, or nothing if it has none.
@@ -185,18 +189,48 @@ ready_at() {
 
 # The merge lane. Prints the number of another PR that holds it and returns 0, or prints nothing and
 # returns 1 when it is free. A PR holds it while it is open, labelled agent:ready-for-review, not a
-# draft, not agent:stuck, and its ready handoff is younger than $ready_lane_ttl (see laneHolder in
+# draft, not agent:stuck or agent:human-merge, and its ready handoff is younger than $ready_lane_ttl (see laneHolder in
 # helpers.mjs). Shepherding calls this before it updates a branch or posts a ready handoff.
 lane_holder() {
   local self=$1 n at list="" holder
   for n in $(gh pr list --state open --label agent:ready-for-review --limit 100 --json number,isDraft,labels \
-      | jq -r '.[] | select((.isDraft | not) and (([.labels[].name] | index("agent:stuck")) | not)) | .number'); do
+      | jq -r '.[] | select((.isDraft | not) and (([.labels[].name] | index("agent:stuck")) | not) and (([.labels[].name] | index("agent:human-merge")) | not)) | .number'); do
     [ "$n" = "$self" ] && continue
     at=$(ready_at "$n")
     list="$list{\"number\":$n,\"readyAt\":\"$at\"},"
   done
   holder=$(printf '[%s]' "${list%,}" | node "$AGENT_HELPERS" lane-holder "$self" "$ready_lane_ttl")
   [ -n "$holder" ] && printf '%s\n' "$holder"
+}
+
+# The files PR $1 changes, one per line, with the old name of a renamed file. Fails if it cannot read them.
+changed_files() {
+  gh api "repos/{owner}/{repo}/pulls/$1/files" --paginate --jq '.[] | .filename, (.previous_filename // empty)'
+}
+
+# The changed files that match $human_merge_paths (see protectedFiles in helpers.mjs), one per line.
+# Prints nothing when none match or when $human_merge_paths is empty. Fails closed: if the list of
+# changed files cannot be read, or is empty (a PR always changes a file), or a pattern is unsupported,
+# the status is not 0 and the caller must not merge.
+protected_files() {
+  [ -n "$human_merge_paths" ] || return 0
+  local files; files=$(changed_files "$1") || return 2
+  [ -n "$files" ] || return 2
+  printf '%s\n' "$files" | jq -R . | jq -s . | node "$AGENT_HELPERS" protected-files "$human_merge_paths"
+}
+
+# The CODEOWNERS owners of the files PR $1 changes, one per line, read from the PR's base branch (never
+# its head, which the PR could edit). Prints nothing when there is no CODEOWNERS file or no owner.
+codeowners_for() {
+  local n=$1 base p text="" files
+  base=$(gh pr view "$n" --json baseRefName --jq .baseRefName) || return 1
+  for p in .github/CODEOWNERS CODEOWNERS docs/CODEOWNERS; do
+    if text=$(gh api -H "Accept: application/vnd.github.raw" "repos/{owner}/{repo}/contents/$p?ref=$base" 2>/dev/null); then break; fi
+    text=""
+  done
+  [ -n "$text" ] || return 0
+  files=$(changed_files "$n") || return 1
+  printf '%s\n' "$files" | jq -R . | jq -s --arg t "$text" '{text:$t, files:.}' | node "$AGENT_HELPERS" codeowners
 }
 
 fail_item() {
@@ -209,7 +243,7 @@ failures() {
   local legacy=""
   [ "$2" = Triaging ] && legacy=Grooming
   markers "$1" | awk -v s="$2" -v l="$legacy" '
-    /agent:escalate/ { c=0 }
+    /agent:escalate/ || /agent:human-merge/ { c=0 }
     index($0,"agent:failure step=" s " ") || (l != "" && index($0,"agent:failure step=" l " ")) { c++ }
     END { print c+0 }'
 }

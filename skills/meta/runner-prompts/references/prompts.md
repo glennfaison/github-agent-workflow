@@ -148,6 +148,7 @@ max_item_failures=3
 merge_method=squash
 pr_base_branch=main
 human_reviewer=
+human_merge_paths=
 git_hooks_path=
 runner=NAME
 log_window_days=14
