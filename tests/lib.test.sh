@@ -44,6 +44,12 @@ fi
 case "$cmd" in
   api)   # gh api user --jq F   |   gh api repos/{owner}/{repo}/issues/N/comments --paginate --jq F
          if [ "$1" = user ]; then echo '{"login":"agent-bot"}' | jqf "$@"; exit 0; fi
+         path=""; for a in "$@"; do case $a in repos/*) path=$a ;; esac; done
+         case $path in
+           */contents/*) f="$STATE/contents/${path#*/contents/}"; f="${f%%\?*}"; [ -f "$f" ] && { cat "$f"; exit 0; }; exit 1 ;;
+           */pulls/*/files) n=$(echo "$path" | sed -n 's#.*/pulls/\([0-9]*\)/files#\1#p')
+                            [ -f "$STATE/files_$n.json" ] || exit 1; jqf "$@" < "$STATE/files_$n.json"; exit 0 ;;
+         esac
          n=$(echo "$1" | sed -n 's#.*/issues/\([0-9]*\)/comments#\1#p')
          { cat "$STATE/comments_$n.json" 2>/dev/null || echo '[]'; } | jqf "$@" ;;
   issue|pr)
@@ -54,6 +60,8 @@ case "$cmd" in
               jq '{comments: .}' "$STATE/comments_$n.json" | jqf "$@"
             elif [ "$cmd" = issue ] && [[ "$*" == *createdAt* ]]; then
               jq --argjson n "$n" '.[]|select(.number==$n)' "$STATE/issues.json" | jqf "$@"
+            elif [ "$cmd" = pr ] && [[ "$*" == *baseRefName* ]]; then
+              echo '{"baseRefName":"main"}' | jqf "$@"
             elif [ "$cmd" = pr ] && [[ " $* " == *closingIssuesReferences* ]]; then
               jq --argjson n "$n" '.[]|select(.number==$n)|{body,authorAssociation,author,closingIssuesReferences:(.closing//[])|map({number:.})}' "$STATE/prs.json" | jqf "$@"
             else jq -Rn '{labels:[inputs|select(length>0)|{name:.}]}' "$lf" | jqf "$@"; fi ;;
@@ -89,6 +97,7 @@ check "triage_batch default"     "5"             "$(bash -c 'source "$1"; echo "
 check "merge_method default"    "squash"        "$(bash -c 'source "$1"; echo "$merge_method"' _ "$LIB")"
 check "build_cmd default empty" ""              "$(bash -c 'source "$1"; echo "$build_cmd"' _ "$LIB")"
 check "lower and upper match"   "1 hour:1 hour" "$(bash -c 'source "$1"; echo "$lease_ttl_triage:$LEASE_TTL_TRIAGE"' _ "$LIB")"
+check "human_merge_paths default empty" "" "$(bash -c 'source "$1"; echo "$human_merge_paths"' _ "$LIB")"
 check "ready_lane_ttl default"   "2 hours:2 hours" "$(bash -c 'source "$1"; echo "$ready_lane_ttl:$READY_LANE_TTL"' _ "$LIB")"
 
 echo "Overriding a default"
@@ -175,6 +184,38 @@ ready_lane_ttl="2 hours"
 echo '[]' > "$STATE/prs.json"
 check "no ready PRs, a free lane" "" "$(lane_holder 60)"
 cp "$STATE/prs.saved" "$STATE/prs.json"
+
+echo "Protected paths and owners"
+setfiles() { local n=$1; shift; jq -n '$ARGS.positional | map({filename:.})' --args "$@" > "$STATE/files_$n.json"; }
+setfiles 70 README.md skills/x/SKILL.md docs/a.md
+human_merge_paths=""
+check "no human_merge_paths protects nothing" "" "$(protected_files 70)"
+protected_files 70 >/dev/null;  check "and the status is 0" 0 $?
+human_merge_paths="skills/**/SKILL.md,/scripts/"
+check "a changed file that matches is listed" "skills/x/SKILL.md" "$(protected_files 70)"
+setfiles 71 README.md docs/a.md
+check "no matching file prints nothing" "" "$(protected_files 71)"
+protected_files 71 >/dev/null;  check "with status 0" 0 $?
+jq -n '[{filename:"docs/b.md", previous_filename:"scripts/old.sh"}]' > "$STATE/files_72.json"
+check "the old name of a renamed file counts" "scripts/old.sh" "$(protected_files 72)"
+protected_files 79 >/dev/null 2>&1;  check "an unreadable file list fails closed (status 2)" 2 $?
+echo '[]' > "$STATE/files_73.json"
+protected_files 73 >/dev/null 2>&1;  check "an empty file list fails closed too" 2 $?
+human_merge_paths="!skills/"
+protected_files 70 >/dev/null 2>&1;  rc=$?;  check "an unsupported pattern fails (never reads as 'nothing protected')" 1 "$([ $rc -ne 0 ] && echo 1 || echo 0)"
+human_merge_paths=""
+mkdir -p "$STATE/contents/.github" "$STATE/contents/docs"
+printf '# owners\n* @root\n/docs/ @docs-team @org/writers\n' > "$STATE/contents/.github/CODEOWNERS"
+setfiles 74 docs/a.md README.md
+check "owners come from CODEOWNERS on the base branch" "$(printf '@docs-team\n@org/writers\n@root')" "$(codeowners_for 74)"
+printf '* @from-docs-dir\n' > "$STATE/contents/docs/CODEOWNERS"
+check ".github/CODEOWNERS wins over docs/CODEOWNERS" "$(printf '@docs-team\n@org/writers\n@root')" "$(codeowners_for 74)"
+rm -f "$STATE/contents/.github/CODEOWNERS"
+check "and docs/CODEOWNERS is used when it is the only one" "@from-docs-dir" "$(codeowners_for 74)"
+rm -rf "$STATE/contents"
+check "no CODEOWNERS file means no owners" "" "$(codeowners_for 74)"
+codeowners_for 74 >/dev/null;  check "and it is not an error" 0 $?
+rm -f "$STATE"/files_*.json
 
 echo "Run log"
 rm -f "$STATE"/comments_*.json   # earlier sections used the same issue numbers
