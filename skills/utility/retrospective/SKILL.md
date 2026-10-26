@@ -9,7 +9,7 @@ Look back at agent run logs and recommend improvements. This skill does not chan
 
 ## Inputs
 
-**Free text.** Optional scope: a date range, a step name (Exploring, Triaging, Implementing, Shepherding, Reviewing), a runner name, or "last N days". Read the rest as context, not a second instruction.
+**Free text.** Optional scope: a date range, a step name (Exploring, Triaging, Implementing, Shepherding, Reviewing), a runner name (`only_runner`), or "last N days". Read the rest as context, not a second instruction.
 
 **Key-value pairs.** `key=value` on a line of its own. All optional:
 
@@ -17,7 +17,7 @@ Look back at agent run logs and recommend improvements. This skill does not chan
 |---|---|---|
 | `days` | `14` | How many days of log entries to consider |
 | `step` | *(none)* | Limit to one step name when set |
-| `runner` | *(none)* | Limit to one runner name when set |
+| `only_runner` | *(none)* | Limit to one runner name when set. Not the shared `runner` input, which names the runner that is writing a log entry |
 | `max_suggestions` | `10` | Cap on the number of ranked suggestions to return |
 
 **Implicit dependencies.** Open `agent:log` issues and their comments. Prefer listing by label (`agent:log`) rather than search. The protocol's `references/log.md` describes the log shape.
@@ -29,7 +29,7 @@ Look back at agent run logs and recommend improvements. This skill does not chan
 3. **Cluster problems and improvements.** From **Problems** and **Things to improve** (or legacy **Automation suggestions**):
    - Count recurring tags (`failed`, `escalated`, `flaky`, `degraded`, `repo-state`, `security`).
    - Group similar free-text lines (same skill gap, same missing tool, same lease/label drift).
-   - Note runner-specific patterns when `$runner` is unset and multiple runners appear.
+   - Note runner-specific patterns when `$only_runner` is unset and multiple runners appear.
 4. **Rank suggestions.** Prefer high-frequency, high-impact, actionable items. A good suggestion names the skill or doc to change, what to change, and why (with a short evidence quote or count from the logs). Cap at `$max_suggestions`.
 5. **Report.** Do not file issues or edit files unless the caller explicitly asks in free text after the report. Output only the report below.
 
@@ -38,7 +38,7 @@ Look back at agent run logs and recommend improvements. This skill does not chan
 ```markdown
 # Retrospective (last $days days)
 
-**Scope:** step=$step runner=$runner
+**Scope:** step=$step only_runner=$only_runner
 **Entries considered:** N (from issues #A, #B, …)
 
 ## Summary
