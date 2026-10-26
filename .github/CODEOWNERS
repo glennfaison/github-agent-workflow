@@ -1,0 +1,19 @@
+# Code owners. GitHub asks the owner for a review on every PR, and the agent-workflow skills read
+# this file (from the base branch) to @mention the right people when they hand a reviewed PR to a
+# person to merge (docs/adr/0008-hand-reviewed-prs-to-a-person.md).
+*                      @glennfaison
+
+# Files that govern the agents, the checks that gate them, and the release. An agent reviews a PR
+# that changes one of these, and a person merges it. Keep this list in step with `human_merge_paths`
+# in the runner prompts. They share an owner today. Give one a different owner here to split them.
+/skills/               @glennfaison
+/scripts/              @glennfaison
+/tests/                @glennfaison
+/docs/adr/             @glennfaison
+/.github/              @glennfaison
+/.claude-plugin/       @glennfaison
+/.changeset/config.json @glennfaison
+/package.json          @glennfaison
+/package-lock.json     @glennfaison
+/external-skills.json  @glennfaison
+/AGENTS.md             @glennfaison
