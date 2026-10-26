@@ -1,0 +1,3 @@
+interface:
+  display_name: "Retrospective"
+  short_description: "Review agent run logs and suggest skill/process improvements"

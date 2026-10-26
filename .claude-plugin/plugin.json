@@ -39,6 +39,7 @@
     "./skills/pipeline/triage-github-issues",
     "./skills/utility/grill-via-github-comments",
     "./skills/utility/merge-safety",
+    "./skills/utility/retrospective",
     "./skills/utility/unattended-triage"
   ]
 }

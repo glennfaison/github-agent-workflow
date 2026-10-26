@@ -53,6 +53,7 @@ Building blocks the pipeline calls. Each is useful on its own and does no GitHub
 - **[unattended-triage](./skills/utility/unattended-triage/SKILL.md)**: Decide category + state and write the outcome comment.
 - **[grill-via-github-comments](./skills/utility/grill-via-github-comments/SKILL.md)**: One round of questions with recommended answers when nobody is live.
 - **[merge-safety](./skills/utility/merge-safety/SKILL.md)**: Assess whether a PR is safe for an agent to merge.
+- **[retrospective](./skills/utility/retrospective/SKILL.md)**: Read agent run-log issues and suggest skill or process improvements.
 
 ## Requirements
 

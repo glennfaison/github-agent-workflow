@@ -30,6 +30,7 @@ Call a skill by its name through the Skill tool (or `/name` where your runner ha
 | `unattended-triage` | utility | Deciding an issue's category and state, and writing its outcome comment, with nobody to ask. Called by `triage-github-issue` |
 | `grill-via-github-comments` | utility | Writing every question that is ready to ask as one round, each with a recommended answer. Called by `unattended-triage` |
 | `merge-safety` | utility | Judging whether a PR is safe for an agent to merge. Called by `review-github-pr` |
+| `retrospective` | utility | Reviewing agent run-log issues and suggesting skill or process improvements |
 
 **Group skills** select the work and dispatch it. Run one on a schedule. **Item skills** do the work on one issue or PR. Run one by hand on a number. **Utility skills** are building blocks that know nothing about GitHub plumbing. User-invoked skills can only be run by a person: no other skill can call them.
 
