@@ -55,11 +55,24 @@ Boilerplate every skill shares lives once in the protocol. Do not copy it back i
 ## Checks
 
 ```bash
+npm run lint                  # syntax of .mjs, .sh, .json, .yml and skill front matter (scripts/lint-files.mjs)
 npm run validate
-npm test
+npm test                      # starts with hooks:check
 npm run sync:check
 npm run check-plugin-version
+npm run check                 # lint, validate, check-plugin-version and test: everything CI runs
 ```
+
+## Git hooks
+
+`npm install` runs the `prepare` script, which installs [husky](https://typicode.github.io/husky/) and points `core.hooksPath` at `.husky/_`. The hooks live in `.husky/`.
+
+- **`pre-commit`**: `lint-staged` runs `scripts/lint-files.mjs` on the staged files, then `npm run validate` checks the package-wide rules (this includes the generated-files check, `sync:check`).
+- **`pre-push`**: `npm run check`.
+
+CI runs the same checks, so `git commit --no-verify` only defers a failure. A hook does not run when `core.hooksPath` points elsewhere, when `npm install` was never run, or when `HUSKY=0` is set. `npm test` starts with `npm run hooks:check`, which fails and says how to fix it; `npm run prepare` reinstalls.
+
+Add a check in `scripts/lint-files.mjs` (per file) or `scripts/validate-skills.mjs` (package-wide), with a test. The hooks and CI both call those scripts, so there is nowhere else to wire it in.
 
 ## Releasing
 

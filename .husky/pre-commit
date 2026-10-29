@@ -1,0 +1,4 @@
+# Runs on every commit. Lints the staged files, then the package-wide rules.
+# Skip once with `git commit --no-verify`; CI runs the same checks, so the skip only defers them.
+npx --no-install lint-staged
+npm run --silent validate
