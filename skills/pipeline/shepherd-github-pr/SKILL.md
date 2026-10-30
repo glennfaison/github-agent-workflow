@@ -11,7 +11,7 @@ A base branch that must be up to date before a merge lets only one PR merge at a
 
 **Input:** one GitHub PR, as a URL or a number. Required.
 
-**References:** call the Skill tool with `agent-workflow-protocol`. In that skill's directory, open `references/labels.md` before you set a label, `references/handoff.md` at step 5, `references/escalate.md` if you escalate, and `references/log.md` when you write the log entry. `lane_holder` is in the protocol's `scripts/lib.sh`; a runner with no shell follows its entry in `NO_SHELL_OPS`. Also read the repository guidance in `$repo_guidance`.
+**References:** call the Skill tool with `agent-workflow-protocol`. In that skill's directory, open `references/labels.md` before you set a label, `references/handoff.md` at step 5, `references/escalate.md` if you escalate, and `references/log.md` when you write the log entry. `lane_holder` is in the protocol's `scripts/lib.sh`; a runner with no shell follows its entry in `NO_SHELL_OPS`. Also open `references/client-guidance.md` and read the repository's own rules right after you claim: its checks, branch and commit rules and off-limits paths outrank this skill's defaults.
 
 ## Inputs
 
@@ -27,7 +27,7 @@ A base branch that must be up to date before a merge lets only one PR merge at a
 | `max_shepherd_attempts` | `3` | Consecutive fix attempts, reset by any handoff, before the PR is escalated |
 | `max_item_failures` | `3` | Failed runs of one step on one item before it is escalated |
 | `human_reviewer` | *(none)* | A GitHub user to request review from when this PR is escalated. Empty means request nobody |
-| `repo_guidance` | `AGENTS.md` | Space-separated files holding the repository's contributor rules |
+| `repo_guidance` | `AGENTS.md` | Extra files holding the repository's own agent rules, read in addition to the standard locations (see `references/client-guidance.md`) |
 | `git_hooks_path` | *(none)* | A git hooks directory to point `core.hooksPath` at before committing a fix. Empty means skip |
 | `runner` | `unknown` | Name recorded in the run id and the run log |
 | `log_window_days` | `14` | Days one run-log issue is appended to before a new one starts |

@@ -9,7 +9,7 @@ File one or more findings. Check for duplicates first, then write each issue in 
 
 Supports a **batch** of candidates and an optional **dry_run** that only reports what would be filed.
 
-**References:** the inlined rules below are enough for most runs. For the full rules call the Skill tool with `agent-workflow-protocol` and open `references/dedupe.md` and `references/issue-format.md` in its directory.
+**References:** the inlined rules below are enough for most runs. For the full rules call the Skill tool with `agent-workflow-protocol` and open `references/client-guidance.md` (read the repository's own rules before you file: its issue templates and label vocabulary come first), `references/dedupe.md` and `references/issue-format.md` in its directory.
 
 ## Inputs
 
@@ -21,6 +21,7 @@ Supports a **batch** of candidates and an optional **dry_run** that only reports
 |---|---|---|
 | `candidates` | *(from free text)* | Optional structured list; free text is also accepted |
 | `dry_run` | `false` | When `true`, do not create issues or comments; only return the decisions |
+| `repo_guidance` | `AGENTS.md` | Extra files holding the repository's own agent rules, read in addition to the standard locations (see `references/client-guidance.md`) |
 | `dedupe_closed_days` | `30` | The "recently closed" window the duplicate search runs over |
 | `run_id` | *(none)* | Exploring run id to record on filed issues |
 

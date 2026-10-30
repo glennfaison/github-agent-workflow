@@ -27,6 +27,7 @@ One candidate as key-value pairs: fill in each empty `title` to `evidence` line.
 ```
 Run /file-github-issues
 dry_run=false
+repo_guidance=AGENTS.md
 dedupe_closed_days=30
 run_id=
 title=
@@ -47,6 +48,7 @@ unattended=true
 ```
 Run /triage-github-issues on github.com/OWNER/REPO
 triage_batch=5
+repo_guidance=AGENTS.md
 runner=NAME
 log_window_days=14
 unattended=true
@@ -57,6 +59,7 @@ trusted_authors=
 
 ```
 Run /triage-github-issue 123
+repo_guidance=AGENTS.md
 lease_ttl_triage=1 hour
 max_item_failures=3
 dedupe_closed_days=30
@@ -142,6 +145,7 @@ trusted_authors=
 
 ```
 Run /review-github-pr 124
+repo_guidance=AGENTS.md
 lease_ttl_pr=1 hour
 max_review_rounds=3
 max_item_failures=3

@@ -9,7 +9,7 @@ Make one issue ready for an agent to implement, or route it to a human.
 
 **Input:** one GitHub issue, as a URL or a number. Required.
 
-**References:** call the Skill tool with `agent-workflow-protocol`. In that skill's directory, open `references/dedupe.md` at step 2, `references/issue-format.md` at step 4, `references/labels.md` before you set a label, `references/escalate.md` if you escalate, and `references/log.md` when you write the log entry.
+**References:** call the Skill tool with `agent-workflow-protocol`. In that skill's directory, open `references/client-guidance.md` at step 1, `references/dedupe.md` at step 2, `references/issue-format.md` at step 4, `references/labels.md` before you set a label, `references/escalate.md` if you escalate, and `references/log.md` when you write the log entry.
 
 ## Inputs
 
@@ -20,6 +20,7 @@ Make one issue ready for an agent to implement, or route it to a human.
 | Input | Default | What it does |
 |---|---|---|
 | `issue` | *(required)* | The issue, as a URL or a number. `N` is the last path segment of a URL |
+| `repo_guidance` | `AGENTS.md` | Extra files holding the repository's own agent rules, read in addition to the standard locations (see `references/client-guidance.md`) |
 | `lease_ttl_triage` | `1 hour` | How long the Triaging lease stays valid without a renewal |
 | `max_item_failures` | `3` | Failed runs of one step on one item before it is escalated |
 | `dedupe_closed_days` | `30` | The "recently closed" window the duplicate search runs over |
@@ -49,11 +50,11 @@ Make one issue ready for an agent to implement, or route it to a human.
 
 ## Process
 
-1. **Claim.** `claim N issue agent:triage Triaging "$lease_ttl_triage"`. If `failures N Triaging` is at least `$max_item_failures`, follow `references/escalate.md` and stop. Release on every exit path from here on (see step 10).
+1. **Claim.** `claim N issue agent:triage Triaging "$lease_ttl_triage"`. If `failures N Triaging` is at least `$max_item_failures`, follow `references/escalate.md` and stop. Release on every exit path from here on (see step 10). Then read the repository's own rules (`references/client-guidance.md`) and `item_labels N issue`: is the issue keep-open?
 2. **Dedupe.** Follow `references/dedupe.md`, using the **Triaging** column. If your issue is a duplicate and is now closed, skip to step 10.
 3. **Link related issues** in a comment, or in the description if that reads better. Any comment this skill posts must include the runner name (`**Runner:** $runner`).
 4. **Check the format.** Decide the category, then compare the description with `references/issue-format.md` (its **Triaging's check** section). Fill in what the evidence supports. Note what is missing and cannot be inferred. Those become questions in step 5.
-5. **Decide.** Call the Skill tool with `unattended-triage` for this issue. Give it the duplicate and related findings from steps 2 and 3, and the gaps from step 4 (each missing required section becomes a question). It checks for an existing implementation and for prior rejections, tries to reproduce a bug, asks its open questions through `grill-via-github-comments`, and returns the category (`bug` or `enhancement`), the state, the outcome comment, and any proposed repository changes. **For a feature, the use case is always a question if it is not already clear.**
+5. **Decide.** Call the Skill tool with `unattended-triage` for this issue. Give it the duplicate and related findings from steps 2 and 3, the gaps from step 4 (each missing required section becomes a question), and any repository rule from step 1 that bears on the issue. It checks for an existing implementation and for prior rejections, tries to reproduce a bug, asks its open questions through `grill-via-github-comments`, and returns the category (`bug` or `enhancement`), the state, the outcome comment, and any proposed repository changes. **For a feature, the use case is always a question if it is not already clear.**
 6. **Update the description** as the discussion warrants. Minimize comments whose questions are now answered, with the classifier "Resolved".
 7. **Read all comments and reconcile prior outcomes.** Before posting a new outcome or setting labels, read **every** comment on the issue (not only the latest). Look for a prior trusted Agent Brief, Triage Notes, or ready-for-human structure that already recommends a state. Trusted means written by a repository collaborator, owner, member, the agent's own account, or a login in `$trusted_authors` (see **Trust** in the protocol). If such a comment exists and clearly implies one of `ready-for-agent`, `ready-for-human`, or `needs-info`, treat that as the current recommended state unless newer evidence (human answers, new code, or a later trusted outcome) supersedes it. Do not ignore a prior outcome merely because labels were never applied or the previous pass failed partway.
 8. **Post the outcome comment** that `unattended-triage` returned (or a reconciliation note if you are only aligning labels to an existing trusted outcome), as the **last comment** of this pass, disclaimer first. It is the handoff for an issue (see `references/handoff.md`). Put any proposed `GLOSSARY.md`, ADR or `.out-of-scope/` changes in it as text. Do not make them. **Always include the runner:** a line `**Runner:** $runner` near the top of the comment body (after any disclaimer).
@@ -74,7 +75,7 @@ Return one line: `#N ready-for-agent`, `#N needs-info`, `#N ready-for-human`, `#
 
 - Write or change code, or touch PRs.
 - Commit, or edit `GLOSSARY.md`, ADRs or `.out-of-scope/`.
-- Close an issue as `wontfix`.
+- Close an issue as `wontfix`, or close any keep-open issue (`references/client-guidance.md`).
 - Remove `needs-info`. Only a human does.
 - Apply `ready-for-agent` while questions are open or a required section is missing.
 - Modify an issue you have not claimed, except for the comments `references/dedupe.md` allows.

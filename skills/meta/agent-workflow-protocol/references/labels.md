@@ -64,7 +64,7 @@ Each row happens inside a lease held by the step named (except Triaging housekee
 | Issue | `ready-for-agent` | Implementing (bail-out) | `needs-info` or `ready-for-human` |
 | Issue | `agent:pr-open`, every PR closed unmerged | Triaging (housekeeping) | `ready-for-human` |
 | Issue | two or more mutex state labels, or clear label/comment drift | Triaging (housekeeping, label repair) | single consistent state per the priority order above |
-| Issue | `ready-for-agent` or `agent:pr-open`, a PR already merged | Implementing or Triaging | closed, and it loses `agent:pr-open` |
+| Issue | `ready-for-agent` or `agent:pr-open`, a PR already merged | Implementing or Triaging | closed, and it loses `agent:pr-open`. A **keep-open** issue (`client-guidance.md`) stays open: it loses `agent:pr-open` and becomes `ready-for-human` |
 | PR | `agent:needs-work` | Shepherding | pushes a fix or a branch update and stays `agent:needs-work`, waits there while another PR holds the merge lane, or becomes `agent:ready-for-review` |
 | PR | `agent:ready-for-review` | Reviewing | merged (its issue is then closed and loses `agent:pr-open`), or `agent:needs-work` (with or without a fix pushed, or deferred because the base moved, which uses no review round) |
 | PR | `agent:ready-for-review` | Reviewing | `agent:human-merge`, when review passed but the PR changes a file in `human_merge_paths`, or review rounds ran out |

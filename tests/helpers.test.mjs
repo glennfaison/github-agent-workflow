@@ -239,3 +239,19 @@ test('protected-files and codeowners CLI read JSON from stdin', () => {
   assert.equal(run(['codeowners'], JSON.stringify({ text: '* @a @b', files: ['x'] })), '@a\n@b');
   assert.throws(() => execFileSync('node', [helpersPath, 'protected-files', '!x'], { input: '["a"]', stdio: 'pipe' }), /unsupported path pattern/);
 });
+
+test('isGuidancePath recognises agent-facing files and nothing else', () => {
+  for (const ok of ['AGENTS.md', 'CLAUDE.md', 'src/AGENTS.md', 'CONTRIBUTING.md', 'docs/CONTRIBUTING.md',
+    '.github/copilot-instructions.md', '.github/instructions/ts.instructions.md', '.cursor/rules/a.mdc',
+    '.github/PULL_REQUEST_TEMPLATE.md', '.github/ISSUE_TEMPLATE/bug.yml']) {
+    assert.equal(h.isGuidancePath(ok), true, ok);
+  }
+  for (const no of ['README.md', 'docs/guide.md', 'node_modules/x/AGENTS.md', 'src/agents.ts', '']) {
+    assert.equal(h.isGuidancePath(no), false, no);
+  }
+  assert.equal(h.isGuidancePath('docs/house-rules.md', 'docs/house-rules.md AGENTS.md'), true);
+});
+
+test('guidanceFiles filters, de-duplicates and sorts', () => {
+  assert.deepEqual(h.guidanceFiles(['b.txt', 'CLAUDE.md', 'AGENTS.md', 'AGENTS.md']), ['AGENTS.md', 'CLAUDE.md']);
+});
