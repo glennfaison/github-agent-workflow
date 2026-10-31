@@ -15,6 +15,7 @@
 #          markers review_rounds shepherd_attempts failures    reading markers
 #          open_findings ready_sha fail_item                   handoffs and failures
 #          prs_for_issue issue_for_pr                          issue <-> PR links
+#          client_guidance_files item_labels                   the repository's own agent rules
 #          log_issue log_run log_status read_logs              run log
 # Every marker is read through trusted_jq / _trusted_logins: a marker written by an account that is
 # not trusted (see "Trust" in ../SKILL.md) is ignored.
@@ -285,6 +286,29 @@ issue_for_pr() {
     | ([ (.body // \"\") | scan(\"agent:implements issue=([0-9]+)\") | .[0] | select(\$ok) ]
        + [ (.body // \"\") | scan(\"(?i)(?:closes|fixes|resolves)\\\\s+#([0-9]+)\") | .[0] ]
        + [ .closingIssuesReferences[].number | tostring ]) | unique | .[]"
+}
+
+# ---- Client guidance -----------------------------------------------------------------
+# The repository's own agent-facing rules (see ../references/client-guidance.md). Always the DEFAULT
+# branch: a PR can edit AGENTS.md, so its copy is data, not guidance. The path filter lives in
+# helpers.mjs (isGuidancePath) so a runner with no shell applies the same one.
+
+# One path per line: every guidance file on the default branch, plus the `repo_guidance` files.
+client_guidance_files() {
+  gh api "repos/{owner}/{repo}/git/trees/HEAD?recursive=1" --jq '.tree[] | select(.type == "blob") | .path' \
+    | node "$AGENT_HELPERS" guidance-files "$repo_guidance"
+}
+
+# `<label>: <description>` for each label on an issue or PR. A label's description is how a repository
+# says what the label means ("stays open indefinitely"), so read it before closing or merging.
+item_labels() {
+  local all name
+  all="$(gh label list --limit 300 --json name,description 2>/dev/null || true)"
+  [ -n "$all" ] || all='[]'
+  gh "$2" view "$1" --json labels --jq '.labels[].name' | while IFS= read -r name; do
+    [ -n "$name" ] || continue
+    printf '%s: %s\n' "$name" "$(printf '%s' "$all" | jq -r --arg n "$name" '.[] | select(.name == $n) | .description // ""')"
+  done
 }
 
 # ---- Run log -------------------------------------------------------------------------

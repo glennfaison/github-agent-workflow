@@ -11,7 +11,7 @@ Client repositories often already have a `.github/PULL_REQUEST_TEMPLATE.md` (or 
 | Item | Content |
 |---|---|
 | **One core problem** | The PR addresses exactly one issue (or one tightly coupled set of changes that the Agent Brief treats as a single problem). No drive-by refactors, unrelated cleanups, or stacked features. Title and body make the single purpose obvious. |
-| **Link to the issue** | Exactly one `Closes #N.` (or `Fixes` / `Resolves`) for the issue being implemented. The body also ends with `<!-- agent:implements issue=N -->`. |
+| **Link to the issue** | Exactly one `Closes #N.` (or `Fixes` / `Resolves`) for the issue being implemented. For a **keep-open** issue (`client-guidance.md`) it is `Refs #N.` instead, because `Closes` would close the issue on merge. The body also ends with `<!-- agent:implements issue=N -->`. |
 | **Summary** | 1–3 sentences: what changed and why, in the language of the issue / user outcome. |
 | **Evidence of before and after** | Concrete proof the change works. Acceptable forms (any one is enough):
 | | • Linked screenshots or screen recordings of the broken and fixed states
@@ -41,7 +41,7 @@ Before merging, `review-github-pr` confirms (in addition to green checks, `merge
 - The PR body (or the ready handoff) shows **one core problem**.
 - Evidence of before/after is present in one of the accepted forms.
 - An ADR check statement exists and does not report an unresolved conflict.
-- The implements marker and `Closes #N` are present and trusted.
+- The implements marker and `Closes #N` (or `Refs #N` for a keep-open issue) are present and trusted. A keep-open issue with `Closes`, `Fixes` or `Resolves` is a finding that blocks merge.
 
 If any required item is missing or clearly false, the PR is sent back to `agent:needs-work` with a review handoff naming the gaps. Do not merge on the strength of an unchecked box or an empty Evidence section.
 

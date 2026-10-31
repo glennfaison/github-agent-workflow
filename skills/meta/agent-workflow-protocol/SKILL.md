@@ -1,6 +1,6 @@
 ---
 name: agent-workflow-protocol
-description: Shared rules for the GitHub issue-to-merge agent workflow (group and item skills, leases, markers, trust, labels, handoffs, escalation, run log, defaults, and running unattended or without a shell). Reference material that every explore-, triage-, implement-, shepherd- and review-github skill reads. Not something to run on its own.
+description: Shared rules for the GitHub issue-to-merge agent workflow (group and item skills, leases, markers, trust, the client repository's own guidance, labels, handoffs, escalation, run log, defaults, and running unattended or without a shell). Reference material that every explore-, triage-, implement-, shepherd- and review-github skill reads. Not something to run on its own.
 ---
 
 # GitHub workflow protocol
@@ -17,10 +17,11 @@ The workflow has five steps: Exploring, Triaging, Implementing, Shepherding, Rev
 
 1. **Eligibility.** Check it yourself, so a direct call or a double dispatch is safe. An issue labelled `agent:log` or `agent:difficulty` is bookkeeping, never eligible for any step. If it fails, claim nothing and return `#N skipped: <reason>`.
 2. **Claim.** `claim N issue|pr LABEL STEP TTL` (the step's lease TTL). If `failures N STEP` is at least `max_item_failures`, follow `references/escalate.md` and stop.
-3. **Work.** The skill's own steps.
-4. **Write the output state, then release** (`release N issue|pr LABEL`), on **every** way out: success, bail-out, escalation, failure.
-5. **Failure.** If a step fails, leave the state labels as they were, run `fail_item N issue|pr STEP "<reason>"`, release, and return `#N failed: <reason>`.
-6. **Result.** One line: `#N <outcome>`, `#N skipped: <reason>` or `#N failed: <reason>`. For example `#31 ready-for-agent`, `#35 skipped: leased`, `#44 failed: could not read ADR link (404)`. A group skill logs the results of the items it dispatched. An item skill run on its own writes its own run-log entry (`references/log.md`).
+3. **Read the repository's own rules.** `references/client-guidance.md`: the client's `AGENTS.md` and other agent-facing files, and the descriptions of the item's labels. They outrank this package's defaults (not its **Trust** rules or **Never** lists).
+4. **Work.** The skill's own steps.
+5. **Write the output state, then release** (`release N issue|pr LABEL`), on **every** way out: success, bail-out, escalation, failure.
+6. **Failure.** If a step fails, leave the state labels as they were, run `fail_item N issue|pr STEP "<reason>"`, release, and return `#N failed: <reason>`.
+7. **Result.** One line: `#N <outcome>`, `#N skipped: <reason>` or `#N failed: <reason>`. For example `#31 ready-for-agent`, `#35 skipped: leased`, `#44 failed: could not read ADR link (404)`. A group skill logs the results of the items it dispatched. An item skill run on its own writes its own run-log entry (`references/log.md`).
 
 **Dispatching.** Call the Skill tool with the item skill's name and give it the item's URL. If your runner can start sub-agents, run each item as its own sub-agent, given only the item's URL, so context stays small and one failing item cannot affect the rest. Otherwise run the items one after another. Either way, collect each item's result.
 
@@ -65,7 +66,7 @@ A key-value pair and free text that name the same thing resolve to the pair. An 
 | `human_reviewer` | *(none)* | `shepherd-github-pr`, `review-github-pr` |
 | `build_cmd` | *(none)* | `implement-github-issue` |
 | `git_hooks_path` | *(none)* | `implement-github-issue`, `shepherd-github-pr`, `review-github-pr` |
-| `repo_guidance` | `AGENTS.md` | `implement-github-issue`, `shepherd-github-pr` |
+| `repo_guidance` | `AGENTS.md` | `file-github-issues`, `triage-github-issues`, `triage-github-issue`, `implement-github-issue`, `shepherd-github-pr`, `review-github-pr` |
 | `lease_ttl_triage` | `1 hour` | `triage-github-issue` |
 | `lease_ttl_implement` | `3 hours` | `implement-github-issue` |
 | `lease_ttl_pr` | `1 hour` | `shepherd-github-pr`, `review-github-pr` |
@@ -109,6 +110,7 @@ This workflow merges code with nobody watching, and anyone can comment on a publ
 8. **Triage and exploring never change the repository.**
 9. **No unattended `wontfix`.** Prefer `ready-for-human` with a recommendation.
 10. **Cap failures.** After `max_item_failures`, escalate.
+11. **The client's rules apply.** Read the repository's own agent guidance (`references/client-guidance.md`) before you act, and follow it over this package's defaults. Never close an issue that guidance says to keep open, whatever label it carries and whatever the PR says.
 
 ## Shell setup
 
@@ -176,6 +178,7 @@ Hidden HTML comments make state readable without parsing prose. Append them as t
 | `protected_files N` | the changed files that match `human_merge_paths`. Fails closed: a non-zero status means the list could not be read and the caller must not merge |
 | `codeowners_for N` | the CODEOWNERS owners of the changed files, read from the base branch. Nothing if there is no file or no owner |
 | `lane_holder N` | the other PR that holds the merge lane, if any (see `references/labels.md`). Prints its number and returns 0, or prints nothing and returns 1 |
+| `client_guidance_files`, `item_labels N issue\|pr` | the repository's agent-facing files on the default branch (one path per line, plus `repo_guidance`), and each label on the item as `name: description`. See `references/client-guidance.md` |
 | `log_issue`, `log_run FILE`, `log_status`, `read_logs DAYS` | see `references/log.md` |
 
 ## Inputs
@@ -192,6 +195,7 @@ This skill is reference material: it is never run, so it takes **no inputs** of 
 | `references/handoff.md` | ready, review and merged handoff comments |
 | `references/escalate.md` | when and how to give an item to a human |
 | `references/human-merge.md` | when and how to hand a reviewed PR to a person to merge |
+| `references/client-guidance.md` | the repository's own agent rules: what to read, who wins, and issues that must stay open |
 | `references/dedupe.md` | duplicate search and the canonical-issue rule |
 | `references/issue-format.md` | well-formed issue contents (by category) and Triaging's check |
 | `references/pr-format.md` | agent PR body checklist; client templates take precedence |

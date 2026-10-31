@@ -9,7 +9,7 @@ Review one PR and merge it if an agent can safely do so. If not, record why and,
 
 **Input:** one GitHub PR, as a URL or a number. Required.
 
-**References:** call the Skill tool with `agent-workflow-protocol`. In that skill's directory, open `references/labels.md` before you set a label, `references/handoff.md` before you post a handoff, `references/pr-format.md` when checking an agent PR body, `references/escalate.md` if you escalate, `references/human-merge.md` when you hand a PR to a person, and `references/log.md` when you write the log entry.
+**References:** call the Skill tool with `agent-workflow-protocol`. In that skill's directory, open `references/labels.md` before you set a label, `references/handoff.md` before you post a handoff, `references/pr-format.md` when checking an agent PR body, `references/escalate.md` if you escalate, `references/human-merge.md` when you hand a PR to a person, `references/client-guidance.md` right after you claim (before step 2), and `references/log.md` when you write the log entry.
 
 ## Inputs
 
@@ -20,6 +20,7 @@ Review one PR and merge it if an agent can safely do so. If not, record why and,
 | Input | Default | What it does |
 |---|---|---|
 | `pr` | *(required)* | The PR, as a URL or a number. `N` is the last path segment of a URL |
+| `repo_guidance` | `AGENTS.md` | Extra files holding the repository's own agent rules, read in addition to the standard locations (see `references/client-guidance.md`) |
 | `lease_ttl_pr` | `1 hour` | How long the Reviewing lease stays valid without a renewal |
 | `max_review_rounds` | `3` | Reviewing runs that did not merge before the PR is escalated |
 | `max_item_failures` | `3` | Failed runs of one step on one item before it is escalated |
@@ -49,7 +50,7 @@ The head SHA must match `ready_sha N` and checks must be green. Step 4 enforces 
 
 ## Outputs
 
-- Mergeable: merged, pinned to the reviewed SHA, source branch deleted, with a "merged" note. Each linked issue loses `agent:pr-open` and is closed.
+- Mergeable: merged, pinned to the reviewed SHA, source branch deleted, with a "merged" note. Each linked issue loses `agent:pr-open` and is closed, unless it is keep-open (`references/client-guidance.md`): then it stays open and becomes `ready-for-human`.
 - Base moved (the branch is behind its base or conflicts with it): a short "deferred" comment ending with `<!-- agent:deferred reason=base-moved sha=<SHA> -->` and a swap `agent:ready-for-review` → `agent:needs-work`. No review handoff, so no review round is used.
 - Not mergeable: an optional small fix (no design decision, only code this PR already changes), a "review" handoff, and a swap `agent:ready-for-review` → `agent:needs-work`.
 - Handed to a person: a comment to the PR's owners, ending with `<!-- agent:human-merge reason=<review-rounds|protected-paths> sha=<SHA> -->`, and a swap `agent:ready-for-review` → `agent:human-merge`. This is the outcome when `review_rounds N` is at least `$max_review_rounds`, or when the PR passes review but changes a file in `$human_merge_paths`.
@@ -58,7 +59,7 @@ The head SHA must match `ready_sha N` and checks must be green. Step 4 enforces 
 
 ## Process
 
-1. **Claim.** `claim N pr agent:in-progress Reviewing "$lease_ttl_pr"`. If `failures N Reviewing` is at least `$max_item_failures`, follow `references/escalate.md` and stop. Release on every exit path from here on: merged, sent back, escalated or failed.
+1. **Claim.** `claim N pr agent:in-progress Reviewing "$lease_ttl_pr"`. If `failures N Reviewing` is at least `$max_item_failures`, follow `references/escalate.md` and stop. Release on every exit path from here on: merged, sent back, escalated or failed. Then read the repository's own rules (`references/client-guidance.md`), and `item_labels` for each issue the PR links.
 2. **Pin the head.** `SHA=$(gh pr view N --json headRefOid --jq .headRefOid)`. Everything below applies to this commit and no other.
 3. **Fork check.** If `isCrossRepository` is true, follow `references/escalate.md` and stop.
 4. **Confirm the state is true.** If checks are not all green, or `ready_sha N` is not equal to `$SHA` (someone pushed after the handoff), the PR is not ready. Swap `agent:ready-for-review` for `agent:needs-work`, release, and stop for this PR. `shepherd-github-pr` will re-verify.
@@ -75,7 +76,7 @@ The head SHA must match `ready_sha N` and checks must be green. Step 4 enforces 
    1. Merge pinned to the reviewed commit and delete the head branch: `gh pr merge N --match-head-commit "$SHA" --"$merge_method" --delete-branch`. If your tools cannot pin a merge to a commit, re-read the head SHA immediately before merging and stop if it is not `$SHA`. If your tools cannot pass `--delete-branch`, merge first, then delete the head ref with the equivalent API call; failure to delete the branch is non-fatal — note it under **Problems** and continue.
    2. If the merge fails, do not retry. When someone pushed meanwhile, that is all: the next run sees the new head. For any other reason, run `fail_item N pr Reviewing "merge failed: <reason>"`, release and return `#N failed: <reason>`.
    3. After a successful merge, post the "merged" note (`references/handoff.md`), ending with `<!-- agent:handoff kind=merged sha=$SHA -->`.
-   4. For each issue `M` printed by `issue_for_pr N`: `gh issue edit M --remove-label agent:pr-open` and `gh issue close M --comment "Implemented in #N."`. GitHub only closes the issue itself from `Closes #M` when the PR merges into the repository's default branch, which may not be `$pr_base_branch`. Close it explicitly anyway: it does no harm if already closed, and it covers a PR whose body lacked the keyword.
+   4. For each issue `M` printed by `issue_for_pr N`: first check whether it is **keep-open** (`item_labels M issue`, and the guidance you read after the claim). If it is, follow **After a merge** in `references/client-guidance.md` and do not close it. Otherwise `gh issue edit M --remove-label agent:pr-open` and `gh issue close M --comment "Implemented in #N."`. GitHub only closes the issue itself from `Closes #M` when the PR merges into the repository's default branch, which may not be `$pr_base_branch`. For an issue that is **not** keep-open, close it explicitly even so: it does no harm if already closed, and it covers a PR whose body lacked the keyword. A keep-open issue is never closed here, whatever the PR body says.
    5. Release (step 9). Done.
 8. **Not mergeable: fix what is small, record the rest.**
    1. If `review_rounds N` is at least `$max_review_rounds`, follow `references/human-merge.md` with reason `review-rounds`, listing the findings still open, and stop. Do not start another round.

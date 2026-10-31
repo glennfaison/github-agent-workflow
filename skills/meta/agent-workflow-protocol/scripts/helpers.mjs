@@ -533,6 +533,37 @@ export function isCompliantBranchName(name, issueNumber) {
 }
 
 /**
+ * Client guidance: the files in a repository that tell agents how to behave there. The workflow reads
+ * them from the default branch, never from a PR branch (see references/client-guidance.md).
+ * `extra` is the `repo_guidance` input: space-separated paths that are always included.
+ */
+const GUIDANCE_PATTERNS = [
+  /^(?:.+\/)?(?:AGENTS|CLAUDE|GEMINI)\.md$/i,
+  /^(?:\.github\/|docs\/)?CONTRIBUTING(?:\.md|\.rst|\.txt)?$/i,
+  /^\.github\/copilot-instructions\.md$/,
+  /^\.github\/instructions\/.+\.md$/,
+  /^\.github\/(?:agents|prompts)\/.+\.md$/,
+  /^\.cursor\/rules\/.+/,
+  /^\.(?:cursorrules|windsurfrules|clinerules)$/,
+  /^\.claude\/rules\/.+\.md$/,
+  /^\.agents\/.+\.md$/,
+  /^(?:\.github\/|docs\/)?PULL_REQUEST_TEMPLATE(?:\.md|\/.+)$/i,
+  /^\.github\/ISSUE_TEMPLATE\/.+/,
+];
+
+export function isGuidancePath(path, extra = '') {
+  const p = String(path ?? '');
+  if (!p || /(^|\/)(?:node_modules|vendor)\//.test(p)) return false;
+  const extras = String(extra ?? '').split(/\s+/).filter(Boolean);
+  return extras.includes(p) || GUIDANCE_PATTERNS.some((re) => re.test(p));
+}
+
+/** The guidance files among `paths` (one repository path per entry), sorted and unique. */
+export function guidanceFiles(paths, extra = '') {
+  return [...new Set((paths ?? []).filter((p) => isGuidancePath(p, extra)))].sort();
+}
+
+/**
  * No-shell checklist: what each lib.sh helper does, in terms of GitHub tools. Every comment you read
  * goes through isTrusted first.
  */
@@ -544,6 +575,8 @@ export const NO_SHELL_OPS = {
   claim: 'Add the lease label, then add_issue_comment with leaseComment(..., "claim").',
   renew: 'add_issue_comment with leaseComment(..., "renew").',
   release: 'Remove the lease label.',
+  client_guidance_files: 'get_file_contents on the repository root and on .github, docs, .cursor/rules, .claude/rules, .agents and .github/ISSUE_TEMPLATE, on the DEFAULT branch (no ref, never a PR branch). Keep what guidanceFiles accepts, then read each one in full.',
+  item_labels: 'issue_read get on the item for its label names, then get_label for each: its description is guidance too (references/client-guidance.md).',
   clear_stale_lease: 'If leaseState is not live, remove agent:triage and agent:in-progress labels (call during eligibility/selection).',
   lease_live: 'leaseState on the issue comments; skip the item if live.',
   fail_item: 'add_issue_comment with failureComment.',
@@ -564,6 +597,7 @@ function cli(argv) {
     case 'run-id': return makeRunId(a[0] || 'unknown');
     case 'utc-plus': return utcPlus(a[0] ?? '', a[1] ? new Date(a[1]) : undefined);
     case 'utc-epoch': return String(utcEpoch(a[0] ?? ''));
+    case 'guidance-files': return guidanceFiles(stdin().split('\n').map((l) => l.trim()), a[0] ?? '').join('\n');
     case 'lane-holder': return String(laneHolder(JSON.parse(stdin() || '[]'), a[0], a[1] ?? '2 hours') ?? '');
     case 'protected-files': return protectedFiles(a[0] ?? '', JSON.parse(stdin() || '[]')).join('\n');
     case 'codeowners': {

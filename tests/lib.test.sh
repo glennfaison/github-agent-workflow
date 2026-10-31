@@ -28,7 +28,7 @@ mk_issue() { # title body label  -> prints the new number
   mv "$STATE/issues.t" "$STATE/issues.json"; echo "$num"
 }
 set_issue() { jq --argjson n "$1" --arg k "$2" --arg v "$3" 'map(if .number==$n then .[$k]=$v else . end)' "$STATE/issues.json" > "$STATE/issues.t"; mv "$STATE/issues.t" "$STATE/issues.json"; }
-if [ "$cmd" = label ]; then exit 0; fi
+if [ "$cmd" = label ]; then [ -f "$STATE/labels.json" ] && cat "$STATE/labels.json"; exit 0; fi
 if [ "$cmd" = issue ] && [ "${1:-}" = list ]; then
   shift; orig=("$@"); lab=""; st=open
   while [ $# -gt 0 ]; do case $1 in --label) lab=$2; shift ;; --state) st=$2; shift ;; esac; shift; done
@@ -46,6 +46,7 @@ case "$cmd" in
          if [ "$1" = user ]; then echo '{"login":"agent-bot"}' | jqf "$@"; exit 0; fi
          path=""; for a in "$@"; do case $a in repos/*) path=$a ;; esac; done
          case $path in
+           */git/trees/*) [ -f "$STATE/tree.json" ] || exit 1; jqf "$@" < "$STATE/tree.json"; exit 0 ;;
            */contents/*) f="$STATE/contents/${path#*/contents/}"; f="${f%%\?*}"; [ -f "$f" ] && { cat "$f"; exit 0; }; exit 1 ;;
            */pulls/*/files) n=$(echo "$path" | sed -n 's#.*/pulls/\([0-9]*\)/files#\1#p')
                             [ -f "$STATE/files_$n.json" ] || exit 1; jqf "$@" < "$STATE/files_$n.json"; exit 0 ;;
@@ -365,5 +366,20 @@ for ttl in "1 hour" 1h PT1H; do
   claim 31 issue agent:triage Triaging "$ttl"; lease_live 31; check "claim takes ttl '$ttl'" 0 $?
   release 31 issue agent:triage
 done
+
+
+echo "Client guidance"
+echo '{"tree":[{"type":"blob","path":"README.md"},{"type":"blob","path":"AGENTS.md"},{"type":"blob","path":"docs/CONTRIBUTING.md"},{"type":"blob","path":".github/copilot-instructions.md"},{"type":"blob","path":".github/ISSUE_TEMPLATE/bug.yml"},{"type":"blob","path":"src/AGENTS.md"},{"type":"blob","path":"node_modules/x/AGENTS.md"},{"type":"blob","path":"docs/house-rules.md"},{"type":"tree","path":".github/instructions"}]}' > "$STATE/tree.json"
+check "client_guidance_files finds the standard files" \
+  ".github/ISSUE_TEMPLATE/bug.yml,.github/copilot-instructions.md,AGENTS.md,docs/CONTRIBUTING.md,src/AGENTS.md" \
+  "$(client_guidance_files | paste -sd, -)"
+check "repo_guidance adds a file the standard list misses" \
+  ".github/ISSUE_TEMPLATE/bug.yml,.github/copilot-instructions.md,AGENTS.md,docs/CONTRIBUTING.md,docs/house-rules.md,src/AGENTS.md" \
+  "$(repo_guidance='docs/house-rules.md' client_guidance_files | paste -sd, -)"
+echo '[{"name":"evergreen","description":"Recurring enhancement that stays open indefinitely"},{"name":"bug","description":"Something is broken"}]' > "$STATE/labels.json"
+printf 'evergreen\n' > "$STATE/labels_issue_90"
+check "item_labels prints the label description" "evergreen: Recurring enhancement that stays open indefinitely" "$(item_labels 90 issue)"
+printf 'evergreen\nno-description\n' > "$STATE/labels_issue_91"
+check "item_labels keeps a label with no description" "evergreen: Recurring enhancement that stays open indefinitely|no-description: " "$(item_labels 91 issue | paste -sd'|' -)"
 
 echo; echo "passed=$pass failed=$fail"; [ "$fail" -eq 0 ]

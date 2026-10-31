@@ -7,7 +7,7 @@ description: Scan all open issues in the repo, tidy issues whose PRs have finish
 
 Go through the open issues as a group. Tidy the ones whose PRs are done, repair conflicting state labels, pick the issues that need triage, and give each to `triage-github-issue`. This skill does no triage itself.
 
-**References:** call the Skill tool with `agent-workflow-protocol`. In that skill's directory, open `references/labels.md` before you read labels and `references/log.md` when you write the log entry.
+**References:** call the Skill tool with `agent-workflow-protocol`. In that skill's directory, open `references/labels.md` before you read labels, `references/client-guidance.md` before housekeeping closes anything, and `references/log.md` when you write the log entry.
 
 ## Inputs
 
@@ -18,6 +18,7 @@ Go through the open issues as a group. Tidy the ones whose PRs are done, repair 
 | Input | Default | What it does |
 |---|---|---|
 | `triage_batch` | `5` | The most issues this run triages before it stops |
+| `repo_guidance` | `AGENTS.md` | Extra files holding the repository's own agent rules, read in addition to the standard locations (see `references/client-guidance.md`) |
 | `runner` | `unknown` | Name recorded in the run id and the run log |
 | `log_window_days` | `14` | Days one run-log issue is appended to before a new one starts |
 | `unattended` | `true` | `true`: no human is present, so never ask (see **Unattended runs** in the protocol). `false`: a human may be asked |
@@ -41,7 +42,7 @@ Go through the open issues as a group. Tidy the ones whose PRs are done, repair 
 1. **Housekeeping, before selecting.**
 
    **1a. PR-linked issues.** For each open issue labelled `agent:pr-open`, run `prs_for_issue N`:
-   - Any PR is `MERGED`: remove `agent:pr-open` if the issue has it, and close the issue (`gh issue close N --comment "Implemented in #P."`). A person may have merged it (`agent:human-merge`), and then no agent ran the merge path that does this.
+   - Any PR is `MERGED`: if the issue is **keep-open** (`item_labels N issue`, and the repository's own rules in `references/client-guidance.md`), follow **After a merge** there and do not close it. Otherwise remove `agent:pr-open` if the issue has it, and close the issue (`gh issue close N --comment "Implemented in #P."`). A person may have merged it (`agent:human-merge`), and then no agent ran the merge path that does this.
    - Any PR is `OPEN`: leave it alone.
    - Every PR is `CLOSED` (none open or merged): the work was abandoned. In one command swap `agent:pr-open` for `ready-for-human`, and comment "PR #P was closed without merging. A human should decide whether to retry." Do not send it back to an agent: that is how the same fix gets re-attempted in a loop.
    - No PR found at all: leave it alone and note it under **Problems** in the log (`repo-state`).
