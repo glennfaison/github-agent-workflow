@@ -19,7 +19,16 @@ jobs:
         with:
           node-version: 22
 
-      # The skill validator and the plugin version check need no dependencies.
+      # HUSKY=0: CI does not need the git hooks. They run the same checks as the steps below, so a
+      # contributor who skips them (--no-verify, no npm install) is caught here.
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+        env:
+          HUSKY: "0"
+
+      - name: Lint files
+        run: npm run lint
+
       - name: Validate skills
         run: npm run validate
 

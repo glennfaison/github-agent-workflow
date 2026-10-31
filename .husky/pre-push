@@ -1,0 +1,2 @@
+# Runs before every push: everything CI runs.
+npm run --silent check
