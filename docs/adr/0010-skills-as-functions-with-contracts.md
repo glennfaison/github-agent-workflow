@@ -28,7 +28,7 @@ This change keeps behaviour as it is. The contracts describe what the skills do 
 - Each skill grows by 20 to 30 lines net, after the prose sections the contract replaces are removed. That is the cost of having one source of truth.
 - Only pipeline skills have contracts so far. Utility skills follow.
 
-## Known gaps, not changed here
+## Known gaps, not changed here (resolved in ADR 0011)
 
 Writing the contracts down made these visible. Each is a behaviour change, so each is its own change.
 
