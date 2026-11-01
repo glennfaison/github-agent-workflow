@@ -56,7 +56,7 @@ terminates: "One pass. Bounded by explore_batch and a deferred list of at most 2
 | Input | Default | What it does |
 |---|---|---|
 | `app_url` | *(none)* | Live app to browse |
-| `explore_batch` | `5` (or `3` when open backlog is large) | Max new issues to file in one run |
+| `explore_batch` | `5` | Max new issues to file in one run. Passed to `file-github-issues` as `limit` |
 | `log_window_days` | `14` | Days one run-log issue is appended to before a new one starts. Also how far back this step reads the log |
 | `dry_run` | `false` | When true, produce the ranked list + log entry but do not file |
 | `runner` | `unknown` | Name recorded in the run id and the run log |
@@ -79,11 +79,11 @@ terminates: "One pass. Bounded by explore_batch and a deferred list of at most 2
    Skills-only or code-only Exploring needs no browser stack.
 
 2. **Read recent Exploring log entries** (`log_window_days`). Note recurring problems and deferred items.
-3. **Sample the backlog.** If open issues are already dense in an area, prefer commenting over near-duplicate filings. Default `explore_batch` to 3 when the open backlog is large.
+3. **Sample the backlog.** If open issues are already dense in an area, prefer commenting over near-duplicate filings.
 4. **Explore the live app** when `app_url` is set and the preflight did not put the run in degraded mode. Must-probe for a page-builder style app: empty state, add component, templates, command palette, mode switch, undo/redo appearance, mobile viewport, dark mode, export. Capture 1–2 annotated screenshots only for top filing candidates. If the live app is slow or flaky, switch to code-only and record that under **Problems**. In degraded mode, limit yourself to HTTP/route/SSR probes and say so in the log.
 5. **Explore the code** for matching rough edges, missing coverage, and debt.
 6. **Rank** by impact × confidence. Cap deferred list at 20 with one-line scores.
-7. **File (or dry-run).** Hand candidates from the top to `file-github-issues` (batch preferred). Count only `filed #N` toward the cap.
+7. **File (or dry-run).** Call `file-github-issues` once with the ranked candidates, best first, and `limit=$explore_batch`. Give it this run's `dry_run`, `unattended` and `run_id` too. Only `filed #N` counts toward the cap, so it stops filing at the limit and returns `deferred: over limit` for the rest. Put those on the deferred list.
 8. **Log.** One comment on the current log issue. Include filed, commented, dropped, and **Deferred candidates** (at most 20, each with a one-line impact × confidence score). Any preflight degradation belongs under **Problems** with a `degraded:` or `repo-state:` tag.
 
 ## Log format (minimum)

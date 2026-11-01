@@ -27,6 +27,7 @@ One candidate as key-value pairs: fill in each empty `title` to `evidence` line.
 ```
 Run /file-github-issues
 dry_run=false
+limit=
 repo_guidance=AGENTS.md
 dedupe_closed_days=30
 run_id=

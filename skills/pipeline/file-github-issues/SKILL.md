@@ -29,7 +29,7 @@ types:
     evidence: "what the category's Required sections need"
     related: "optional issue numbers"
     screenshots: "optional"
-params: [candidates, dry_run, repo_guidance, dedupe_closed_days, run_id, title, category, area, impact, confidence, evidence, related, screenshots, unattended]
+params: [candidates, dry_run, limit, repo_guidance, dedupe_closed_days, run_id, title, category, area, impact, confidence, evidence, related, screenshots, unattended]
 requires:
   - "None: always eligible. There is nothing to claim."
 returns:
@@ -37,9 +37,11 @@ returns:
   - "duplicate of #N (commented)"
   - "dropped: <reason>"
   - "would-file: <title>"
+  - "deferred: over limit"
 ensures:
   - "One result line per candidate, in input order."
   - "`would-file` appears only when dry_run=true, and with dry_run=true nothing is written."
+  - "With `limit` set, at most `limit` candidates are `filed` (or `would-file`). Every candidate after that is `deferred: over limit` and was not checked for duplicates. A `duplicate` or a `dropped` does not count toward the limit."
   - "A filed issue has no labels and no assignee, follows its category's title pattern, and has every Required section of its category."
   - "A candidate that is a possible security vulnerability is never filed publicly."
   - "A candidate that matches a closed-as-not-planned issue or `.out-of-scope/` is dropped. One closed as completed is filed as a possible regression of it."
@@ -52,7 +54,7 @@ effects:
 never:
   - "Apply, remove or change any label."
   - "Comment on, close or edit an issue other than the evidence comment in the dedupe step."
-  - "File more issues than the caller requested when a limit is given."
+  - "File more than `limit` issues."
 calls: []
 idempotent: "A candidate already filed matches its own open issue in the duplicate check, so a repeat adds at most an evidence comment."
 terminates: "One pass over the candidates."
@@ -68,6 +70,7 @@ terminates: "One pass over the candidates."
 |---|---|---|
 | `candidates` | *(from free text)* | Optional structured list; free text is also accepted |
 | `dry_run` | `false` | When `true`, do not create issues or comments; only return the decisions |
+| `limit` | *(none)* | Most issues to file in this call. Once that many are filed, each remaining candidate returns `deferred: over limit` without being checked. Without it, every candidate is processed |
 | `repo_guidance` | `AGENTS.md` | Extra files holding the repository's own agent rules, read in addition to the standard locations (see `references/client-guidance.md`) |
 | `dedupe_closed_days` | `30` | The "recently closed" window the duplicate search runs over |
 | `run_id` | *(none)* | Exploring run id to record on filed issues |
@@ -90,7 +93,7 @@ terminates: "One pass over the candidates."
 
 ## Process
 
-For **each** candidate, in order:
+For **each** candidate, in order. If `limit` is set and `limit` candidates have already been `filed` (or `would-file`) in this call, return `deferred: over limit` for this candidate and every later one, and do not check them. A duplicate or a drop does not count toward the limit.
 
 1. **Dedupe.** Follow the Exploring column of the dedupe table (see `agent-workflow-protocol/references/dedupe.md` or the summary below). Search open issues, recently closed issues and `.out-of-scope/`.
 2. **Decide**:
@@ -101,8 +104,6 @@ For **each** candidate, in order:
 3. **Check required sections.** Each category marks sections **Required** (see issue-format). If you cannot fill one from the evidence, do not file. Result: `dropped: missing <section>` (or `dropped: no use case` for a feature). Never file a possible security vulnerability as a public issue.
 4. **Write the body** following the category's title pattern and sections, plus common fields and a last line `Filed by Exploring run <RUN_ID>` when applicable. Prefer attaching screenshots only when the runner can put them on GitHub; otherwise note under **Visuals**.
 5. **File it** (skip when `dry_run=true`). Create the issue with **no labels** and no assignee. Result: `filed #N`.
-
-Stop early only if the caller asked for a hard limit; otherwise process the whole batch.
 
 ### Dedupe summary (Exploring)
 
