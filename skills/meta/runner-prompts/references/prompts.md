@@ -30,6 +30,7 @@ dry_run=false
 repo_guidance=AGENTS.md
 dedupe_closed_days=30
 run_id=
+unattended=true
 title=
 category=
 area=
@@ -38,7 +39,6 @@ confidence=
 evidence=
 related=
 screenshots=
-unattended=true
 ```
 
 ## Triaging

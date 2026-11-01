@@ -31,6 +31,10 @@ skills/<bucket>/<skill>/SKILL.md     exactly three levels deep
 - **Shared files live in the skill that owns them.** Everything the skills share is in the protocol skill.
 - **One implementation per behaviour.** Dates, run ids, comment shapes and marker parsing live in the protocol's `scripts/helpers.mjs`. `lib.sh` calls it. `tests/fixtures/markers.json` is run against both.
 
+## Contracts
+
+**Every pipeline skill opens with a `## Contract`**: a YAML block that says what the skill is as a function (preconditions, the closed set of results, postconditions, side effects by scope, forbidden effects). **Process** says how. Change a result line, a precondition or an effect in the contract first. `agent-workflow-protocol` defines the keys (**Contracts**), `docs/adr/0010-skills-as-functions-with-contracts.md` explains why, and `npm run validate` checks that a contract matches the rest of its skill: `params` equal the Inputs table, every result the text returns is in `returns`, and there are no `Eligibility`, `Outputs`, `Result` or `Never` sections left over. Anything not listed under `effects.writes` is forbidden.
+
 ## Inputs and defaults
 
 **Every skill has an `## Inputs` section.** It names the inputs the skill accepts, in two interchangeable forms: **key-value pairs** (`key=value` on a line of its own) and **free text** (whatever the prompt says). It also names the skill's **implicit dependencies**: the tools, skills and repository state it needs that are not inputs. Every pipeline skill lists `runner` and `unattended`, and every skill that reads markers lists `trusted_authors`.

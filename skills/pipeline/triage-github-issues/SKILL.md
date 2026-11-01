@@ -9,6 +9,47 @@ Go through the open issues as a group. Tidy the ones whose PRs are done, repair 
 
 **References:** call the Skill tool with `agent-workflow-protocol`. In that skill's directory, open `references/labels.md` before you read labels, `references/client-guidance.md` before housekeeping closes anything, and `references/log.md` when you write the log entry.
 
+## Contract
+
+See **Contracts** in the protocol for what each key means.
+
+```yaml
+kind: group
+step: Triaging
+params: [triage_batch, repo_guidance, runner, log_window_days, unattended, trusted_authors]
+dispatches: triage-github-issue
+requires:
+  - "None: always runnable."
+returns:
+  - "The Result line of each dispatched issue, in dispatch order."
+  - "nothing eligible"
+ensures:
+  - "At most triage_batch issues were dispatched, oldest first, each one passing triage-github-issue's requires."
+  - "After housekeeping, no open issue that was inspected carries two of needs-info, ready-for-agent, ready-for-human and agent:pr-open, unless another step holds a live lease on it."
+  - "An open agent:pr-open issue whose PR merged was closed with `Implemented in #P.` and lost agent:pr-open. A keep-open issue was left open and handled as references/client-guidance.md says."
+  - "An open agent:pr-open issue whose every PR was closed unmerged is ready-for-human, with a comment, and is not agent:pr-open."
+  - "Every non-trivial repair is listed under Problems in the log with the `repo-state` tag, as issue number and from to to."
+  - "One run-log entry exists, listing the housekeeping done."
+effects:
+  reads: [open issues with their labels and comments, "prs_for_issue", the repository's own guidance, item labels]
+  writes:
+    other:
+      - "Closes an issue whose PR merged, with a comment, and removes agent:pr-open."
+      - "Swaps agent:pr-open for ready-for-human, with a comment, when every PR was closed unmerged."
+      - "Repairs conflicting state labels in one edit, with a comment when it falls back to ready-for-human."
+    shared:
+      - "One run-log entry."
+never:
+  - "Triage an issue itself, or change code or PRs."
+  - "Claim an issue. Only triage-github-issue claims."
+  - "Change the state of an issue other than the housekeeping above."
+  - "Apply wontfix, or remove needs-info when it is the sole correct state and a human has not answered."
+  - "Repair an issue that currently has a live lease held by another step."
+calls: []
+idempotent: "Housekeeping finds nothing to repair on a second run. Dispatch is idempotent because triage-github-issue is."
+terminates: "One pass. Dispatch is bounded by triage_batch."
+```
+
 ## Inputs
 
 **Free text.** Any prose. This skill needs nothing from it: a repository is the only subject, and it is already checked out and authenticated.
@@ -25,17 +66,6 @@ Go through the open issues as a group. Tidy the ones whose PRs are done, repair 
 | `trusted_authors` | *(none)* | Extra GitHub logins whose markers count, comma-separated (see **Trust** in the protocol) |
 
 **Implicit dependencies.** The common ones (**Shell setup** and **Running without a shell** in the protocol), plus the repository's open issues to list.
-
-## Context read
-
-- Housekeeping input (before selection): every open issue labelled `agent:pr-open`, inspected via `prs_for_issue N`; and open issues that carry more than one mutually exclusive state label (or a clear label-vs-comment mismatch).
-- Open issues that may need triage. The **Eligibility** section of `triage-github-issue` is the authority on which ones do.
-
-## Outputs
-
-- Housekeeping may close an issue (PR merged), swap `agent:pr-open` → `ready-for-human` (every PR closed unmerged), or repair conflicting state labels / label-vs-comment drift (see step 1b).
-- Up to `$triage_batch` issues triaged by `triage-github-issue`.
-- One run-log entry (`references/log.md`). Non-trivial repairs are listed under **Problems** with the `repo-state` tag.
 
 ## Process
 
@@ -75,12 +105,4 @@ Go through the open issues as a group. Tidy the ones whose PRs are done, repair 
            | {number, url, title, createdAt, labels: names} ] | sort_by(.createdAt)'
    ```
 
-3. **Select, dispatch and log**, as **Group skills and item skills** in the protocol describes: `triage-github-issue`'s **Eligibility**, the first `$triage_batch` that pass, one dispatch per `url`. The run-log entry (`references/log.md`) also lists the housekeeping you did. Nothing eligible and no housekeeping: log `nothing eligible` and stop.
-
-## Never
-
-- Triage an issue yourself, or change code or PRs.
-- Claim an issue. Only `triage-github-issue` claims.
-- Change the state of an issue other than the housekeeping above.
-- Apply `wontfix`, or remove `needs-info` when it is the sole correct state and a human has not answered.
-- Repair an issue that currently has a live lease held by another step.
+3. **Select, dispatch and log**, as **Group skills and item skills** in the protocol describes: `triage-github-issue`'s `requires`, the first `$triage_batch` that pass, one dispatch per `url`. The run-log entry (`references/log.md`) also lists the housekeeping you did. Nothing eligible and no housekeeping: log `nothing eligible` and stop.

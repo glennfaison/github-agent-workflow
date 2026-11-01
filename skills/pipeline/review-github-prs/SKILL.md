@@ -9,6 +9,35 @@ Pick the `agent:ready-for-review` PRs that can be reviewed now, and give each to
 
 **References:** call the Skill tool with `agent-workflow-protocol`. In that skill's directory, open `references/labels.md` before you read labels and `references/log.md` when you write the log entry.
 
+## Contract
+
+See **Contracts** in the protocol for what each key means.
+
+```yaml
+kind: group
+step: Reviewing
+params: [review_batch, runner, log_window_days, unattended, trusted_authors]
+dispatches: review-github-pr
+requires:
+  - "None: always runnable."
+returns:
+  - "The Result line of each dispatched PR, in dispatch order."
+  - "nothing eligible"
+ensures:
+  - "At most review_batch PRs were dispatched, oldest first, each one passing review-github-pr's requires. Drafts and PRs labelled agent:stuck or agent:human-merge were not candidates."
+  - "One run-log entry exists."
+effects:
+  reads: [open non-draft PRs labelled agent:ready-for-review]
+  writes:
+    shared:
+      - "One run-log entry."
+never:
+  - "Review or merge a PR itself, or claim one. Only review-github-pr claims."
+calls: []
+idempotent: "Dispatch is idempotent because review-github-pr is."
+terminates: "One pass, bounded by review_batch."
+```
+
 ## Inputs
 
 **Free text.** Any prose. This skill needs nothing from it: a repository is the only subject, and it is already checked out and authenticated.
@@ -37,8 +66,4 @@ Pick the `agent:ready-for-review` PRs that can be reviewed now, and give each to
            | {number, url, title, createdAt, fork: .isCrossRepository} ] | sort_by(.createdAt)'
    ```
 
-2. **Select, dispatch and log**, as **Group skills and item skills** in the protocol describes: `review-github-pr`'s **Eligibility**, the first `$review_batch` that pass, one dispatch per `url`.
-
-## Never
-
-- Review or merge a PR yourself, or claim one. Only `review-github-pr` claims.
+2. **Select, dispatch and log**, as **Group skills and item skills** in the protocol describes: `review-github-pr`'s `requires`, the first `$review_batch` that pass, one dispatch per `url`.

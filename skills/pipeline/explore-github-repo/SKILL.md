@@ -7,6 +7,46 @@ description: Explore a repository's live app and its codebase, rank what you fin
 
 Explore the live app and the code, rank findings, and file the best as issues through `file-github-issues`.
 
+## Contract
+
+See **Contracts** in the protocol for what each key means.
+
+```yaml
+kind: group
+step: Exploring
+target: { from: free-text, type: repository }
+params: [app_url, explore_batch, log_window_days, dry_run, runner, unattended]
+dispatches: file-github-issues
+requires:
+  - "None: always runnable. A missing browser stack degrades the run (HTTP, route and SSR probes only) instead of stopping it."
+returns:
+  - "<N> filed, <M> commented, <K> dropped"
+ensures:
+  - "No label was applied, removed or changed."
+  - "At most explore_batch issues were filed; only `filed #N` counts toward the cap."
+  - "One run-log entry exists for the run: YAML header, outcome, at most 20 deferred candidates (each with an impact x confidence line), and Problems tagged `degraded:` or `repo-state:` where they apply."
+  - "The choice of live-app, code-only or degraded exploring is recorded in the log."
+  - "Each high-severity regression or data-loss risk found was filed or deferred with a reason."
+  - "With dry_run=true: the ranked list and the log entry exist, nothing was filed."
+effects:
+  reads: [the live app (when app_url is set and the browser stack is present), the code, open issues, recent Exploring log entries]
+  writes:
+    other:
+      - "New unlabelled issues, and evidence comments on duplicates, through file-github-issues (unless dry_run)."
+    shared:
+      - "One run-log entry."
+  external: ["A browser session against app_url, when in scope."]
+never:
+  - "Apply, remove or change any label."
+  - "File more than explore_batch issues."
+  - "Comment on, close or edit an issue other than the evidence comments file-github-issues adds."
+  - "Ask the user questions while unattended is true."
+  - "Hard-fail the whole run solely because the browser stack is missing when cheap probes remain possible."
+calls: []
+idempotent: "A finding that was already filed is found again by file-github-issues' duplicate check, so a second run comments instead of filing."
+terminates: "One pass. Bounded by explore_batch and a deferred list of at most 20."
+```
+
 ## Inputs
 
 **Free text.** Repository URL or `owner/repo`. Optional live app URL if not passed as a key-value pair.
@@ -69,20 +109,3 @@ problems_count: <n>
 ```
 
 Difficulties stay in this entry; there is no separate difficulty issue. One log issue covers `log_window_days` (two weeks by default).
-
-## Success criteria
-
-A good run, even with zero filings:
-
-- Clear log entry with YAML header, outcome, and deferred list
-- High-severity regressions or data-loss risks were either filed or explicitly deferred with reason
-- Live-app vs code-only (or degraded) decision is recorded
-- No labels applied, no destructive actions
-
-## Never
-
-- Apply, remove or change any label
-- File more than `$explore_batch` issues
-- Comment on, close or edit an issue other than the evidence comments `file-github-issues` adds
-- Ask the user questions while `unattended` is `true`
-- Hard-fail the whole run solely because the browser stack is missing when cheap probes remain possible

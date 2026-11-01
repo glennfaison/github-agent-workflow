@@ -9,6 +9,36 @@ Pick the `ready-for-agent` issues that an agent can start now, and give each to 
 
 **References:** call the Skill tool with `agent-workflow-protocol`. In that skill's directory, open `references/labels.md` before you read labels and `references/log.md` when you write the log entry.
 
+## Contract
+
+See **Contracts** in the protocol for what each key means.
+
+```yaml
+kind: group
+step: Implementing
+params: [implement_batch, runner, log_window_days, unattended, trusted_authors]
+dispatches: implement-github-issue
+requires:
+  - "None: always runnable."
+returns:
+  - "The Result line of each dispatched issue, in dispatch order."
+  - "nothing eligible"
+ensures:
+  - "At most implement_batch issues were dispatched, oldest first, each one passing implement-github-issue's requires. Issues labelled agent:stuck were not candidates."
+  - "One run-log entry exists."
+effects:
+  reads: [open issues labelled ready-for-agent]
+  writes:
+    shared:
+      - "One run-log entry."
+never:
+  - "Implement an issue itself, or claim one. Only implement-github-issue claims."
+  - "Wait for checks or fix CI. shepherd-github-prs does that."
+calls: []
+idempotent: "Dispatch is idempotent because implement-github-issue is."
+terminates: "One pass, bounded by implement_batch."
+```
+
 ## Inputs
 
 **Free text.** Any prose. This skill needs nothing from it: a repository is the only subject, and it is already checked out and authenticated.
@@ -36,9 +66,4 @@ Pick the `ready-for-agent` issues that an agent can start now, and give each to 
            | {number, url, title, createdAt, labels: names} ] | sort_by(.createdAt)'
    ```
 
-2. **Select, dispatch and log**, as **Group skills and item skills** in the protocol describes: `implement-github-issue`'s **Eligibility**, the first `$implement_batch` that pass, one dispatch per `url`.
-
-## Never
-
-- Implement an issue yourself, or claim one. Only `implement-github-issue` claims.
-- Wait for checks or fix CI. `shepherd-github-prs` does that.
+2. **Select, dispatch and log**, as **Group skills and item skills** in the protocol describes: `implement-github-issue`'s `requires`, the first `$implement_batch` that pass, one dispatch per `url`.

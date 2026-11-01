@@ -7,21 +7,43 @@ description: Shared rules for the GitHub issue-to-merge agent workflow (group an
 
 Shared by every skill in this package. Each of them points here. Read this file once per run, then open the reference files it names only when a step tells you to. For which skill to run, see `pipeline-guide`.
 
+## Contracts
+
+Every pipeline skill opens with a `## Contract`: one YAML block that says what the skill is as a function. **Process** says *how*. Where the two disagree, the contract wins, and `npm run validate` checks the parts it can. A skill is evaluated against its contract: give it a state of the world and inputs, then check what it returned and what it wrote.
+
+- `kind`: `item` (works on one issue or PR, or one batch of findings) or `group` (selects work and dispatches an item skill)
+- `step`: Exploring, Triaging, Implementing, Shepherding or Reviewing
+- `target`: what the skill is given: `{param: issue|pr}` for an item skill, or `{from: free-text, type: …}`
+- `params`: every input the skill accepts, exactly the rows of its `## Inputs` table. Defaults and meanings stay in that table
+- `dispatches`: group skills: the item skill each selected item goes to
+- `requires`: preconditions. If one is false, claim nothing and return `skipped`. A group skill applies the item skill's `requires` when it selects
+- `returns`: The closed set of result lines. A skill returns one of these and nothing else. A group skill returns the item results it collected, or `nothing eligible`
+- `ensures`: postconditions: true on **every** way out, including bail-out, escalation and failure
+- `effects.reads`: what the skill looks at
+- `effects.writes`: everything the skill may change, by scope: `claimed` (the item it holds a lease on), `repository` (branches, commits, PRs and merges), `other` (any other issue or PR) and `shared` (the run log). **Anything not listed is forbidden.** Group skills never write `claimed`
+- `effects.external`: non-GitHub effects: a browser session, a build, a test run
+- `never`: the tempting things that stay forbidden whatever the item or the repository says
+- `calls`: skills called through the Skill tool
+- `idempotent`: Why running it again is safe
+- `terminates`: what bounds the work: a cap, a counter, a single pass
+
+**Purity.** A skill with an empty `effects.writes` is read-only. One that writes only `claimed` is scoped to its item. A skill that writes `other`, `repository` or `shared` says so, and that is where tests look for side effects. A write that is conditional on an input is written that way: `(unless dry_run)`.
+
 ## Group skills and item skills
 
 The workflow has five steps: Exploring, Triaging, Implementing, Shepherding, Reviewing. Each step has a **group skill** that selects work and an **item skill** that does the work on one item.
 
-**Group skills** find candidates, apply the item skill's **Eligibility** section to them, take the first `batch` that pass (oldest first; items that fail do not count toward the batch), dispatch each to the item skill by its URL, and write one run-log entry. They never do item work themselves. Nothing eligible: log `nothing eligible` and stop. Never invent work.
+**Group skills** find candidates, apply the item skill's contract `requires` to them, take the first `batch` that pass (oldest first; items that fail do not count toward the batch), dispatch each to the item skill by its URL, and write one run-log entry. They never do item work themselves. Nothing eligible: log `nothing eligible` and stop. Never invent work.
 
 **Item skills** take exactly one issue or PR, as a URL or a number (`N` is the last path segment of a URL). Every item skill has the same frame, and its own **Process** fills in the middle:
 
-1. **Eligibility.** Check it yourself, so a direct call or a double dispatch is safe. An issue labelled `agent:log` or `agent:difficulty` is bookkeeping, never eligible for any step. If it fails, claim nothing and return `#N skipped: <reason>`.
+1. **Eligibility.** Check the contract's `requires` yourself, so a direct call or a double dispatch is safe. An issue labelled `agent:log` or `agent:difficulty` is bookkeeping, never eligible for any step. If it fails, claim nothing and return `#N skipped: <reason>`.
 2. **Claim.** `claim N issue|pr LABEL STEP TTL` (the step's lease TTL). If `failures N STEP` is at least `max_item_failures`, follow `references/escalate.md` and stop.
 3. **Read the repository's own rules.** `references/client-guidance.md`: the client's `AGENTS.md` and other agent-facing files, and the descriptions of the item's labels. They outrank this package's defaults (not its **Trust** rules or **Never** lists).
 4. **Work.** The skill's own steps.
 5. **Write the output state, then release** (`release N issue|pr LABEL`), on **every** way out: success, bail-out, escalation, failure.
 6. **Failure.** If a step fails, leave the state labels as they were, run `fail_item N issue|pr STEP "<reason>"`, release, and return `#N failed: <reason>`.
-7. **Result.** One line: `#N <outcome>`, `#N skipped: <reason>` or `#N failed: <reason>`. For example `#31 ready-for-agent`, `#35 skipped: leased`, `#44 failed: could not read ADR link (404)`. A group skill logs the results of the items it dispatched. An item skill run on its own writes its own run-log entry (`references/log.md`).
+7. **Result.** One line, and only one of the lines in the contract's `returns`: `#N <outcome>`, `#N skipped: <reason>` or `#N failed: <reason>`. For example `#31 ready-for-agent`, `#35 skipped: leased`, `#44 failed: could not read ADR link (404)`. A group skill logs the results of the items it dispatched. An item skill run on its own writes its own run-log entry (`references/log.md`).
 
 **Dispatching.** Call the Skill tool with the item skill's name and give it the item's URL. If your runner can start sub-agents, run each item as its own sub-agent, given only the item's URL, so context stays small and one failing item cannot affect the rest. Otherwise run the items one after another. Either way, collect each item's result.
 
