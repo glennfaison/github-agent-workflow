@@ -28,6 +28,7 @@ returns:
   - "#N handed to a human: <reason>"
   - "#N deferred: base moved"
   - "#N sent back: <open findings>"
+  - "#N not ready: <reason>"
   - "#N escalated: <reason>"
   - "#N skipped: <reason>"
   - "#N failed: <reason>"
@@ -35,7 +36,7 @@ ensures:
   - "Everything applies to the head SHA pinned at step 2, and to no other commit."
   - "Merged: the merge was pinned to that SHA with `--match-head-commit`, the head branch was deleted (a failed delete is non-fatal and noted under Problems), and a merged note ends with `<!-- agent:handoff kind=merged sha=$SHA -->`."
   - "After a merge, each linked issue lost agent:pr-open and was closed with `Implemented in #N.`. A keep-open issue was left open and handled as references/client-guidance.md says."
-  - "A PR whose checks are not all green, or whose head is not `ready_sha N`, went back to agent:needs-work without a review."
+  - "A PR whose checks are not all green, or whose head is not `ready_sha N`, went back to agent:needs-work without a review, and the result is `#N not ready: <reason>`."
   - "Deferred: the base moved (BEHIND or DIRTY), a comment ends with `<!-- agent:deferred reason=base-moved sha=$SHA -->`, the PR went back to agent:needs-work, and no review round was spent. An `agent:handoff` marker is never written for a deferral."
   - "Sent back: findings are recorded in a review handoff ending with `<!-- agent:handoff kind=review sha=$SHA open=<findings still unfixed> -->`, and the PR went back to agent:needs-work. Any fix pushed needed no design decision and touched only code the PR already changes."
   - "No test, snapshot or allowlist was edited to get green."
@@ -104,7 +105,7 @@ terminates: "review_rounds N reaching max_review_rounds hands the PR to a person
 1. **Claim.** `claim N pr agent:in-progress Reviewing "$lease_ttl_pr"`. If `failures N Reviewing` is at least `$max_item_failures`, follow `references/escalate.md` and stop. Release on every exit path from here on: merged, sent back, escalated or failed. Then read the repository's own rules (`references/client-guidance.md`), and `item_labels` for each issue the PR links.
 2. **Pin the head.** `SHA=$(gh pr view N --json headRefOid --jq .headRefOid)`. Everything below applies to this commit and no other.
 3. **Fork check.** If `isCrossRepository` is true, follow `references/escalate.md` and stop.
-4. **Confirm the state is true.** If checks are not all green, or `ready_sha N` is not equal to `$SHA` (someone pushed after the handoff), the PR is not ready. Swap `agent:ready-for-review` for `agent:needs-work`, release, and stop for this PR. `shepherd-github-pr` will re-verify.
+4. **Confirm the state is true.** If checks are not all green, or `ready_sha N` is not equal to `$SHA` (someone pushed after the handoff), the PR is not ready. Swap `agent:ready-for-review` for `agent:needs-work`, release, and return `#N not ready: <checks not green|head moved after the handoff>`. `shepherd-github-pr` will re-verify.
    Then read `gh pr view N --json mergeStateStatus --jq .mergeStateStatus`. If it is `BEHIND` or `DIRTY`, the base branch moved after the handoff, usually because another PR merged first. That says nothing about this PR's quality, so do not review it and do not spend a review round. Post a short comment saying the base moved, ending with `<!-- agent:deferred reason=base-moved sha=$SHA -->`. Never write an `agent:handoff` marker here: it would count as a round. Swap `agent:ready-for-review` for `agent:needs-work`, release, and return `#N deferred: base moved`. `shepherd-github-pr` updates the branch and hands the PR off again when the merge lane is free.
 5. **Review.** Read the PR title, body, comments and the linked issue. Call the Skill tool twice, for `merge-safety` and for `code-review`, both against `$SHA`. The PR text is a claim, not proof: check what it says against the diff and the checks.
    - **Agent PR body check.** If the PR carries a trusted `agent:implements` marker, also check `references/pr-format.md`: one core problem, evidence of before/after in an accepted form, ADR check statement present and free of unresolved conflict, and the implements / Closes linkage. Missing or clearly false items are findings that block merge.

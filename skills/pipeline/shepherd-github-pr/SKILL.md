@@ -25,12 +25,14 @@ params: [pr, lease_ttl_pr, ready_lane_ttl, max_shepherd_attempts, max_item_failu
 requires:
   - "The PR is open and labelled agent:needs-work, without agent:stuck or agent:human-merge."
   - "After `clear_stale_lease N pr`, it does not carry agent:in-progress with `lease_live N` succeeding."
-  - "Its check state is `failing` or `green`, read as in Reading the check state. `pending` and `no-checks-yet` are skipped and picked up on a later run."
+  - "It needs work now: its check state is `failing` or `green`, or its branch conflicts with its base (`mergeStateStatus` is `DIRTY`), read as in Reading the check state. A conflicted PR often runs no checks, so a conflict counts whatever the checks say. `pending` and `no-checks-yet` on a branch that does not conflict are skipped and picked up on a later run."
+  - "If it needs no fix (checks `green`, `open_findings N` is 0, no conflict), it can be handed off or updated now: `lane_holder N` prints nothing and `mergeStateStatus` is not `UNKNOWN`. Otherwise it is skipped before it is claimed, so a PR that can only wait does not collect a lease comment on every run."
 returns:
   - "#N fix pushed"
   - "#N branch updated"
   - "#N ready-for-review"
   - "#N escalated: <reason>"
+  - "#N noop: <reason>"
   - "#N skipped: <reason>"
   - "#N failed: <reason>"
 ensures:
@@ -38,7 +40,7 @@ ensures:
   - "Fix path: a commit was pushed and an attempt comment ends with `<!-- agent:attempt step=shepherding sha=<new head SHA> -->`. The PR stays agent:needs-work."
   - "Update path: the branch was BEHIND, the lane was free, and the branch was updated. A comment ends with `<!-- agent:branch-update sha=<new head SHA> -->`. It is not a fix attempt and does not count toward max_shepherd_attempts. The PR stays agent:needs-work."
   - "Ready path: a ready handoff ends with `<!-- agent:handoff kind=ready sha=<head SHA> -->`, then agent:needs-work was swapped for agent:ready-for-review in one command."
-  - "A held lane means no branch update and no handoff."
+  - "A held lane means no branch update and no handoff. If the lane was free at eligibility but taken by the time of the claim, or the merge state is still `UNKNOWN`, the PR is released unchanged and the result is `noop`, because the claim left a lease comment."
   - "No test, snapshot or allowlist was edited to make a check pass. A test that looks wrong is reported in the attempt comment and left."
   - "A fork PR, or shepherd_attempts N at max_shepherd_attempts, escalates to agent:stuck."
   - "Failing output that could not be read is a failed run, not an attempt."
@@ -106,8 +108,8 @@ terminates: "shepherd_attempts N reaching max_shepherd_attempts, or failures N r
    5. Push. Post a short comment on what you tried, ending with `<!-- agent:attempt step=shepherding sha=<new head SHA> -->`.
    6. The PR stays `agent:needs-work`. Do not wait for the new checks. Go to step 7.
 5. **Take the lane.**
-   1. Run `lane_holder N`. If it prints a PR number `M`, another PR holds the lane: do not update the branch and do not hand off. Go to step 7 and return `#N skipped: merge lane held by #M`. The PR is picked up again once `M` has merged or left `agent:ready-for-review`, or after `$ready_lane_ttl`.
-   2. Read `gh pr view N --json mergeStateStatus,baseRefName,headRefOid`. `UNKNOWN` means GitHub has not worked out mergeability yet: go to step 7 and return `#N skipped: merge state not computed`.
+   1. Run `lane_holder N`. If it prints a PR number `M`, another PR holds the lane: do not update the branch and do not hand off. Go to step 7 and return `#N noop: merge lane held by #M`. Eligibility already looked, so this only happens when another run took the lane after you checked. The PR is picked up again once `M` has merged or left `agent:ready-for-review`, or after `$ready_lane_ttl`.
+   2. Read `gh pr view N --json mergeStateStatus,baseRefName,headRefOid`. `UNKNOWN` means GitHub has not worked out mergeability yet: go to step 7 and return `#N noop: merge state not computed`.
    3. `BEHIND`: bring the branch up to date with `baseRefName`. Prefer `gh api -X PUT repos/{owner}/{repo}/pulls/N/update-branch -f expected_head_sha=<headRefOid>`. If that fails for a reason other than a conflict, check out the branch, merge `origin/<baseRefName>` and push. If the merge conflicts, go to step 4 and treat the conflict as the thing to fix. Otherwise post a short comment saying the branch was behind and was updated, ending with `<!-- agent:branch-update sha=<new head SHA> -->`. The PR stays `agent:needs-work`: the push restarts CI, and a later run hands it off. Go to step 7 and return `#N branch updated`.
    4. Any other state (`CLEAN`, `UNSTABLE`, `BLOCKED`, `HAS_HOOKS`): the branch is current. Go to step 6.
 6. **Hand off.** Post the "ready" handoff on the PR, as `references/handoff.md` describes (changes, decisions, risks, verification, reviewer focus). The comment must end with `<!-- agent:handoff kind=ready sha=<head SHA> -->`. Then in one command: `gh pr edit N --remove-label agent:needs-work --add-label agent:ready-for-review`.
@@ -115,10 +117,12 @@ terminates: "shepherd_attempts N reaching max_shepherd_attempts, or failures N r
 
 ## Reading the check state
 
-Read it like this (ignore the command's exit code, which is non-zero while checks run). `pending` and `no-checks-yet` mean skip: the PR will be eligible on a later run.
+Read the checks like this (ignore the command's exit code, which is non-zero while checks run):
 
 ```bash
 gh pr checks N --json bucket --jq '[.[].bucket]
   | if length==0 then "no-checks-yet" elif any(.=="pending") then "pending"
     elif any(.=="fail" or .=="cancel") then "failing" else "green" end'
 ```
+
+Then read `gh pr view N --json mergeStateStatus --jq .mergeStateStatus`. The PR needs work now when the checks are `failing` or `green`, or the state is `DIRTY`. `pending` and `no-checks-yet` with no conflict mean skip: the PR is eligible on a later run. When nothing needs fixing, also run `lane_holder N` and skip if it prints a PR number or the state is `UNKNOWN`.
