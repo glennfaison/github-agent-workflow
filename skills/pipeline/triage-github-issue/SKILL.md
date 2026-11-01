@@ -19,11 +19,11 @@ See **Contracts** in the protocol for what each key means.
 kind: item
 step: Triaging
 target: { param: issue, type: issue }
-params: [issue, repo_guidance, lease_ttl_triage, max_item_failures, dedupe_closed_days, runner, log_window_days, unattended, trusted_authors, write_log]
+params: [issue, repo_guidance, lease_ttl_triage, max_item_failures, dedupe_closed_days, runner, log_window_days, unattended, trusted_authors, write_log, lease_held]
 requires:
   - "The issue is open."
   - "It carries none of ready-for-agent, ready-for-human, needs-info, agent:pr-open, agent:stuck, agent:log, agent:difficulty. needs-triage does not exclude it: it means an earlier pass did not finish."
-  - "After `clear_stale_lease N issue`, it is not leased: it carries neither agent:triage nor agent:in-progress with `lease_live N` succeeding."
+  - "No other run holds it: it does not carry agent:triage or agent:in-progress while `lease_live N` succeeds. A lease label with no live lease is stale and does not count, and checking never removes it. With `lease_held=true` the caller holds the lease, so `lease_live N` must succeed."
 returns:
   - "#N ready-for-agent"
   - "#N ready-for-human"
@@ -38,13 +38,13 @@ ensures:
   - "ready-for-human also when unattended-triage recommends wontfix: the issue is not closed, and the outcome comment says why."
   - "The outcome comment (Agent Brief, Triage Notes or the ready-for-human structure) is the last comment of the pass, disclaimer first, with a `**Runner:** $runner` line. Proposed GLOSSARY.md, ADR or .out-of-scope/ changes are in it as text."
   - "All comments were read, and a prior trusted outcome that still stands was reconciled and not ignored."
-  - "The agent:triage lease is released on every return."
+  - "The agent:triage lease is released on every return, unless `lease_held` is true, when the caller releases it."
   - "On failed: the state labels are as they were and an agent:failure marker was added."
 effects:
   reads: [the issue description and every comment, images, linked ADRs, repository files, other issues (dedupe), the repository's own guidance, item labels]
   writes:
     claimed:
-      - "The agent:triage lease label and its marker comment, and the removal of a stale lease label."
+      - "The agent:triage lease label and its marker. A stale label from a dead run is replaced by the new lease. With `lease_held=true` nothing is written here."
       - "State and category labels, and removal of needs-triage."
       - "The outcome comment, a link comment, description updates, and minimized resolved comments."
       - "Closing the issue as a duplicate, when references/dedupe.md says so."
@@ -84,6 +84,7 @@ terminates: "failures N Triaging reaching max_item_failures escalates and stops.
 | `unattended` | `true` | `true`: no human is present, so never ask (see **Unattended runs** in the protocol). `false`: a human may be asked |
 | `trusted_authors` | *(none)* | Extra GitHub logins whose markers count, comma-separated (see **Trust** in the protocol) |
 | `write_log` | `true` | Write this item's own run-log entry. The group skill sets it to `false` when it dispatches, because the group logs the item |
+| `lease_held` | `false` | `true` when the caller already holds the lease on this item, as in a nested call. The skill then neither claims nor releases it, and the lease must be live |
 
 **Implicit dependencies.** The common ones (**Shell setup** and **Running without a shell** in the protocol), plus the `unattended-triage` skill (through the Skill tool), and the issue's own comments and images.
 

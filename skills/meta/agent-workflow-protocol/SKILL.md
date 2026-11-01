@@ -38,10 +38,10 @@ The workflow has five steps: Exploring, Triaging, Implementing, Shepherding, Rev
 **Item skills** take exactly one issue or PR, as a URL or a number (`N` is the last path segment of a URL). Every item skill has the same frame, and its own **Process** fills in the middle:
 
 1. **Eligibility.** Check the contract's `requires` yourself, so a direct call or a double dispatch is safe. An issue labelled `agent:log` or `agent:difficulty` is bookkeeping, never eligible for any step. If it fails, claim nothing and return `#N skipped: <reason>`. A skill checks everything it can by reading before it claims, so an item that can only wait is skipped without a lease comment.
-2. **Claim.** `claim N issue|pr LABEL STEP TTL` (the step's lease TTL). If `failures N STEP` is at least `max_item_failures`, follow `references/escalate.md` and stop.
+2. **Claim.** `claim N issue|pr LABEL STEP TTL` (the step's lease TTL). Skip this when `lease_held` is `true`: the caller already holds the lease. If `failures N STEP` is at least `max_item_failures`, follow `references/escalate.md` and stop.
 3. **Read the repository's own rules.** `references/client-guidance.md`: the client's `AGENTS.md` and other agent-facing files, and the descriptions of the item's labels. They outrank this package's defaults (not its **Trust** rules or **Never** lists).
 4. **Work.** The skill's own steps.
-5. **Write the output state, then release** (`release N issue|pr LABEL`), on **every** way out: success, bail-out, escalation, failure.
+5. **Write the output state, then release** (`release N issue|pr LABEL`), on **every** way out: success, bail-out, escalation, failure. When `lease_held` is `true` do not release: the caller does.
 6. **Failure.** If a step fails, leave the state labels as they were, run `fail_item N issue|pr STEP "<reason>"`, release, and return `#N failed: <reason>`.
 7. **Result.** One line, and only one of the lines in the contract's `returns`: `#N <outcome>`, `#N skipped: <reason>`, `#N noop: <reason>` or `#N failed: <reason>`. `skipped` means nothing was claimed and nothing was written. `noop` means the item was claimed, found nothing to do and was released, so its lease comment remains. Anything else the skill did to the item has a result line of its own. For example `#31 ready-for-agent`, `#35 skipped: leased`, `#44 failed: could not read ADR link (404)`. A group skill logs the results of the items it dispatched. An item skill writes its own run-log entry (`references/log.md`) only when `write_log` is `true`, which is the default. A group skill sets it to `false` when it dispatches.
 
@@ -105,6 +105,7 @@ A key-value pair and free text that name the same thing resolve to the pair. An 
 | `unattended` | `true` | `explore-github-repo`, `file-github-issues`, `triage-github-issues`, `triage-github-issue`, `implement-github-issues`, `implement-github-issue`, `shepherd-github-prs`, `shepherd-github-pr`, `review-github-prs`, `review-github-pr` |
 | `trusted_authors` | *(none)* | `triage-github-issues`, `triage-github-issue`, `implement-github-issues`, `implement-github-issue`, `shepherd-github-prs`, `shepherd-github-pr`, `review-github-prs`, `review-github-pr` |
 | `write_log` | `true` | `triage-github-issue`, `implement-github-issue`, `shepherd-github-pr`, `review-github-pr` |
+| `lease_held` | `false` | `triage-github-issue`, `implement-github-issue`, `shepherd-github-pr`, `review-github-pr` |
 
 ## Unattended runs
 
@@ -165,6 +166,10 @@ A lease is **live** only if the item carries the lease label **and** the newest 
 | `claim N issue\|pr LABEL STEP TTL` | add the label, post a lease marker |
 | `renew N issue\|pr STEP TTL` | post a newer marker. Do this before the lease runs out, if a long task needs it |
 | `release N issue\|pr LABEL` | remove the label |
+
+**Checking a lease changes nothing.** Eligibility only reads: `lease_live` and `has_label`. A lease label left by a run that died is not removed by looking at it. The next `claim` re-adds it and posts a fresh marker, and `release` removes it.
+
+**Nested calls.** A skill that calls an item skill (itself, or another step) on an item it already holds passes `lease_held=true`. The callee then skips its own claim and release, and requires that the lease is live. Without it the callee would see the caller's live lease and skip the item, and a nested release would drop the caller's lease. Only the caller that took a lease releases it.
 
 TTLs are `lease_ttl_triage`, `lease_ttl_implement` and `lease_ttl_pr`. Concurrency is best-effort: two runs can claim the same item in the same second. Every step is idempotent, so the worst case is duplicated work.
 

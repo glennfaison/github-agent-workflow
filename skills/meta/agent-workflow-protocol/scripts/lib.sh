@@ -51,6 +51,7 @@ AGENT_ROOT="$(git rev-parse --show-toplevel)"
 : "${unattended:=true}"
 : "${trusted_authors:=}"
 : "${write_log:=true}"
+: "${lease_held:=false}"
 
 if [ -n "${AGENT_OVERRIDES:-}" ] && [ -f "${AGENT_OVERRIDES}" ]; then
   # shellcheck disable=SC1090
@@ -84,6 +85,7 @@ runner:RUNNER
 unattended:UNATTENDED
 trusted_authors:TRUSTED_AUTHORS
 write_log:WRITE_LOG
+lease_held:LEASE_HELD
 "
 while IFS=: read -r _lower _upper; do
   [ -n "$_lower" ] || continue
@@ -141,7 +143,9 @@ lease_live() {
   [ -n "$exp" ] && [ "$now" -lt "$(utc_epoch "$exp")" ]
 }
 
+# claim and release do nothing when $lease_held is true: the caller holds the lease (a nested call).
 claim() {
+  [ "$lease_held" = true ] && return 0
   local n=$1 kind=$2 label=$3 step=$4 ttl=$5 exp
   exp=$(utc_plus "$ttl")
   gh "$kind" edit "$n" --add-label "$label" >/dev/null
@@ -154,7 +158,10 @@ renew() {
   gh "$kind" comment "$n" --body "$(node "$AGENT_HELPERS" lease-body "$step" "$RUN_ID" "$exp" renew)" >/dev/null
 }
 
-release() { gh "$2" edit "$1" --remove-label "$3" >/dev/null; }
+release() {
+  [ "$lease_held" = true ] && return 0
+  gh "$2" edit "$1" --remove-label "$3" >/dev/null
+}
 
 # Remove lease labels whose marker has expired or is missing. Call during eligibility /
 # selection so a dead runner or an expired TTL does not leave agent:triage / agent:in-progress

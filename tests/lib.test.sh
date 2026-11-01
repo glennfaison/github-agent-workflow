@@ -355,6 +355,16 @@ for i in $(jq -r 'keys[]' "$FIX"); do
   fi
 done
 
+echo "Nested calls borrow the caller's lease"
+check "lease_held default" "false" "$(bash -c 'source "$1"; echo "$lease_held"' _ "$LIB")"
+lease_held=true claim 33 issue agent:triage Triaging 1h
+has_label 33 issue agent:triage; check "claim does nothing when lease_held=true" 1 $?
+claim 34 issue agent:triage Triaging 1h
+lease_held=true release 34 issue agent:triage
+has_label 34 issue agent:triage; check "release does nothing when lease_held=true" 0 $?
+release 34 issue agent:triage
+has_label 34 issue agent:triage; check "release still works when lease_held is not set" 1 $?
+
 echo "Deprecated names and duration forms"
 check "groom_batch still sets triage_batch" "7" "$(groom_batch=7 bash -c 'source "$1"; echo "$triage_batch"' _ "$LIB")"
 check "triage_batch wins over groom_batch"  "2" "$(groom_batch=7 triage_batch=2 bash -c 'source "$1"; echo "$triage_batch"' _ "$LIB")"

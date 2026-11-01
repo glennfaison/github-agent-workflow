@@ -19,10 +19,10 @@ See **Contracts** in the protocol for what each key means.
 kind: item
 step: Implementing
 target: { param: issue, type: issue }
-params: [issue, pr_base_branch, build_cmd, git_hooks_path, repo_guidance, lease_ttl_implement, max_item_failures, runner, log_window_days, unattended, trusted_authors, write_log]
+params: [issue, pr_base_branch, build_cmd, git_hooks_path, repo_guidance, lease_ttl_implement, max_item_failures, runner, log_window_days, unattended, trusted_authors, write_log, lease_held]
 requires:
   - "The issue is open and labelled ready-for-agent, without agent:stuck."
-  - "After `clear_stale_lease N issue`, it does not carry agent:in-progress with `lease_live N` succeeding."
+  - "No other run holds it: it does not carry agent:in-progress while `lease_live N` succeeds. A lease label with no live lease is stale and does not count, and checking never removes it. With `lease_held=true` the caller holds the lease, so `lease_live N` must succeed."
 returns:
   - "#N PR #P opened"
   - "#N existing PR #P"
@@ -42,12 +42,12 @@ ensures:
   - "A bail-out leaves needs-info or ready-for-human and a Triage Notes comment."
   - "ready-for-agent stays on the issue until its PR is open, so a run that dies is retried."
   - "No verification is claimed that was not performed."
-  - "The agent:in-progress lease is released on every return. On failed an agent:failure marker was added."
+  - "The agent:in-progress lease is released on every return, unless `lease_held` is true, when the caller releases it. On failed an agent:failure marker was added."
 effects:
   reads: [the Agent Brief or description, comments, every image, linked ADRs, relevant code, "prs_for_issue", remote branches, the repository's own guidance, item labels]
   writes:
     claimed:
-      - "The agent:in-progress lease label and marker, and the removal of a stale lease label."
+      - "The agent:in-progress lease label and its marker. A stale label from a dead run is replaced by the new lease. With `lease_held=true` nothing is written here."
       - "The issue's state label (ready-for-agent to agent:pr-open, needs-info or ready-for-human)."
       - "A Triage Notes, closed-PR or `Implemented in` comment, and closing the issue when its PR already merged."
       - "An agent:failure marker on failure. On escalation, the escalate comment and agent:stuck."
@@ -91,6 +91,7 @@ terminates: "failures N Implementing reaching max_item_failures escalates and st
 | `unattended` | `true` | `true`: no human is present, so never ask (see **Unattended runs** in the protocol). `false`: a human may be asked |
 | `trusted_authors` | *(none)* | Extra GitHub logins whose markers count, comma-separated (see **Trust** in the protocol) |
 | `write_log` | `true` | Write this item's own run-log entry. The group skill sets it to `false` when it dispatches, because the group logs the item |
+| `lease_held` | `false` | `true` when the caller already holds the lease on this item, as in a nested call. The skill then neither claims nor releases it, and the lease must be live |
 
 **Implicit dependencies.** The common ones (**Shell setup** and **Running without a shell** in the protocol), plus the `tdd` and `code-review` skills (through the Skill tool), a working build toolchain, a git identity, and the issue's Agent Brief. Without a shell, keep the change small and record what you could not run under **Problems** in the run log.
 

@@ -31,7 +31,7 @@ types:
     screenshots: "optional"
 params: [candidates, dry_run, limit, repo_guidance, dedupe_closed_days, run_id, title, category, area, impact, confidence, evidence, related, screenshots, unattended]
 requires:
-  - "None: always eligible. There is nothing to claim."
+  - "None: always eligible. It works on candidates, not on an item that could be leased."
 returns:
   - "filed #N"
   - "duplicate of #N (commented)"

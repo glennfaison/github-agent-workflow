@@ -19,10 +19,10 @@ See **Contracts** in the protocol for what each key means.
 kind: item
 step: Reviewing
 target: { param: pr, type: pr }
-params: [pr, repo_guidance, lease_ttl_pr, max_review_rounds, max_item_failures, merge_method, pr_base_branch, human_reviewer, human_merge_paths, git_hooks_path, runner, log_window_days, unattended, trusted_authors, write_log]
+params: [pr, repo_guidance, lease_ttl_pr, max_review_rounds, max_item_failures, merge_method, pr_base_branch, human_reviewer, human_merge_paths, git_hooks_path, runner, log_window_days, unattended, trusted_authors, write_log, lease_held]
 requires:
   - "The PR is open, not a draft, and labelled agent:ready-for-review, without agent:stuck or agent:human-merge."
-  - "After `clear_stale_lease N pr`, it does not carry agent:in-progress with `lease_live N` succeeding."
+  - "No other run holds it: it does not carry agent:in-progress while `lease_live N` succeeds. A lease label with no live lease is stale and does not count, and checking never removes it. With `lease_held=true` the caller holds the lease, so `lease_live N` must succeed."
 returns:
   - "#N merged"
   - "#N handed to a human: <reason>"
@@ -43,12 +43,12 @@ ensures:
   - "Handed to a person: when `review_rounds N` is at least max_review_rounds, or the PR passed review but changes a file in human_merge_paths, a comment ends with `<!-- agent:human-merge reason=<review-rounds|protected-paths> sha=$SHA -->` and agent:ready-for-review was swapped for agent:human-merge."
   - "An agent PR that fails the references/pr-format.md checklist was not merged."
   - "A fork PR, or a step that keeps failing, escalates to agent:stuck."
-  - "The agent:in-progress lease is released on every return. On failed an agent:failure marker was added."
+  - "The agent:in-progress lease is released on every return, unless `lease_held` is true, when the caller releases it. On failed an agent:failure marker was added."
 effects:
   reads: ["the PR title, body and comments, and its diff at the pinned SHA", linked issues and their labels, check state, "protected_files", "codeowners_for", markers, the repository's own guidance]
   writes:
     claimed:
-      - "The agent:in-progress lease label and marker, and the removal of a stale lease label."
+      - "The agent:in-progress lease label and its marker. A stale label from a dead run is replaced by the new lease. With `lease_held=true` nothing is written here."
       - "Deferred, review, merged and human-merge comments, and the label swaps they come with."
       - "An agent:failure marker on failure. On escalation, the escalate comment and agent:stuck."
     repository:
@@ -97,6 +97,7 @@ terminates: "review_rounds N reaching max_review_rounds hands the PR to a person
 | `unattended` | `true` | `true`: no human is present, so never ask (see **Unattended runs** in the protocol). `false`: a human may be asked |
 | `trusted_authors` | *(none)* | Extra GitHub logins whose markers count, comma-separated (see **Trust** in the protocol) |
 | `write_log` | `true` | Write this item's own run-log entry. The group skill sets it to `false` when it dispatches, because the group logs the item |
+| `lease_held` | `false` | `true` when the caller already holds the lease on this item, as in a nested call. The skill then neither claims nor releases it, and the lease must be live |
 
 **Implicit dependencies.** The common ones (**Shell setup** and **Running without a shell** in the protocol), plus the `merge-safety` and `code-review` skills (through the Skill tool), a token permitted to merge, and the ability to pin a merge to one commit. Without the ability to pin a merge, follow **Unattended runs** in the protocol and record it under **Problems**.
 

@@ -61,6 +61,11 @@ test("a dispatched item that writes the run log must accept write_log", () => {
   assert.deepEqual(run([skill("do-them", GROUP, "", ["runner"]), item(ok, "", ["issue", "runner", "write_log"])]), []);
 });
 
+test("a precondition may not call a helper that writes", () => {
+  const bad = ITEM.replace('["The issue is open."]', '["After `clear_stale_lease N issue`, it is not leased."]');
+  assert.ok(run([item(bad)]).some((e) => /mentions `clear_stale_lease`, which writes/.test(e)));
+});
+
 test("extractContract finds the yaml block and ignores later fences", () => {
   const found = extractContract(item().body);
   assert.match(found.yaml, /^kind: item/);

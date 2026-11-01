@@ -21,10 +21,10 @@ See **Contracts** in the protocol for what each key means.
 kind: item
 step: Shepherding
 target: { param: pr, type: pr }
-params: [pr, lease_ttl_pr, ready_lane_ttl, max_shepherd_attempts, max_item_failures, human_reviewer, repo_guidance, git_hooks_path, runner, log_window_days, unattended, trusted_authors, write_log]
+params: [pr, lease_ttl_pr, ready_lane_ttl, max_shepherd_attempts, max_item_failures, human_reviewer, repo_guidance, git_hooks_path, runner, log_window_days, unattended, trusted_authors, write_log, lease_held]
 requires:
   - "The PR is open and labelled agent:needs-work, without agent:stuck or agent:human-merge."
-  - "After `clear_stale_lease N pr`, it does not carry agent:in-progress with `lease_live N` succeeding."
+  - "No other run holds it: it does not carry agent:in-progress while `lease_live N` succeeds. A lease label with no live lease is stale and does not count, and checking never removes it. With `lease_held=true` the caller holds the lease, so `lease_live N` must succeed."
   - "It needs work now: its check state is `failing` or `green`, or its branch conflicts with its base (`mergeStateStatus` is `DIRTY`), read as in Reading the check state. A conflicted PR often runs no checks, so a conflict counts whatever the checks say. `pending` and `no-checks-yet` on a branch that does not conflict are skipped and picked up on a later run."
   - "If it needs no fix (checks `green`, `open_findings N` is 0, no conflict), it can be handed off or updated now: `lane_holder N` prints nothing and `mergeStateStatus` is not `UNKNOWN`. Otherwise it is skipped before it is claimed, so a PR that can only wait does not collect a lease comment on every run."
 returns:
@@ -44,12 +44,12 @@ ensures:
   - "No test, snapshot or allowlist was edited to make a check pass. A test that looks wrong is reported in the attempt comment and left."
   - "A fork PR, or shepherd_attempts N at max_shepherd_attempts, escalates to agent:stuck."
   - "Failing output that could not be read is a failed run, not an attempt."
-  - "The agent:in-progress lease is released on every return. On failed an agent:failure marker was added."
+  - "The agent:in-progress lease is released on every return, unless `lease_held` is true, when the caller releases it. On failed an agent:failure marker was added."
 effects:
   reads: [the PR, its check state and failing logs, "the newest `kind=review` handoff", its merge state, "lane_holder", markers, the repository's own guidance]
   writes:
     claimed:
-      - "The agent:in-progress lease label and marker, and the removal of a stale lease label."
+      - "The agent:in-progress lease label and its marker. A stale label from a dead run is replaced by the new lease. With `lease_held=true` nothing is written here."
       - "Attempt, branch-update and ready-handoff comments, and the swap of agent:needs-work for agent:ready-for-review."
       - "An agent:failure marker on failure. On escalation, the escalate comment and agent:stuck."
     repository:
@@ -90,6 +90,7 @@ terminates: "shepherd_attempts N reaching max_shepherd_attempts, or failures N r
 | `unattended` | `true` | `true`: no human is present, so never ask (see **Unattended runs** in the protocol). `false`: a human may be asked |
 | `trusted_authors` | *(none)* | Extra GitHub logins whose markers count, comma-separated (see **Trust** in the protocol) |
 | `write_log` | `true` | Write this item's own run-log entry. The group skill sets it to `false` when it dispatches, because the group logs the item |
+| `lease_held` | `false` | `true` when the caller already holds the lease on this item, as in a nested call. The skill then neither claims nor releases it, and the lease must be live |
 
 **Implicit dependencies.** The common ones (**Shell setup** and **Running without a shell** in the protocol), plus read access to the failing check logs and a git identity. Without the log access this needs, follow **Unattended runs** in the protocol and record it under **Problems**.
 

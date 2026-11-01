@@ -69,6 +69,7 @@ log_window_days=14
 unattended=true
 trusted_authors=
 write_log=true
+lease_held=false
 ```
 
 ## Implementing
@@ -99,6 +100,7 @@ log_window_days=14
 unattended=true
 trusted_authors=
 write_log=true
+lease_held=false
 ```
 
 ## Shepherding
@@ -130,6 +132,7 @@ log_window_days=14
 unattended=true
 trusted_authors=
 write_log=true
+lease_held=false
 ```
 
 ## Reviewing
@@ -163,4 +166,5 @@ log_window_days=14
 unattended=true
 trusted_authors=
 write_log=true
+lease_held=false
 ```

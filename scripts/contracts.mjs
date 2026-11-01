@@ -95,6 +95,11 @@ export function checkContracts(skills, byName, external = new Set()) {
     }
     const argTarget = c.target?.param ? c.target.param : null;
 
+    // eligibility only reads: a precondition that calls a writing helper is a hidden side effect
+    for (const r of Array.isArray(c.requires) ? c.requires : []) {
+      const w = typeof r === "string" && r.match(/\b(clear_stale_lease|claim|renew|release|fail_item|log_run)\b/);
+      if (w) err(`\`requires\` mentions \`${w[1]}\`, which writes. Checking eligibility must only read`);
+    }
     for (const k of ["requires", "returns", "ensures", "never"]) {
       if (c[k] !== undefined && !isStrings(c[k])) err(`\`${k}\` must be a non-empty list of strings`);
     }
