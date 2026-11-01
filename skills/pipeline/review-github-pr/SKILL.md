@@ -19,7 +19,7 @@ See **Contracts** in the protocol for what each key means.
 kind: item
 step: Reviewing
 target: { param: pr, type: pr }
-params: [pr, repo_guidance, lease_ttl_pr, max_review_rounds, max_item_failures, merge_method, pr_base_branch, human_reviewer, human_merge_paths, git_hooks_path, runner, log_window_days, unattended, trusted_authors]
+params: [pr, repo_guidance, lease_ttl_pr, max_review_rounds, max_item_failures, merge_method, pr_base_branch, human_reviewer, human_merge_paths, git_hooks_path, runner, log_window_days, unattended, trusted_authors, write_log]
 requires:
   - "The PR is open, not a draft, and labelled agent:ready-for-review, without agent:stuck or agent:human-merge."
   - "After `clear_stale_lease N pr`, it does not carry agent:in-progress with `lease_live N` succeeding."
@@ -57,7 +57,7 @@ effects:
       - "Linked issues: removal of agent:pr-open, closing with a comment, or ready-for-human for a keep-open issue."
       - "A review request to human_reviewer or the CODEOWNERS when a PR is escalated or handed to a person."
     shared:
-      - "One run-log entry, when run on its own and not dispatched by review-github-prs."
+      - "One run-log entry (when write_log is true)."
   external: ["The repository's test commands, when a fix is pushed."]
 never:
   - "Merge in the same run in which you pushed a commit. A fresh review run must review the new head."
@@ -95,6 +95,7 @@ terminates: "review_rounds N reaching max_review_rounds hands the PR to a person
 | `log_window_days` | `14` | Days one run-log issue is appended to before a new one starts |
 | `unattended` | `true` | `true`: no human is present, so never ask (see **Unattended runs** in the protocol). `false`: a human may be asked |
 | `trusted_authors` | *(none)* | Extra GitHub logins whose markers count, comma-separated (see **Trust** in the protocol) |
+| `write_log` | `true` | Write this item's own run-log entry. The group skill sets it to `false` when it dispatches, because the group logs the item |
 
 **Implicit dependencies.** The common ones (**Shell setup** and **Running without a shell** in the protocol), plus the `merge-safety` and `code-review` skills (through the Skill tool), a token permitted to merge, and the ability to pin a merge to one commit. Without the ability to pin a merge, follow **Unattended runs** in the protocol and record it under **Problems**.
 

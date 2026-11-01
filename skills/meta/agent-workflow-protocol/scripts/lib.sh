@@ -50,6 +50,7 @@ AGENT_ROOT="$(git rev-parse --show-toplevel)"
 : "${runner:=unknown}"
 : "${unattended:=true}"
 : "${trusted_authors:=}"
+: "${write_log:=true}"
 
 if [ -n "${AGENT_OVERRIDES:-}" ] && [ -f "${AGENT_OVERRIDES}" ]; then
   # shellcheck disable=SC1090
@@ -82,6 +83,7 @@ max_item_failures:MAX_ITEM_FAILURES
 runner:RUNNER
 unattended:UNATTENDED
 trusted_authors:TRUSTED_AUTHORS
+write_log:WRITE_LOG
 "
 while IFS=: read -r _lower _upper; do
   [ -n "$_lower" ] || continue

@@ -29,6 +29,7 @@ ensures:
   - "An open agent:pr-open issue whose PR merged was closed with `Implemented in #P.` and lost agent:pr-open. A keep-open issue was left open and handled as references/client-guidance.md says."
   - "An open agent:pr-open issue whose every PR was closed unmerged is ready-for-human, with a comment, and is not agent:pr-open."
   - "Every non-trivial repair is listed under Problems in the log with the `repo-state` tag, as issue number and from to to."
+  - "Each dispatched item was given `write_log=false`, and every input of this run that it also lists in `params`."
   - "One run-log entry exists, listing the housekeeping done."
 effects:
   reads: [open issues with their labels and comments, "prs_for_issue", the repository's own guidance, item labels]

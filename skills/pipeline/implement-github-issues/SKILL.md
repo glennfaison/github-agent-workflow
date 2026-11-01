@@ -25,6 +25,7 @@ returns:
   - "nothing eligible"
 ensures:
   - "At most implement_batch issues were dispatched, oldest first, each one passing implement-github-issue's requires. Issues labelled agent:stuck were not candidates."
+  - "Each dispatched item was given `write_log=false`, and every input of this run that it also lists in `params`."
   - "One run-log entry exists."
 effects:
   reads: [open issues labelled ready-for-agent]

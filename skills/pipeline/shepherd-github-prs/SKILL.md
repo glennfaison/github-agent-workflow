@@ -26,6 +26,7 @@ returns:
 ensures:
   - "At most shepherd_batch PRs were dispatched, oldest first, each one passing shepherd-github-pr's requires. PRs labelled agent:stuck or agent:human-merge were not candidates."
   - "A PR whose checks are still running was skipped, not waited for."
+  - "Each dispatched item was given `write_log=false`, and every input of this run that it also lists in `params`."
   - "One run-log entry exists."
 effects:
   reads: [open PRs labelled agent:needs-work, their check state]

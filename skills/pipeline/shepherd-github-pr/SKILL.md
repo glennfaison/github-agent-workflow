@@ -21,7 +21,7 @@ See **Contracts** in the protocol for what each key means.
 kind: item
 step: Shepherding
 target: { param: pr, type: pr }
-params: [pr, lease_ttl_pr, ready_lane_ttl, max_shepherd_attempts, max_item_failures, human_reviewer, repo_guidance, git_hooks_path, runner, log_window_days, unattended, trusted_authors]
+params: [pr, lease_ttl_pr, ready_lane_ttl, max_shepherd_attempts, max_item_failures, human_reviewer, repo_guidance, git_hooks_path, runner, log_window_days, unattended, trusted_authors, write_log]
 requires:
   - "The PR is open and labelled agent:needs-work, without agent:stuck or agent:human-merge."
   - "After `clear_stale_lease N pr`, it does not carry agent:in-progress with `lease_live N` succeeding."
@@ -55,7 +55,7 @@ effects:
     other:
       - "A one-line comment on the linked issue, and a review request to human_reviewer, when escalating."
     shared:
-      - "One run-log entry, when run on its own and not dispatched by shepherd-github-prs."
+      - "One run-log entry (when write_log is true)."
   external: ["The repository's test commands."]
 never:
   - "Wait for CI to finish."
@@ -87,6 +87,7 @@ terminates: "shepherd_attempts N reaching max_shepherd_attempts, or failures N r
 | `log_window_days` | `14` | Days one run-log issue is appended to before a new one starts |
 | `unattended` | `true` | `true`: no human is present, so never ask (see **Unattended runs** in the protocol). `false`: a human may be asked |
 | `trusted_authors` | *(none)* | Extra GitHub logins whose markers count, comma-separated (see **Trust** in the protocol) |
+| `write_log` | `true` | Write this item's own run-log entry. The group skill sets it to `false` when it dispatches, because the group logs the item |
 
 **Implicit dependencies.** The common ones (**Shell setup** and **Running without a shell** in the protocol), plus read access to the failing check logs and a git identity. Without the log access this needs, follow **Unattended runs** in the protocol and record it under **Problems**.
 

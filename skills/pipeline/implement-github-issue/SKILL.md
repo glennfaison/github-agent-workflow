@@ -19,7 +19,7 @@ See **Contracts** in the protocol for what each key means.
 kind: item
 step: Implementing
 target: { param: issue, type: issue }
-params: [issue, pr_base_branch, build_cmd, git_hooks_path, repo_guidance, lease_ttl_implement, max_item_failures, runner, log_window_days, unattended, trusted_authors]
+params: [issue, pr_base_branch, build_cmd, git_hooks_path, repo_guidance, lease_ttl_implement, max_item_failures, runner, log_window_days, unattended, trusted_authors, write_log]
 requires:
   - "The issue is open and labelled ready-for-agent, without agent:stuck."
   - "After `clear_stale_lease N issue`, it does not carry agent:in-progress with `lease_live N` succeeding."
@@ -57,7 +57,7 @@ effects:
     other:
       - "agent:needs-work on an existing OPEN agent PR for the issue."
     shared:
-      - "One run-log entry, when run on its own and not dispatched by implement-github-issues."
+      - "One run-log entry (when write_log is true)."
   external: ["build_cmd, when set, and the repository's test commands."]
 never:
   - "Wait for checks, fix CI, or post the reviewer handoff. shepherd-github-pr does that."
@@ -90,6 +90,7 @@ terminates: "failures N Implementing reaching max_item_failures escalates and st
 | `log_window_days` | `14` | Days one run-log issue is appended to before a new one starts |
 | `unattended` | `true` | `true`: no human is present, so never ask (see **Unattended runs** in the protocol). `false`: a human may be asked |
 | `trusted_authors` | *(none)* | Extra GitHub logins whose markers count, comma-separated (see **Trust** in the protocol) |
+| `write_log` | `true` | Write this item's own run-log entry. The group skill sets it to `false` when it dispatches, because the group logs the item |
 
 **Implicit dependencies.** The common ones (**Shell setup** and **Running without a shell** in the protocol), plus the `tdd` and `code-review` skills (through the Skill tool), a working build toolchain, a git identity, and the issue's Agent Brief. Without a shell, keep the change small and record what you could not run under **Problems** in the run log.
 

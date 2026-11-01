@@ -67,6 +67,7 @@ runner=NAME
 log_window_days=14
 unattended=true
 trusted_authors=
+write_log=true
 ```
 
 ## Implementing
@@ -96,6 +97,7 @@ runner=NAME
 log_window_days=14
 unattended=true
 trusted_authors=
+write_log=true
 ```
 
 ## Shepherding
@@ -126,6 +128,7 @@ runner=NAME
 log_window_days=14
 unattended=true
 trusted_authors=
+write_log=true
 ```
 
 ## Reviewing
@@ -158,4 +161,5 @@ runner=NAME
 log_window_days=14
 unattended=true
 trusted_authors=
+write_log=true
 ```

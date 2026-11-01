@@ -43,9 +43,9 @@ The workflow has five steps: Exploring, Triaging, Implementing, Shepherding, Rev
 4. **Work.** The skill's own steps.
 5. **Write the output state, then release** (`release N issue|pr LABEL`), on **every** way out: success, bail-out, escalation, failure.
 6. **Failure.** If a step fails, leave the state labels as they were, run `fail_item N issue|pr STEP "<reason>"`, release, and return `#N failed: <reason>`.
-7. **Result.** One line, and only one of the lines in the contract's `returns`: `#N <outcome>`, `#N skipped: <reason>` or `#N failed: <reason>`. For example `#31 ready-for-agent`, `#35 skipped: leased`, `#44 failed: could not read ADR link (404)`. A group skill logs the results of the items it dispatched. An item skill run on its own writes its own run-log entry (`references/log.md`).
+7. **Result.** One line, and only one of the lines in the contract's `returns`: `#N <outcome>`, `#N skipped: <reason>` or `#N failed: <reason>`. For example `#31 ready-for-agent`, `#35 skipped: leased`, `#44 failed: could not read ADR link (404)`. A group skill logs the results of the items it dispatched. An item skill writes its own run-log entry (`references/log.md`) only when `write_log` is `true`, which is the default. A group skill sets it to `false` when it dispatches.
 
-**Dispatching.** Call the Skill tool with the item skill's name and give it the item's URL. If your runner can start sub-agents, run each item as its own sub-agent, given only the item's URL, so context stays small and one failing item cannot affect the rest. Otherwise run the items one after another. Either way, collect each item's result.
+**Dispatching.** Call the Skill tool with the item skill's name and give it three things: the item's URL, `write_log=false` (the group writes the log entry), and every key-value input of this run that the item skill also lists under `params` in its contract (for example `runner`, `unattended`, `trusted_authors`, `repo_guidance`, `pr_base_branch` and the lease TTLs). A sub-agent starts with none of this run's inputs, so anything it is not given falls back to its default. If your runner can start sub-agents, run each item as its own sub-agent, so context stays small and one failing item cannot affect the rest. Otherwise run the items one after another. Either way, collect each item's result.
 
 The steps are independent. Do not assume another step has run, will run, or is running.
 
@@ -104,6 +104,7 @@ A key-value pair and free text that name the same thing resolve to the pair. An 
 | `runner` | `unknown` | `explore-github-repo`, `triage-github-issues`, `triage-github-issue`, `implement-github-issues`, `implement-github-issue`, `shepherd-github-prs`, `shepherd-github-pr`, `review-github-prs`, `review-github-pr` |
 | `unattended` | `true` | `explore-github-repo`, `file-github-issues`, `triage-github-issues`, `triage-github-issue`, `implement-github-issues`, `implement-github-issue`, `shepherd-github-prs`, `shepherd-github-pr`, `review-github-prs`, `review-github-pr` |
 | `trusted_authors` | *(none)* | `triage-github-issues`, `triage-github-issue`, `implement-github-issues`, `implement-github-issue`, `shepherd-github-prs`, `shepherd-github-pr`, `review-github-prs`, `review-github-pr` |
+| `write_log` | `true` | `triage-github-issue`, `implement-github-issue`, `shepherd-github-pr`, `review-github-pr` |
 
 ## Unattended runs
 

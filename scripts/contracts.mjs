@@ -171,6 +171,9 @@ export function checkContracts(skills, byName, external = new Set()) {
       if (tc.kind !== "item") errors.push(`${s.rel}: contract: dispatches \`${c.dispatches}\`, which is not an item skill`);
       if (tc.step !== c.step) errors.push(`${s.rel}: contract: dispatches \`${c.dispatches}\`, which belongs to ${tc.step} and not ${c.step}`);
       if (t.userInvoked) errors.push(`${s.rel}: contract: dispatches \`${c.dispatches}\`, which is user-invoked`);
+      if (tc.effects?.writes?.shared && !(tc.params ?? []).includes("write_log")) {
+        errors.push(`${s.rel}: contract: dispatches \`${c.dispatches}\`, which writes the run log but has no \`write_log\` param, so the group cannot stop it logging twice`);
+      }
     }
   }
   return { errors, contracts: parsed };

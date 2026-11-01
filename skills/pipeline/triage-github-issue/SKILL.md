@@ -19,7 +19,7 @@ See **Contracts** in the protocol for what each key means.
 kind: item
 step: Triaging
 target: { param: issue, type: issue }
-params: [issue, repo_guidance, lease_ttl_triage, max_item_failures, dedupe_closed_days, runner, log_window_days, unattended, trusted_authors]
+params: [issue, repo_guidance, lease_ttl_triage, max_item_failures, dedupe_closed_days, runner, log_window_days, unattended, trusted_authors, write_log]
 requires:
   - "The issue is open."
   - "It carries none of ready-for-agent, ready-for-human, needs-info, agent:pr-open, agent:stuck, agent:log, agent:difficulty. needs-triage does not exclude it: it means an earlier pass did not finish."
@@ -52,7 +52,7 @@ effects:
     other:
       - "The comments references/dedupe.md allows on other issues."
     shared:
-      - "One run-log entry, when run on its own and not dispatched by triage-github-issues."
+      - "One run-log entry (when write_log is true)."
 never:
   - "Write or change code, or touch PRs."
   - "Commit, or edit GLOSSARY.md, ADRs or .out-of-scope/."
@@ -83,6 +83,7 @@ terminates: "failures N Triaging reaching max_item_failures escalates and stops.
 | `log_window_days` | `14` | Days one run-log issue is appended to before a new one starts |
 | `unattended` | `true` | `true`: no human is present, so never ask (see **Unattended runs** in the protocol). `false`: a human may be asked |
 | `trusted_authors` | *(none)* | Extra GitHub logins whose markers count, comma-separated (see **Trust** in the protocol) |
+| `write_log` | `true` | Write this item's own run-log entry. The group skill sets it to `false` when it dispatches, because the group logs the item |
 
 **Implicit dependencies.** The common ones (**Shell setup** and **Running without a shell** in the protocol), plus the `unattended-triage` skill (through the Skill tool), and the issue's own comments and images.
 

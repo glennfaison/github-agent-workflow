@@ -75,7 +75,7 @@ Rules:
 - **Problems** are the run's difficulties. Start each with a tag: `failed`, `escalated`, `flaky`, `degraded`, `repo-state`, or `security`.
 - **Things to improve** are changes that would make the next run easier: a fix to a skill, a missing tool or permission, a repeated deterministic step worth scripting, a repo problem. Only suggest; never implement unprompted. (Older entries call this **Automation suggestions**; readers accept both.)
 - Cap **Deferred candidates** at 20. Each line needs a one-line **impact × confidence** score.
-- A group skill writes one entry per run covering all items it dispatched. An item skill run on its own writes an entry for its one item.
+- A group skill writes one entry per run covering all items it dispatched, and dispatches them with `write_log=false`. An item skill writes an entry for its one item only when `write_log` is `true` (the default, for a direct call).
 - **One entry per run and step.** `log_run` skips an entry whose `run` and `step` are already on the log issue, so a retry is safe. A runner with no shell checks the issue's comments (`hasLogEntry`) first.
 - Write real line breaks, never the two characters backslash and `n`. `log_run` repairs an entry written that way, but do not rely on it.
 - Write the entry to a temp file, then run `log_run FILE` (shell) or post the same body with GitHub tools (no-shell). Use `formatLogComment` from `scripts/helpers.mjs` so the header and field order stay identical across runners.
