@@ -72,6 +72,19 @@ write_log=true
 lease_held=false
 ```
 
+### Sweeper skill, run on a schedule or by hand: `reconcile-github-issues`
+
+```
+Run /reconcile-github-issues on github.com/OWNER/REPO
+dry_run=false
+repo_guidance=AGENTS.md
+runner=NAME
+log_window_days=14
+unattended=true
+trusted_authors=
+write_log=true
+```
+
 ## Implementing
 
 ### Group skill, run on a schedule: `implement-github-issues`

@@ -11,7 +11,7 @@ Shared by every skill in this package. Each of them points here. Read this file 
 
 Every pipeline skill opens with a `## Contract`: one YAML block that says what the skill is as a function. **Process** says *how*. Where the two disagree, the contract wins, and `npm run validate` checks the parts it can. A skill is evaluated against its contract: give it a state of the world and inputs, then check what it returned and what it wrote.
 
-- `kind`: `item` (works on one issue or PR, or one batch of findings) or `group` (selects work and dispatches an item skill)
+- `kind`: `item` (works on one issue or PR, or one batch of findings), `group` (selects work and dispatches an item skill) or `sweep` (repairs state across many items without claiming them: only `reconcile-github-issues`)
 - `step`: Exploring, Triaging, Implementing, Shepherding or Reviewing
 - `target`: what the skill is given: `{param: issue|pr}` for an item skill, or `{from: free-text, type: …}`
 - `params`: every input the skill accepts, exactly the rows of its `## Inputs` table. Defaults and meanings stay in that table
@@ -81,14 +81,14 @@ A key-value pair and free text that name the same thing resolve to the pair. An 
 |---|---|---|
 | `app_url` | *(none)* | `explore-github-repo` |
 | `explore_batch` | `5` | `explore-github-repo` |
-| `log_window_days` | `14` | `explore-github-repo`, `triage-github-issues`, `triage-github-issue`, `implement-github-issues`, `implement-github-issue`, `shepherd-github-prs`, `shepherd-github-pr`, `review-github-prs`, `review-github-pr` |
+| `log_window_days` | `14` | `explore-github-repo`, `triage-github-issues`, `triage-github-issue`, `implement-github-issues`, `implement-github-issue`, `shepherd-github-prs`, `shepherd-github-pr`, `review-github-prs`, `review-github-pr`, `reconcile-github-issues` |
 | `dedupe_closed_days` | `30` | `file-github-issues`, `triage-github-issue` |
 | `pr_base_branch` | `main` | `implement-github-issue`, `review-github-pr` |
 | `merge_method` | `squash` | `review-github-pr` |
 | `human_reviewer` | *(none)* | `shepherd-github-pr`, `review-github-pr` |
 | `build_cmd` | *(none)* | `implement-github-issue` |
 | `git_hooks_path` | *(none)* | `implement-github-issue`, `shepherd-github-pr`, `review-github-pr` |
-| `repo_guidance` | `AGENTS.md` | `file-github-issues`, `triage-github-issues`, `triage-github-issue`, `implement-github-issue`, `shepherd-github-pr`, `review-github-pr` |
+| `repo_guidance` | `AGENTS.md` | `file-github-issues`, `triage-github-issues`, `triage-github-issue`, `implement-github-issue`, `shepherd-github-pr`, `review-github-pr`, `reconcile-github-issues` |
 | `lease_ttl_triage` | `1 hour` | `triage-github-issue` |
 | `lease_ttl_implement` | `3 hours` | `implement-github-issue` |
 | `lease_ttl_pr` | `1 hour` | `shepherd-github-pr`, `review-github-pr` |
@@ -101,10 +101,10 @@ A key-value pair and free text that name the same thing resolve to the pair. An 
 | `max_shepherd_attempts` | `3` | `shepherd-github-pr` |
 | `max_review_rounds` | `3` | `review-github-pr` |
 | `max_item_failures` | `3` | `triage-github-issue`, `implement-github-issue`, `shepherd-github-pr`, `review-github-pr` |
-| `runner` | `unknown` | `explore-github-repo`, `triage-github-issues`, `triage-github-issue`, `implement-github-issues`, `implement-github-issue`, `shepherd-github-prs`, `shepherd-github-pr`, `review-github-prs`, `review-github-pr` |
-| `unattended` | `true` | `explore-github-repo`, `file-github-issues`, `triage-github-issues`, `triage-github-issue`, `implement-github-issues`, `implement-github-issue`, `shepherd-github-prs`, `shepherd-github-pr`, `review-github-prs`, `review-github-pr` |
-| `trusted_authors` | *(none)* | `triage-github-issues`, `triage-github-issue`, `implement-github-issues`, `implement-github-issue`, `shepherd-github-prs`, `shepherd-github-pr`, `review-github-prs`, `review-github-pr` |
-| `write_log` | `true` | `triage-github-issue`, `implement-github-issue`, `shepherd-github-pr`, `review-github-pr` |
+| `runner` | `unknown` | `explore-github-repo`, `triage-github-issues`, `triage-github-issue`, `implement-github-issues`, `implement-github-issue`, `shepherd-github-prs`, `shepherd-github-pr`, `review-github-prs`, `review-github-pr`, `reconcile-github-issues` |
+| `unattended` | `true` | `explore-github-repo`, `file-github-issues`, `triage-github-issues`, `triage-github-issue`, `implement-github-issues`, `implement-github-issue`, `shepherd-github-prs`, `shepherd-github-pr`, `review-github-prs`, `review-github-pr`, `reconcile-github-issues` |
+| `trusted_authors` | *(none)* | `triage-github-issues`, `triage-github-issue`, `implement-github-issues`, `implement-github-issue`, `shepherd-github-prs`, `shepherd-github-pr`, `review-github-prs`, `review-github-pr`, `reconcile-github-issues` |
+| `write_log` | `true` | `triage-github-issue`, `implement-github-issue`, `shepherd-github-pr`, `review-github-pr`, `reconcile-github-issues` |
 | `lease_held` | `false` | `triage-github-issue`, `implement-github-issue`, `shepherd-github-pr`, `review-github-pr` |
 
 ## Unattended runs
@@ -130,7 +130,7 @@ This workflow merges code with nobody watching, and anyone can comment on a publ
 4. **Write the output state before releasing the lease.**
 5. **Stay bounded.** A group skill handles at most its step's batch. An item skill handles exactly one item.
 6. **Nothing eligible: log one line and exit.** Never invent work.
-7. **Touch only what you have claimed.** The only exceptions are the comments dedupe allows on other issues.
+7. **Touch only what you have claimed.** The exceptions are the comments dedupe allows on other issues, and `reconcile-github-issues`, whose contract lists the issue state it may change.
 8. **Triage and exploring never change the repository.**
 9. **No unattended `wontfix`.** Prefer `ready-for-human` with a recommendation.
 10. **Cap failures.** After `max_item_failures`, escalate.

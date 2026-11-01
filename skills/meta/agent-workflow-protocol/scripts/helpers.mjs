@@ -577,7 +577,7 @@ export const NO_SHELL_OPS = {
   release: 'Remove the lease label. Do nothing when lease_held is true.',
   client_guidance_files: 'get_file_contents on the repository root and on .github, docs, .cursor/rules, .claude/rules, .agents and .github/ISSUE_TEMPLATE, on the DEFAULT branch (no ref, never a PR branch). Keep what guidanceFiles accepts, then read each one in full.',
   item_labels: 'issue_read get on the item for its label names, then get_label for each: its description is guidance too (references/client-guidance.md).',
-  clear_stale_lease: 'If leaseState is not live, remove agent:triage and agent:in-progress labels (call during eligibility/selection).',
+  clear_stale_lease: 'If leaseState is not live, remove agent:triage and agent:in-progress labels. This writes: reconcile-github-issues calls it, and eligibility checks never do.',
   lease_live: 'leaseState on the issue comments; skip the item if live.',
   fail_item: 'add_issue_comment with failureComment.',
   markers: 'markersOf on the comments.',

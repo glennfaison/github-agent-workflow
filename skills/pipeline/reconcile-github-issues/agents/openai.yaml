@@ -1,0 +1,3 @@
+interface:
+  display_name: "Reconcile GitHub Issues"
+  short_description: "Tidy issue state after PRs finish"

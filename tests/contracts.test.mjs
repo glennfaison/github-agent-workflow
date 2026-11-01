@@ -121,9 +121,17 @@ test("a prose section the contract replaces is reported", () => {
 
 test("a group skill cannot claim, and an item skill with a target must", () => {
   const claiming = GROUP.replace("    shared:", "    claimed: [\"x\"]\n    shared:");
-  assert.ok(run([skill("do-them", claiming, "", ["runner"]), item()]).some((e) => /never claims/.test(e)));
+  assert.ok(run([skill("do-them", claiming, "", ["runner"]), item()]).some((e) => /only an item skill claims/.test(e)));
   const noClaim = ITEM.replace(/    claimed: \["A label."\]/, "    shared: [\"A log.\"]");
   assert.ok(run([item(noClaim)]).some((e) => /needs `effects.writes.claimed`/.test(e)));
+});
+
+test("a sweep skill needs no target or dispatch, but cannot claim", () => {
+  const SWEEP = GROUP.replace("kind: group", "kind: sweep").replace("dispatches: do-it\n", "");
+  assert.deepEqual(run([skill("tidy", SWEEP, "", ["runner"])]), []);
+  assert.ok(run([skill("tidy", SWEEP + "\ndispatches: do-it", "", ["runner"])]).some((e) => /only a group skill dispatches/.test(e)));
+  const claiming = SWEEP.replace("    shared:", "    claimed: [\"x\"]\n    shared:");
+  assert.ok(run([skill("tidy", claiming, "", ["runner"])]).some((e) => /only an item skill claims/.test(e)));
 });
 
 test("an unknown write scope is reported", () => {

@@ -163,9 +163,10 @@ release() {
   gh "$2" edit "$1" --remove-label "$3" >/dev/null
 }
 
-# Remove lease labels whose marker has expired or is missing. Call during eligibility /
-# selection so a dead runner or an expired TTL does not leave agent:triage / agent:in-progress
-# on the board. Selection is unchanged: an item with only a stale label remains unleased.
+# Remove lease labels whose marker has expired or is missing, so a dead runner or an expired TTL
+# does not leave agent:triage / agent:in-progress on the board. This writes, so it is never part of
+# an eligibility check: reconcile-github-issues calls it. An item with only a stale label is already
+# unleased (lease_live decides), and the next claim replaces the label.
 clear_stale_lease() {
   local n=$1 kind=$2
   lease_live "$n" && return 0

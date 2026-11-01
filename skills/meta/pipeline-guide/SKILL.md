@@ -19,8 +19,9 @@ Call a skill by its name through the Skill tool (or `/name` where your runner ha
 | `runner-prompts` | user-invoked | You need the exact prompt to give a scheduler or runner. Prints one block per skill, listing every input with its default |
 | `explore-github-repo` | group, Exploring | Finding new work: explore the live app and the code, rank findings, file the best |
 | `file-github-issues` | item, Exploring | Filing one finding or a batch as issues after a duplicate check. Supports `dry_run`. Takes findings, not an existing issue, so it is plural |
-| `triage-github-issues` | group, Triaging | Working through the open backlog: tidy finished issues, dispatch each untriaged one |
+| `triage-github-issues` | group, Triaging | Working through the open backlog: reconcile issue state, then dispatch each untriaged issue |
 | `triage-github-issue` | item, Triaging | One specific issue needs to become `ready-for-agent`, `ready-for-human` or `needs-info` |
+| `reconcile-github-issues` | sweep, Triaging | Issue state has drifted from the PRs: close shipped issues, send abandoned ones to a human, repair labels, clear stale leases |
 | `implement-github-issues` | group, Implementing | Starting work on the `ready-for-agent` issues |
 | `implement-github-issue` | item, Implementing | One specific ready issue should be implemented and opened as a PR |
 | `shepherd-github-prs` | group, Shepherding | Getting open agent PRs through CI |
