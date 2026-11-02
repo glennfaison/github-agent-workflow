@@ -41,7 +41,7 @@ Cross-cutting skills that support the pipeline but are not steps themselves.
 ### GitHub workflow ([skills/pipeline](./skills/pipeline/README.md))
 
 - **[explore-github-repo](./skills/pipeline/explore-github-repo/SKILL.md)** / **[file-github-issues](./skills/pipeline/file-github-issues/SKILL.md)** — explore the live app and code, rank findings, file the best as issues (batch + dry-run supported).
-- **[triage-github-issues](./skills/pipeline/triage-github-issues/SKILL.md)** / **[triage-github-issue](./skills/pipeline/triage-github-issue/SKILL.md)** — scan open issues and triage each to `ready-for-agent`, `ready-for-human` or `needs-info`.
+- **[triage-github-issues](./skills/pipeline/triage-github-issues/SKILL.md)** / **[triage-github-issue](./skills/pipeline/triage-github-issue/SKILL.md)** — scan open issues and triage each to `ready-for-agent`, `ready-for-human` or `needs-info`. **[reconcile-github-issues](./skills/pipeline/reconcile-github-issues/SKILL.md)** tidies issues whose PRs finished and repairs state labels.
 - **[implement-github-issues](./skills/pipeline/implement-github-issues/SKILL.md)** / **[implement-github-issue](./skills/pipeline/implement-github-issue/SKILL.md)** — pick ready-for-agent issues, implement, open a PR.
 - **[shepherd-github-prs](./skills/pipeline/shepherd-github-prs/SKILL.md)** / **[shepherd-github-pr](./skills/pipeline/shepherd-github-pr/SKILL.md)** — get a PR through checks and post the review handoff.
 - **[review-github-prs](./skills/pipeline/review-github-prs/SKILL.md)** / **[review-github-pr](./skills/pipeline/review-github-pr/SKILL.md)** — review a ready PR and merge when safe.

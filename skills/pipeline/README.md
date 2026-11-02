@@ -15,8 +15,9 @@ The five steps of the issue-to-merge pipeline. Each step has a **group skill** t
 
 ## Triaging
 
-- **[triage-github-issues](./triage-github-issues/SKILL.md)**: Scan the open issues, tidy finished ones, and dispatch the rest.
+- **[triage-github-issues](./triage-github-issues/SKILL.md)**: Reconcile issue state, then dispatch the untriaged issues.
 - **[triage-github-issue](./triage-github-issue/SKILL.md)**: Triage one issue to `ready-for-agent`, `ready-for-human` or `needs-info`.
+- **[reconcile-github-issues](./reconcile-github-issues/SKILL.md)**: Close issues whose PR merged, send abandoned ones to a human, repair conflicting state labels and clear stale leases.
 
 ## Implementing
 

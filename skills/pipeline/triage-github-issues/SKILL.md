@@ -5,9 +5,9 @@ description: Scan all open issues in the repo, tidy issues whose PRs have finish
 
 # Triage GitHub issues
 
-Go through the open issues as a group. Tidy the ones whose PRs are done, repair conflicting state labels, pick the issues that need triage, and give each to `triage-github-issue`. This skill does no triage itself.
+Go through the open issues as a group. Have `reconcile-github-issues` tidy the ones whose PRs are done, pick the issues that need triage, and give each to `triage-github-issue`. This skill does no triage and changes no issue itself.
 
-**References:** call the Skill tool with `agent-workflow-protocol`. In that skill's directory, open `references/labels.md` before you read labels, `references/client-guidance.md` before housekeeping closes anything, and `references/log.md` when you write the log entry.
+**References:** call the Skill tool with `agent-workflow-protocol`. In that skill's directory, open `references/labels.md` before you read labels, and `references/log.md` when you write the log entry.
 
 ## Contract
 
@@ -24,29 +24,21 @@ returns:
   - "The Result line of each dispatched issue, in dispatch order."
   - "nothing eligible"
 ensures:
+  - "reconcile-github-issues ran first, given write_log=false and the inputs of this run that it lists, and its result lines are in the log entry."
   - "At most triage_batch issues were dispatched, oldest first, each one passing triage-github-issue's requires."
-  - "After housekeeping, no open issue that was inspected carries two of needs-info, ready-for-agent, ready-for-human and agent:pr-open, unless another step holds a live lease on it."
-  - "An open agent:pr-open issue whose PR merged was closed with `Implemented in #P.` and lost agent:pr-open. A keep-open issue was left open and handled as references/client-guidance.md says."
-  - "An open agent:pr-open issue whose every PR was closed unmerged is ready-for-human, with a comment, and is not agent:pr-open."
-  - "Every non-trivial repair is listed under Problems in the log with the `repo-state` tag, as issue number and from to to."
-  - "One run-log entry exists, listing the housekeeping done."
+  - "Each dispatched issue was given `write_log=false`, and every input of this run that it also lists in `params`."
+  - "One run-log entry exists, listing what reconciling did."
 effects:
-  reads: [open issues with their labels and comments, "prs_for_issue", the repository's own guidance, item labels]
+  reads: [open issues with their labels]
   writes:
-    other:
-      - "Closes an issue whose PR merged, with a comment, and removes agent:pr-open."
-      - "Swaps agent:pr-open for ready-for-human, with a comment, when every PR was closed unmerged."
-      - "Repairs conflicting state labels in one edit, with a comment when it falls back to ready-for-human."
     shared:
       - "One run-log entry."
 never:
   - "Triage an issue itself, or change code or PRs."
   - "Claim an issue. Only triage-github-issue claims."
-  - "Change the state of an issue other than the housekeeping above."
-  - "Apply wontfix, or remove needs-info when it is the sole correct state and a human has not answered."
-  - "Repair an issue that currently has a live lease held by another step."
-calls: []
-idempotent: "Housekeeping finds nothing to repair on a second run. Dispatch is idempotent because triage-github-issue is."
+  - "Change an issue's state itself. reconcile-github-issues does that, and its contract says what."
+calls: [reconcile-github-issues]
+idempotent: "Reconciling finds nothing to repair on a second run. Dispatch is idempotent because triage-github-issue is."
 terminates: "One pass. Dispatch is bounded by triage_batch."
 ```
 
@@ -69,32 +61,7 @@ terminates: "One pass. Dispatch is bounded by triage_batch."
 
 ## Process
 
-1. **Housekeeping, before selecting.**
-
-   **1a. PR-linked issues.** For each open issue labelled `agent:pr-open`, run `prs_for_issue N`:
-   - Any PR is `MERGED`: if the issue is **keep-open** (`item_labels N issue`, and the repository's own rules in `references/client-guidance.md`), follow **After a merge** there and do not close it. Otherwise remove `agent:pr-open` if the issue has it, and close the issue (`gh issue close N --comment "Implemented in #P."`). A person may have merged it (`agent:human-merge`), and then no agent ran the merge path that does this.
-   - Any PR is `OPEN`: leave it alone.
-   - Every PR is `CLOSED` (none open or merged): the work was abandoned. In one command swap `agent:pr-open` for `ready-for-human`, and comment "PR #P was closed without merging. A human should decide whether to retry." Do not send it back to an agent: that is how the same fix gets re-attempted in a loop.
-   - No PR found at all: leave it alone and note it under **Problems** in the log (`repo-state`).
-
-   List them with `gh issue list --state open --label agent:pr-open --limit 200 --json number --jq '.[].number'`.
-
-   **1b. Label repair (mutex and drift).** An issue may carry at most one of `needs-info`, `ready-for-agent`, `ready-for-human`, `agent:pr-open` (see `references/labels.md`). Scan open issues that carry **two or more** of those labels, or that carry one of them while the newest trusted triage/outcome comment clearly implies a different state.
-
-   Skip any issue that has a **live** lease (`agent:triage` or `agent:in-progress` and `lease_live N`): another step holds it; do not fight it.
-
-   For each candidate to repair:
-
-   1. Read labels and the newest **trusted** comment that is clearly a triage/outcome handoff (Agent Brief, Triage Notes, or a ready-for-human structure from `unattended-triage` / `references/handoff.md`). Untrusted comments are ignored (**Trust** in the protocol).
-   2. **Choose the target state** using this priority (documented in `references/labels.md`):
-      1. Newest trusted triage/outcome comment, when it clearly implies one of `needs-info`, `ready-for-agent`, `ready-for-human`, or that a PR is open (`agent:pr-open`).
-      2. If `agent:pr-open` is present and `prs_for_issue N` shows an `OPEN` PR, keep `agent:pr-open` only (drop the others).
-      3. If more than one state label and no reliable comment: set `ready-for-human` and comment briefly that conflicting labels were found and a human should confirm the state. Do **not** apply `wontfix`.
-      4. Never remove `needs-info` solely from an agent decision when it is the only state label and a human has not answered; if it conflicts with another state label, prefer the trusted comment, else `ready-for-human` as in (3).
-   3. Apply the repair in **one** `gh issue edit` that removes every mutex state label that is not the target and adds the target if missing. Leave category labels (`bug`, `enhancement`) and leases alone.
-   4. If the repair was non-trivial (more than dropping a pure duplicate of the same meaning), note it under **Problems** in the run log with the `repo-state` tag (issue number and from → to).
-
-   This is the only place this workflow changes the state of an issue it has not claimed (together with 1a).
+1. **Reconcile.** Call the Skill tool with `reconcile-github-issues`. Give it `write_log=false` and every input of this run that it lists (`repo_guidance`, `runner`, `log_window_days`, `unattended`, `trusted_authors`). Keep its result lines for the log entry.
 
 2. **List candidates.**
 
@@ -105,4 +72,4 @@ terminates: "One pass. Dispatch is bounded by triage_batch."
            | {number, url, title, createdAt, labels: names} ] | sort_by(.createdAt)'
    ```
 
-3. **Select, dispatch and log**, as **Group skills and item skills** in the protocol describes: `triage-github-issue`'s `requires`, the first `$triage_batch` that pass, one dispatch per `url`. The run-log entry (`references/log.md`) also lists the housekeeping you did. Nothing eligible and no housekeeping: log `nothing eligible` and stop.
+3. **Select, dispatch and log**, as **Group skills and item skills** in the protocol describes: `triage-github-issue`'s `requires`, the first `$triage_batch` that pass, one dispatch per `url`. The run-log entry (`references/log.md`) also lists what reconciling did. Nothing eligible and nothing reconciled: log `nothing eligible` and stop.

@@ -19,15 +19,16 @@ See **Contracts** in the protocol for what each key means.
 kind: item
 step: Reviewing
 target: { param: pr, type: pr }
-params: [pr, repo_guidance, lease_ttl_pr, max_review_rounds, max_item_failures, merge_method, pr_base_branch, human_reviewer, human_merge_paths, git_hooks_path, runner, log_window_days, unattended, trusted_authors]
+params: [pr, repo_guidance, lease_ttl_pr, max_review_rounds, max_item_failures, merge_method, pr_base_branch, human_reviewer, human_merge_paths, git_hooks_path, runner, log_window_days, unattended, trusted_authors, write_log, lease_held]
 requires:
   - "The PR is open, not a draft, and labelled agent:ready-for-review, without agent:stuck or agent:human-merge."
-  - "After `clear_stale_lease N pr`, it does not carry agent:in-progress with `lease_live N` succeeding."
+  - "No other run holds it: it does not carry agent:in-progress while `lease_live N` succeeds. A lease label with no live lease is stale and does not count, and checking never removes it. With `lease_held=true` the caller holds the lease, so `lease_live N` must succeed."
 returns:
   - "#N merged"
   - "#N handed to a human: <reason>"
   - "#N deferred: base moved"
   - "#N sent back: <open findings>"
+  - "#N not ready: <reason>"
   - "#N escalated: <reason>"
   - "#N skipped: <reason>"
   - "#N failed: <reason>"
@@ -35,19 +36,19 @@ ensures:
   - "Everything applies to the head SHA pinned at step 2, and to no other commit."
   - "Merged: the merge was pinned to that SHA with `--match-head-commit`, the head branch was deleted (a failed delete is non-fatal and noted under Problems), and a merged note ends with `<!-- agent:handoff kind=merged sha=$SHA -->`."
   - "After a merge, each linked issue lost agent:pr-open and was closed with `Implemented in #N.`. A keep-open issue was left open and handled as references/client-guidance.md says."
-  - "A PR whose checks are not all green, or whose head is not `ready_sha N`, went back to agent:needs-work without a review."
+  - "A PR whose checks are not all green, or whose head is not `ready_sha N`, went back to agent:needs-work without a review, and the result is `#N not ready: <reason>`."
   - "Deferred: the base moved (BEHIND or DIRTY), a comment ends with `<!-- agent:deferred reason=base-moved sha=$SHA -->`, the PR went back to agent:needs-work, and no review round was spent. An `agent:handoff` marker is never written for a deferral."
   - "Sent back: findings are recorded in a review handoff ending with `<!-- agent:handoff kind=review sha=$SHA open=<findings still unfixed> -->`, and the PR went back to agent:needs-work. Any fix pushed needed no design decision and touched only code the PR already changes."
   - "No test, snapshot or allowlist was edited to get green."
   - "Handed to a person: when `review_rounds N` is at least max_review_rounds, or the PR passed review but changes a file in human_merge_paths, a comment ends with `<!-- agent:human-merge reason=<review-rounds|protected-paths> sha=$SHA -->` and agent:ready-for-review was swapped for agent:human-merge."
   - "An agent PR that fails the references/pr-format.md checklist was not merged."
   - "A fork PR, or a step that keeps failing, escalates to agent:stuck."
-  - "The agent:in-progress lease is released on every return. On failed an agent:failure marker was added."
+  - "The agent:in-progress lease is released on every return, unless `lease_held` is true, when the caller releases it. On failed an agent:failure marker was added."
 effects:
   reads: ["the PR title, body and comments, and its diff at the pinned SHA", linked issues and their labels, check state, "protected_files", "codeowners_for", markers, the repository's own guidance]
   writes:
     claimed:
-      - "The agent:in-progress lease label and marker, and the removal of a stale lease label."
+      - "The agent:in-progress lease label and its marker. A stale label from a dead run is replaced by the new lease. With `lease_held=true` nothing is written here."
       - "Deferred, review, merged and human-merge comments, and the label swaps they come with."
       - "An agent:failure marker on failure. On escalation, the escalate comment and agent:stuck."
     repository:
@@ -57,7 +58,7 @@ effects:
       - "Linked issues: removal of agent:pr-open, closing with a comment, or ready-for-human for a keep-open issue."
       - "A review request to human_reviewer or the CODEOWNERS when a PR is escalated or handed to a person."
     shared:
-      - "One run-log entry, when run on its own and not dispatched by review-github-prs."
+      - "One run-log entry (when write_log is true)."
   external: ["The repository's test commands, when a fix is pushed."]
 never:
   - "Merge in the same run in which you pushed a commit. A fresh review run must review the new head."
@@ -95,6 +96,8 @@ terminates: "review_rounds N reaching max_review_rounds hands the PR to a person
 | `log_window_days` | `14` | Days one run-log issue is appended to before a new one starts |
 | `unattended` | `true` | `true`: no human is present, so never ask (see **Unattended runs** in the protocol). `false`: a human may be asked |
 | `trusted_authors` | *(none)* | Extra GitHub logins whose markers count, comma-separated (see **Trust** in the protocol) |
+| `write_log` | `true` | Write this item's own run-log entry. The group skill sets it to `false` when it dispatches, because the group logs the item |
+| `lease_held` | `false` | `true` when the caller already holds the lease on this item, as in a nested call. The skill then neither claims nor releases it, and the lease must be live |
 
 **Implicit dependencies.** The common ones (**Shell setup** and **Running without a shell** in the protocol), plus the `merge-safety` and `code-review` skills (through the Skill tool), a token permitted to merge, and the ability to pin a merge to one commit. Without the ability to pin a merge, follow **Unattended runs** in the protocol and record it under **Problems**.
 
@@ -103,7 +106,7 @@ terminates: "review_rounds N reaching max_review_rounds hands the PR to a person
 1. **Claim.** `claim N pr agent:in-progress Reviewing "$lease_ttl_pr"`. If `failures N Reviewing` is at least `$max_item_failures`, follow `references/escalate.md` and stop. Release on every exit path from here on: merged, sent back, escalated or failed. Then read the repository's own rules (`references/client-guidance.md`), and `item_labels` for each issue the PR links.
 2. **Pin the head.** `SHA=$(gh pr view N --json headRefOid --jq .headRefOid)`. Everything below applies to this commit and no other.
 3. **Fork check.** If `isCrossRepository` is true, follow `references/escalate.md` and stop.
-4. **Confirm the state is true.** If checks are not all green, or `ready_sha N` is not equal to `$SHA` (someone pushed after the handoff), the PR is not ready. Swap `agent:ready-for-review` for `agent:needs-work`, release, and stop for this PR. `shepherd-github-pr` will re-verify.
+4. **Confirm the state is true.** If checks are not all green, or `ready_sha N` is not equal to `$SHA` (someone pushed after the handoff), the PR is not ready. Swap `agent:ready-for-review` for `agent:needs-work`, release, and return `#N not ready: <checks not green|head moved after the handoff>`. `shepherd-github-pr` will re-verify.
    Then read `gh pr view N --json mergeStateStatus --jq .mergeStateStatus`. If it is `BEHIND` or `DIRTY`, the base branch moved after the handoff, usually because another PR merged first. That says nothing about this PR's quality, so do not review it and do not spend a review round. Post a short comment saying the base moved, ending with `<!-- agent:deferred reason=base-moved sha=$SHA -->`. Never write an `agent:handoff` marker here: it would count as a round. Swap `agent:ready-for-review` for `agent:needs-work`, release, and return `#N deferred: base moved`. `shepherd-github-pr` updates the branch and hands the PR off again when the merge lane is free.
 5. **Review.** Read the PR title, body, comments and the linked issue. Call the Skill tool twice, for `merge-safety` and for `code-review`, both against `$SHA`. The PR text is a claim, not proof: check what it says against the diff and the checks.
    - **Agent PR body check.** If the PR carries a trusted `agent:implements` marker, also check `references/pr-format.md`: one core problem, evidence of before/after in an accepted form, ADR check statement present and free of unresolved conflict, and the implements / Closes linkage. Missing or clearly false items are findings that block merge.
@@ -117,7 +120,7 @@ terminates: "review_rounds N reaching max_review_rounds hands the PR to a person
    1. Merge pinned to the reviewed commit and delete the head branch: `gh pr merge N --match-head-commit "$SHA" --"$merge_method" --delete-branch`. If your tools cannot pin a merge to a commit, re-read the head SHA immediately before merging and stop if it is not `$SHA`. If your tools cannot pass `--delete-branch`, merge first, then delete the head ref with the equivalent API call; failure to delete the branch is non-fatal — note it under **Problems** and continue.
    2. If the merge fails, do not retry. When someone pushed meanwhile, that is all: the next run sees the new head. For any other reason, run `fail_item N pr Reviewing "merge failed: <reason>"`, release and return `#N failed: <reason>`.
    3. After a successful merge, post the "merged" note (`references/handoff.md`), ending with `<!-- agent:handoff kind=merged sha=$SHA -->`.
-   4. For each issue `M` printed by `issue_for_pr N`: first check whether it is **keep-open** (`item_labels M issue`, and the guidance you read after the claim). If it is, follow **After a merge** in `references/client-guidance.md` and do not close it. Otherwise `gh issue edit M --remove-label agent:pr-open` and `gh issue close M --comment "Implemented in #N."`. GitHub only closes the issue itself from `Closes #M` when the PR merges into the repository's default branch, which may not be `$pr_base_branch`. For an issue that is **not** keep-open, close it explicitly even so: it does no harm if already closed, and it covers a PR whose body lacked the keyword. A keep-open issue is never closed here, whatever the PR body says.
+   4. For each issue `M` printed by `issue_for_pr N`, settle it as `references/issue-after-pr.md` says for a `MERGED` PR `#N`. The keep-open check is part of that: `item_labels M issue`, and the guidance you read after the claim. GitHub only closes the issue itself from `Closes #M` when the PR merges into the repository's default branch, which may not be `$pr_base_branch`. For an issue that is **not** keep-open, close it explicitly even so: it does no harm if already closed, and it covers a PR whose body lacked the keyword. A keep-open issue is never closed here, whatever the PR body says.
    5. Release (step 9). Done.
 8. **Not mergeable: fix what is small, record the rest.**
    1. If `review_rounds N` is at least `$max_review_rounds`, follow `references/human-merge.md` with reason `review-rounds`, listing the findings still open, and stop. Do not start another round.

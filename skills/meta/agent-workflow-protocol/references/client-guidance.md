@@ -26,7 +26,7 @@ Nothing in the pipeline may close a keep-open issue, and nothing may leave one c
 |---|---|
 | Implementing | The PR body says `Refs #N.`, never `Closes`, `Fixes` or `Resolves`. GitHub would close the issue on merge. The `agent:implements` marker still links the PR. Only an `OPEN` PR stops you opening another. A `MERGED` one does not mean the work shipped. |
 | Reviewing | After the merge, do not close. Run the **After a merge** steps below. |
-| Triaging, housekeeping | A merged PR is handled the same way. Do not close the issue. |
+| Reconciling | A merged PR is handled the same way. Do not close the issue. |
 | Triaging, dedupe | Do not close it as a duplicate. Link both issues and set `ready-for-human`. |
 
 **After a merge.** Remove `agent:pr-open` and comment `Merged in #P. This issue stays open (<the rule or label>).` Add `ready-for-human`, so that a person decides whether another contribution is wanted and no agent re-attempts the same work in a loop. Then read the issue's state: if GitHub closed it anyway (a PR from a person, or an older `Closes`), reopen it with `gh issue reopen N --comment "Reopened: <rule>"`.
@@ -34,6 +34,6 @@ Nothing in the pipeline may close a keep-open issue, and nothing may leave one c
 ## Where each skill applies it
 
 - Every item skill reads guidance right after it claims the item.
-- Every place that closes an issue first asks whether it is keep-open: `review-github-pr` step 7, `implement-github-issue` step 2, `triage-github-issues` step 1a, and the duplicate rule in `references/dedupe.md`.
+- Every place that closes an issue first asks whether it is keep-open: `references/issue-after-pr.md` (used by `reconcile-github-issues`, `implement-github-issue` step 2 and `review-github-pr` step 7), and the duplicate rule in `references/dedupe.md`.
 - The PR body check in `references/pr-format.md` accepts `Refs #N.` for a keep-open issue.
 - A PR or issue template in the repository comes first, as it already does in `pr-format.md`.

@@ -10,11 +10,11 @@
 import { parse } from "yaml";
 
 export const STEPS = ["Exploring", "Triaging", "Implementing", "Shepherding", "Reviewing"];
-export const KINDS = ["item", "group"];
+export const KINDS = ["item", "group", "sweep"];
 export const WRITE_SCOPES = ["claimed", "repository", "other", "shared"];
 
 const COMMON = ["kind", "step", "params", "requires", "returns", "ensures", "effects", "never", "calls", "idempotent", "terminates"];
-const REQUIRED = { item: ["target", ...COMMON], group: ["dispatches", ...COMMON] };
+const REQUIRED = { item: ["target", ...COMMON], group: ["dispatches", ...COMMON], sweep: [...COMMON] };
 const ALLOWED = new Set([...COMMON, "target", "types", "dispatches"]);
 
 // Prose sections that the contract replaces. A skill that still has one has two sources of truth.
@@ -76,7 +76,7 @@ export function checkContracts(skills, byName, external = new Set()) {
     if (!KINDS.includes(c.kind)) { err(`kind must be one of ${KINDS.join(", ")}`); continue; }
     if (!STEPS.includes(c.step)) err(`step must be one of ${STEPS.join(", ")}`);
     for (const k of REQUIRED[c.kind]) if (c[k] === undefined) err(`missing \`${k}\``);
-    if (c.kind === "item" && c.dispatches !== undefined) err("an item skill does not dispatch");
+    if (c.kind !== "group" && c.dispatches !== undefined) err("only a group skill dispatches");
 
     // params are the Inputs table
     if (!isStrings(c.params) && !(Array.isArray(c.params) && c.params.length === 0)) err("`params` must be a list of names");
@@ -95,6 +95,11 @@ export function checkContracts(skills, byName, external = new Set()) {
     }
     const argTarget = c.target?.param ? c.target.param : null;
 
+    // eligibility only reads: a precondition that calls a writing helper is a hidden side effect
+    for (const r of Array.isArray(c.requires) ? c.requires : []) {
+      const w = typeof r === "string" && r.match(/\b(clear_stale_lease|claim|renew|release|fail_item|log_run)\b/);
+      if (w) err(`\`requires\` mentions \`${w[1]}\`, which writes. Checking eligibility must only read`);
+    }
     for (const k of ["requires", "returns", "ensures", "never"]) {
       if (c[k] !== undefined && !isStrings(c[k])) err(`\`${k}\` must be a non-empty list of strings`);
     }
@@ -114,7 +119,7 @@ export function checkContracts(skills, byName, external = new Set()) {
             if (!WRITE_SCOPES.includes(scope)) err(`effects.writes scope \`${scope}\` is not one of ${WRITE_SCOPES.join(", ")}`);
             else if (!isStrings(list)) err(`effects.writes.${scope} must be a non-empty list of strings`);
           }
-          if (c.kind === "group" && e.writes.claimed) err("a group skill never claims, so it has no `effects.writes.claimed`");
+          if (c.kind !== "item" && e.writes.claimed) err("only an item skill claims, so a group or sweep skill has no `effects.writes.claimed`");
           if (c.kind === "item" && argTarget && !e.writes.claimed) err("an item skill that is given an issue or PR claims it, so it needs `effects.writes.claimed`");
         }
         if (e.external !== undefined && !isStrings(e.external)) err("`effects.external` must be a non-empty list of strings");
@@ -171,6 +176,9 @@ export function checkContracts(skills, byName, external = new Set()) {
       if (tc.kind !== "item") errors.push(`${s.rel}: contract: dispatches \`${c.dispatches}\`, which is not an item skill`);
       if (tc.step !== c.step) errors.push(`${s.rel}: contract: dispatches \`${c.dispatches}\`, which belongs to ${tc.step} and not ${c.step}`);
       if (t.userInvoked) errors.push(`${s.rel}: contract: dispatches \`${c.dispatches}\`, which is user-invoked`);
+      if (tc.effects?.writes?.shared && !(tc.params ?? []).includes("write_log")) {
+        errors.push(`${s.rel}: contract: dispatches \`${c.dispatches}\`, which writes the run log but has no \`write_log\` param, so the group cannot stop it logging twice`);
+      }
     }
   }
   return { errors, contracts: parsed };

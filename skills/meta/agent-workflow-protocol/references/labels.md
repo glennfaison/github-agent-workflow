@@ -26,7 +26,7 @@ These four are **mutex** on an issue: at most one at a time.
 | `ready-for-human` | Needs a human decision or action |
 | `agent:pr-open` | A PR for this issue is open |
 
-**Repair.** If two or more are present, or labels clearly disagree with the newest trusted triage/outcome comment, **Triaging housekeeping** (`triage-github-issues` step 1b) repairs them. Priority when choosing the single target state:
+**Repair.** If two or more are present, or labels clearly disagree with the newest trusted triage/outcome comment, `reconcile-github-issues` repairs them. Priority when choosing the single target state:
 
 1. Newest **trusted** triage/outcome comment (Agent Brief → `ready-for-agent`, Triage Notes → `needs-info`, ready-for-human structure → `ready-for-human`), when it clearly implies one state.
 2. Else if `agent:pr-open` is among the labels and an OPEN PR exists for the issue (`prs_for_issue`), keep `agent:pr-open` only.
@@ -44,7 +44,7 @@ Idempotent: a second run finds at most one state label and does nothing. Non-tri
 | `needs-info` | issue | state | An agent asked questions and is waiting for a human | Triaging, Implementing (bail-out) | **A human**, after answering. No step ever removes it |
 | `ready-for-agent` | issue | state | An agent can implement this from the issue plus the codebase | Triaging | Implementing, when the PR is open |
 | `ready-for-human` | issue | state | Needs a human | Triaging, Implementing (bail-out) | a human |
-| `agent:pr-open` | issue | state | A PR for this issue is open | Implementing | Reviewing on merge. Triaging's housekeeping if every PR was closed unmerged (replaced by `ready-for-human`) |
+| `agent:pr-open` | issue | state | A PR for this issue is open | Implementing | Reviewing on merge. `reconcile-github-issues` if every PR was closed unmerged (replaced by `ready-for-human`) |
 | `agent:needs-work` | PR | state | Not reviewable yet: checks failing, checks unfinished, review findings open, the branch is behind its base, or another PR holds the merge lane | Implementing, Reviewing | Shepherding, when it posts the ready handoff |
 | `agent:ready-for-review` | PR | state | Checks are green, the branch is current and the handoff is posted. Holds the merge lane | Shepherding | Reviewing |
 | `agent:stuck` | issue, PR | escalation | An agent gave up and a human must act. Every step ignores it | `escalate.md` | a human |
@@ -54,7 +54,7 @@ Idempotent: a second run finds at most one state label and does nothing. Non-tri
 
 ## Transitions
 
-Each row happens inside a lease held by the step named (except Triaging housekeeping, which may change state on unclaimed issues as documented above).
+Each row happens inside a lease held by the step named (except `reconcile-github-issues`, which may change state on unclaimed issues, as its contract lists).
 
 | Item | From | Step | To |
 |---|---|---|---|
@@ -62,9 +62,9 @@ Each row happens inside a lease held by the step named (except Triaging housekee
 | Issue | `needs-info` | a human removes the label after answering | untouched, so Triaging picks it up again |
 | Issue | `ready-for-agent` | Implementing | `agent:pr-open`, and the new PR gets `agent:needs-work`. If a PR for the issue already exists, no new PR is made |
 | Issue | `ready-for-agent` | Implementing (bail-out) | `needs-info` or `ready-for-human` |
-| Issue | `agent:pr-open`, every PR closed unmerged | Triaging (housekeeping) | `ready-for-human` |
-| Issue | two or more mutex state labels, or clear label/comment drift | Triaging (housekeeping, label repair) | single consistent state per the priority order above |
-| Issue | `ready-for-agent` or `agent:pr-open`, a PR already merged | Implementing or Triaging | closed, and it loses `agent:pr-open`. A **keep-open** issue (`client-guidance.md`) stays open: it loses `agent:pr-open` and becomes `ready-for-human` |
+| Issue | `agent:pr-open`, every PR closed unmerged | `reconcile-github-issues` | `ready-for-human` |
+| Issue | two or more mutex state labels, or clear label/comment drift | `reconcile-github-issues` (label repair) | single consistent state per the priority order above |
+| Issue | `ready-for-agent` or `agent:pr-open`, a PR already merged | Implementing, Reviewing or `reconcile-github-issues` | closed, and it loses `agent:pr-open`. A **keep-open** issue (`client-guidance.md`) stays open: it loses `agent:pr-open` and becomes `ready-for-human` |
 | PR | `agent:needs-work` | Shepherding | pushes a fix or a branch update and stays `agent:needs-work`, waits there while another PR holds the merge lane, or becomes `agent:ready-for-review` |
 | PR | `agent:ready-for-review` | Reviewing | merged (its issue is then closed and loses `agent:pr-open`), or `agent:needs-work` (with or without a fix pushed, or deferred because the base moved, which uses no review round) |
 | PR | `agent:ready-for-review` | Reviewing | `agent:human-merge`, when review passed but the PR changes a file in `human_merge_paths`, or review rounds ran out |

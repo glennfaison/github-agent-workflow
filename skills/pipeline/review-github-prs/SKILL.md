@@ -25,6 +25,7 @@ returns:
   - "nothing eligible"
 ensures:
   - "At most review_batch PRs were dispatched, oldest first, each one passing review-github-pr's requires. Drafts and PRs labelled agent:stuck or agent:human-merge were not candidates."
+  - "Each dispatched item was given `write_log=false`, and every input of this run that it also lists in `params`."
   - "One run-log entry exists."
 effects:
   reads: [open non-draft PRs labelled agent:ready-for-review]

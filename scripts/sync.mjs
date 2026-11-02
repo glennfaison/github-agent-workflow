@@ -31,7 +31,7 @@ for (const bucket of dirs(join(root, "skills")).sort()) {
 // ---- the pipeline, in order: each step has a group skill and an item skill ---------------------
 const STEPS = [
   { step: "Exploring", group: "explore-github-repo", item: "file-github-issues", itemTarget: null },
-  { step: "Triaging", group: "triage-github-issues", item: "triage-github-issue", itemTarget: "123" },
+  { step: "Triaging", group: "triage-github-issues", item: "triage-github-issue", itemTarget: "123", sweeper: "reconcile-github-issues" },
   { step: "Implementing", group: "implement-github-issues", item: "implement-github-issue", itemTarget: "123" },
   { step: "Shepherding", group: "shepherd-github-prs", item: "shepherd-github-pr", itemTarget: "124" },
   { step: "Reviewing", group: "review-github-prs", item: "review-github-pr", itemTarget: "124" },
@@ -63,7 +63,7 @@ function inputs(skill) {
 }
 
 function promptsMd() {
-  const covered = new Set(STEPS.flatMap((s) => [s.group, s.item]));
+  const covered = new Set(STEPS.flatMap((s) => [s.group, s.item, s.sweeper].filter(Boolean)));
   for (const s of promoted.filter((x) => x.bucket === "pipeline")) {
     if (!covered.has(s.name)) throw new Error(`scripts/sync.mjs: pipeline skill ${s.name} is not in STEPS`);
   }
@@ -79,9 +79,11 @@ function promptsMd() {
   ];
   for (const s of STEPS) {
     out.push(`## ${s.step}`, "");
-    for (const [kind, name, target] of [["Group skill, run on a schedule", s.group, null], ["Item skill, run by hand", s.item, s.itemTarget]]) {
+    const skills = [["Group skill, run on a schedule", s.group, null], ["Item skill, run by hand", s.item, s.itemTarget]];
+    if (s.sweeper) skills.push(["Sweeper skill, run on a schedule or by hand", s.sweeper, null]);
+    for (const [kind, name, target] of skills) {
       const rows = inputs(name);
-      const head = kind.startsWith("Group") ? `Run /${name} on github.com/OWNER/REPO` : target ? `Run /${name} ${target}` : `Run /${name}`;
+      const head = kind.startsWith("Group") || kind.startsWith("Sweeper") ? `Run /${name} on github.com/OWNER/REPO` : target ? `Run /${name} ${target}` : `Run /${name}`;
       out.push(`### ${kind}: \`${name}\``, "");
       if (NOTES[name]) out.push(NOTES[name], "");
       out.push("```", head, ...rows.map((r) => `${r.key}=${r.def}`), "```", "");

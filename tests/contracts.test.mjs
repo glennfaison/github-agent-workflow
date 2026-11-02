@@ -53,6 +53,19 @@ test("a group dispatching an item of the same step is fine", () => {
   assert.deepEqual(run([skill("do-them", GROUP, "", ["runner"]), item()]), []);
 });
 
+test("a dispatched item that writes the run log must accept write_log", () => {
+  const logging = ITEM.replace('claimed: ["A label."]', 'claimed: ["A label."]\n    shared: ["One run-log entry."]');
+  const errs = run([skill("do-them", GROUP, "", ["runner"]), item(logging)]);
+  assert.ok(errs.some((e) => /no `write_log` param/.test(e)));
+  const ok = logging.replace("[issue, runner]", "[issue, runner, write_log]");
+  assert.deepEqual(run([skill("do-them", GROUP, "", ["runner"]), item(ok, "", ["issue", "runner", "write_log"])]), []);
+});
+
+test("a precondition may not call a helper that writes", () => {
+  const bad = ITEM.replace('["The issue is open."]', '["After `clear_stale_lease N issue`, it is not leased."]');
+  assert.ok(run([item(bad)]).some((e) => /mentions `clear_stale_lease`, which writes/.test(e)));
+});
+
 test("extractContract finds the yaml block and ignores later fences", () => {
   const found = extractContract(item().body);
   assert.match(found.yaml, /^kind: item/);
@@ -108,9 +121,17 @@ test("a prose section the contract replaces is reported", () => {
 
 test("a group skill cannot claim, and an item skill with a target must", () => {
   const claiming = GROUP.replace("    shared:", "    claimed: [\"x\"]\n    shared:");
-  assert.ok(run([skill("do-them", claiming, "", ["runner"]), item()]).some((e) => /never claims/.test(e)));
+  assert.ok(run([skill("do-them", claiming, "", ["runner"]), item()]).some((e) => /only an item skill claims/.test(e)));
   const noClaim = ITEM.replace(/    claimed: \["A label."\]/, "    shared: [\"A log.\"]");
   assert.ok(run([item(noClaim)]).some((e) => /needs `effects.writes.claimed`/.test(e)));
+});
+
+test("a sweep skill needs no target or dispatch, but cannot claim", () => {
+  const SWEEP = GROUP.replace("kind: group", "kind: sweep").replace("dispatches: do-it\n", "");
+  assert.deepEqual(run([skill("tidy", SWEEP, "", ["runner"])]), []);
+  assert.ok(run([skill("tidy", SWEEP + "\ndispatches: do-it", "", ["runner"])]).some((e) => /only a group skill dispatches/.test(e)));
+  const claiming = SWEEP.replace("    shared:", "    claimed: [\"x\"]\n    shared:");
+  assert.ok(run([skill("tidy", claiming, "", ["runner"])]).some((e) => /only an item skill claims/.test(e)));
 });
 
 test("an unknown write scope is reported", () => {

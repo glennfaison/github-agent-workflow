@@ -31,6 +31,7 @@
     "./skills/pipeline/file-github-issues",
     "./skills/pipeline/implement-github-issue",
     "./skills/pipeline/implement-github-issues",
+    "./skills/pipeline/reconcile-github-issues",
     "./skills/pipeline/review-github-pr",
     "./skills/pipeline/review-github-prs",
     "./skills/pipeline/shepherd-github-pr",

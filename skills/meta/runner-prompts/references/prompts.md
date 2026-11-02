@@ -27,6 +27,7 @@ One candidate as key-value pairs: fill in each empty `title` to `evidence` line.
 ```
 Run /file-github-issues
 dry_run=false
+limit=
 repo_guidance=AGENTS.md
 dedupe_closed_days=30
 run_id=
@@ -67,6 +68,21 @@ runner=NAME
 log_window_days=14
 unattended=true
 trusted_authors=
+write_log=true
+lease_held=false
+```
+
+### Sweeper skill, run on a schedule or by hand: `reconcile-github-issues`
+
+```
+Run /reconcile-github-issues on github.com/OWNER/REPO
+dry_run=false
+repo_guidance=AGENTS.md
+runner=NAME
+log_window_days=14
+unattended=true
+trusted_authors=
+write_log=true
 ```
 
 ## Implementing
@@ -96,6 +112,8 @@ runner=NAME
 log_window_days=14
 unattended=true
 trusted_authors=
+write_log=true
+lease_held=false
 ```
 
 ## Shepherding
@@ -126,6 +144,8 @@ runner=NAME
 log_window_days=14
 unattended=true
 trusted_authors=
+write_log=true
+lease_held=false
 ```
 
 ## Reviewing
@@ -158,4 +178,6 @@ runner=NAME
 log_window_days=14
 unattended=true
 trusted_authors=
+write_log=true
+lease_held=false
 ```

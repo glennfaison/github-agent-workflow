@@ -19,10 +19,10 @@ See **Contracts** in the protocol for what each key means.
 kind: item
 step: Implementing
 target: { param: issue, type: issue }
-params: [issue, pr_base_branch, build_cmd, git_hooks_path, repo_guidance, lease_ttl_implement, max_item_failures, runner, log_window_days, unattended, trusted_authors]
+params: [issue, pr_base_branch, build_cmd, git_hooks_path, repo_guidance, lease_ttl_implement, max_item_failures, runner, log_window_days, unattended, trusted_authors, write_log, lease_held]
 requires:
   - "The issue is open and labelled ready-for-agent, without agent:stuck."
-  - "After `clear_stale_lease N issue`, it does not carry agent:in-progress with `lease_live N` succeeding."
+  - "No other run holds it: it does not carry agent:in-progress while `lease_live N` succeeds. A lease label with no live lease is stale and does not count, and checking never removes it. With `lease_held=true` the caller holds the lease, so `lease_live N` must succeed."
 returns:
   - "#N PR #P opened"
   - "#N existing PR #P"
@@ -42,12 +42,12 @@ ensures:
   - "A bail-out leaves needs-info or ready-for-human and a Triage Notes comment."
   - "ready-for-agent stays on the issue until its PR is open, so a run that dies is retried."
   - "No verification is claimed that was not performed."
-  - "The agent:in-progress lease is released on every return. On failed an agent:failure marker was added."
+  - "The agent:in-progress lease is released on every return, unless `lease_held` is true, when the caller releases it. On failed an agent:failure marker was added."
 effects:
   reads: [the Agent Brief or description, comments, every image, linked ADRs, relevant code, "prs_for_issue", remote branches, the repository's own guidance, item labels]
   writes:
     claimed:
-      - "The agent:in-progress lease label and marker, and the removal of a stale lease label."
+      - "The agent:in-progress lease label and its marker. A stale label from a dead run is replaced by the new lease. With `lease_held=true` nothing is written here."
       - "The issue's state label (ready-for-agent to agent:pr-open, needs-info or ready-for-human)."
       - "A Triage Notes, closed-PR or `Implemented in` comment, and closing the issue when its PR already merged."
       - "An agent:failure marker on failure. On escalation, the escalate comment and agent:stuck."
@@ -57,7 +57,7 @@ effects:
     other:
       - "agent:needs-work on an existing OPEN agent PR for the issue."
     shared:
-      - "One run-log entry, when run on its own and not dispatched by implement-github-issues."
+      - "One run-log entry (when write_log is true)."
   external: ["build_cmd, when set, and the repository's test commands."]
 never:
   - "Wait for checks, fix CI, or post the reviewer handoff. shepherd-github-pr does that."
@@ -90,16 +90,17 @@ terminates: "failures N Implementing reaching max_item_failures escalates and st
 | `log_window_days` | `14` | Days one run-log issue is appended to before a new one starts |
 | `unattended` | `true` | `true`: no human is present, so never ask (see **Unattended runs** in the protocol). `false`: a human may be asked |
 | `trusted_authors` | *(none)* | Extra GitHub logins whose markers count, comma-separated (see **Trust** in the protocol) |
+| `write_log` | `true` | Write this item's own run-log entry. The group skill sets it to `false` when it dispatches, because the group logs the item |
+| `lease_held` | `false` | `true` when the caller already holds the lease on this item, as in a nested call. The skill then neither claims nor releases it, and the lease must be live |
 
 **Implicit dependencies.** The common ones (**Shell setup** and **Running without a shell** in the protocol), plus the `tdd` and `code-review` skills (through the Skill tool), a working build toolchain, a git identity, and the issue's Agent Brief. Without a shell, keep the change small and record what you could not run under **Problems** in the run log.
 
 ## Process
 
 1. **Claim.** `claim N issue agent:in-progress Implementing "$lease_ttl_implement"`. Release on every exit path from here on: finished, bail-out, escalation or failure. If `failures N Implementing` is at least `$max_item_failures`, follow `references/escalate.md` and stop. Then read the repository's own rules (`references/client-guidance.md`) and `item_labels N issue`: is the issue keep-open? **Leave `ready-for-agent` in place.** If this run dies, the issue is still `ready-for-agent` and the next run retries. When you return `failed`, run `fail_item N issue Implementing "<reason>"` before you release.
-2. **Check for existing PRs. This is what prevents duplicates.** Before writing any code, run `prs_for_issue N` (all states). It finds PRs by the `agent:implements` marker, by a `<type>/N-<topic>` branch, and by `Closes|Fixes|Resolves #N`, so it also finds PRs made by the old workflow.
-   - **Any `OPEN`:** do **not** start another. Make the labels right and stop: swap `ready-for-agent` for `agent:pr-open` on the issue, and if that PR carries the `agent:implements` marker and neither `agent:needs-work` nor `agent:ready-for-review`, add `agent:needs-work` to it. A PR without the marker was written by a human: leave its labels alone. Release and stop for this issue.
-   - **Any `MERGED`:** the work has shipped. If the issue is keep-open, do not close it: ignore `MERGED` PRs and go by the `OPEN` and `CLOSED` cases and the none case, as if the merged PRs were not there. Otherwise `gh issue close N --comment "Implemented in #P."`, remove `ready-for-agent`, release and stop.
-   - **Only `CLOSED`:** an earlier PR was abandoned. Do not try again on your own. Comment with the PR number, swap `ready-for-agent` for `ready-for-human`, release and stop.
+2. **Check for existing PRs. This is what prevents duplicates.** Before writing any code, run `prs_for_issue N` (all states). It finds PRs by the `agent:implements` marker, by a `<type>/N-<topic>` branch, and by `Closes|Fixes|Resolves #N`, so it also finds PRs made by the old workflow. Settle the issue as `references/issue-after-pr.md` says, with one difference: on a keep-open issue, ignore `MERGED` PRs (a merged PR there does not mean the work shipped) and go by the other rows. Then:
+   - **Any `OPEN`:** do **not** start another. If that PR carries the `agent:implements` marker and neither `agent:needs-work` nor `agent:ready-for-review`, add `agent:needs-work` to it. A PR without the marker was written by a human: leave its labels alone. Release and stop for this issue.
+   - **Settled by a `MERGED` or `CLOSED` PR:** the issue is now closed, or `ready-for-human` with a comment naming the PR. Release and stop.
    - **None:** continue. If a branch for the issue already exists (`git ls-remote --heads origin "*/N-*"`), check it out and carry on from it.
 3. **Read context.** Find the latest `## Agent Brief` comment. **It is the contract**; the description and discussion are context. If there is no brief, the description may itself be the specification (an issue filed from the "Ready for agent" template has acceptance criteria and no brief). Then read the open comments, the ADRs it links, and the relevant code. **View every image** in the issue and its comments (screenshots, mockups): for a feature they show the intended result. Read the use case first, and build for it rather than for the letter of the proposal. Respect the issue's `Category:` (bugfix vs feature vs refactor vs debt) — different categories have different required evidence in `issue-format.md`.
 4. **Bail out if the issue is not actually ready.** If you find missing information or a decision only a human can make, post a comment in the **Triage Notes** format from `unattended-triage` (what is established, what is still needed, specific questions) and swap `ready-for-agent` for `needs-info` (or `ready-for-human`). Release and stop for this issue.
