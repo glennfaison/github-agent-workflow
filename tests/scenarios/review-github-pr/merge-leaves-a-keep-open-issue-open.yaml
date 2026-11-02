@@ -1,0 +1,18 @@
+name: A keep-open issue is not closed by the merge
+why: "Closing it would let an agent or GitHub finish an issue that is meant to stay open. After a merge it goes to a person."
+skill: review-github-pr
+target: pr#50
+world:
+  issues:
+    - {number: 12, state: open, keepOpen: true, labels: [agent:pr-open]}
+  prs:
+    - {number: 50, state: open, labels: [agent:ready-for-review], head: h1, readySha: h1, base: main, mergeState: CLEAN, checks: [pass], closes: [12], files: [src/a.js]}
+expect:
+  result: "#50 merged"
+  effects:
+    - {op: merge, target: "pr#50", sha: h1}
+    - {op: delete_branch, target: "pr#50"}
+    - {op: comment, target: "pr#50", marker: agent:handoff}
+    - {op: label_remove, target: "issue#12", label: agent:pr-open}
+    - {op: comment, target: "issue#12"}
+    - {op: label_add, target: "issue#12", label: ready-for-human}

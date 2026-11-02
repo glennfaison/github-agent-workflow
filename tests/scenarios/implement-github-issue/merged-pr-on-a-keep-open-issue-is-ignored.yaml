@@ -1,0 +1,14 @@
+name: On a keep-open issue a merged PR does not mean the work shipped
+skill: implement-github-issue
+target: issue#12
+world:
+  issues:
+    - {number: 12, state: open, keepOpen: true, labels: [ready-for-agent]}
+  prs:
+    - {number: 40, state: merged, labels: [], head: h1, closes: []}
+expect:
+  result: "#12 PR #41 opened"
+  effects:
+    - {op: create_pr, number: 41, labels: [agent:needs-work], closes: []}
+    - {op: label_remove, target: "issue#12", label: ready-for-agent}
+    - {op: label_add, target: "issue#12", label: agent:pr-open}

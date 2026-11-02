@@ -1,0 +1,10 @@
+name: A failed pass leaves the state labels as they were
+skill: triage-github-issue
+target: issue#12
+world:
+  issues:
+    - {number: 12, state: open, labels: [needs-triage]}
+expect:
+  result: "#12 failed: could not read the attachment"
+  effects:
+    - {op: comment, target: "issue#12", marker: agent:failure}

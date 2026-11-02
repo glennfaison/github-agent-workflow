@@ -1,0 +1,8 @@
+name: An issue held by a live lease is not repaired
+skill: reconcile-github-issues
+world:
+  issues:
+    - {number: 14, state: open, labels: [needs-info, ready-for-agent, "agent:triage"], lease: live}
+expect:
+  results: ["nothing to do"]
+  effects: []

@@ -1,0 +1,12 @@
+name: Open findings send the PR back to shepherding with a review hand-off
+skill: review-github-pr
+target: pr#50
+world:
+  prs:
+    - {number: 50, state: open, labels: [agent:ready-for-review], head: h1, readySha: h1, base: main, mergeState: CLEAN, checks: [pass], files: []}
+expect:
+  result: "#50 sent back: 2 open findings"
+  effects:
+    - {op: comment, target: "pr#50", marker: agent:handoff}
+    - {op: label_remove, target: "pr#50", label: agent:ready-for-review}
+    - {op: label_add, target: "pr#50", label: agent:needs-work}

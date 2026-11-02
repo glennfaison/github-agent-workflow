@@ -1,0 +1,10 @@
+name: Conflicting state labels with no clear winner fall back to ready-for-human
+skill: reconcile-github-issues
+world:
+  issues:
+    - {number: 12, state: open, labels: [ready-for-agent, ready-for-human]}
+expect:
+  results: ["#12 ready-for-human: conflicting state labels"]
+  effects:
+    - {op: label_remove, target: "issue#12", label: ready-for-agent}
+    - {op: comment, target: "issue#12"}

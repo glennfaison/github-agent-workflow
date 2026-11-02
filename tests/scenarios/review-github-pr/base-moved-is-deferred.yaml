@@ -1,0 +1,12 @@
+name: A branch behind its base is deferred, without spending a review round
+skill: review-github-pr
+target: pr#50
+world:
+  prs:
+    - {number: 50, state: open, labels: [agent:ready-for-review], head: h1, readySha: h1, base: main, mergeState: BEHIND, checks: [pass], closes: [12], files: [src/a.js]}
+expect:
+  result: "#50 deferred: base moved"
+  effects:
+    - {op: comment, target: "pr#50", marker: agent:deferred}
+    - {op: label_remove, target: "pr#50", label: agent:ready-for-review}
+    - {op: label_add, target: "pr#50", label: agent:needs-work}

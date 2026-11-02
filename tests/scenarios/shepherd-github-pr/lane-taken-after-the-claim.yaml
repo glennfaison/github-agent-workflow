@@ -1,0 +1,14 @@
+name: A lane taken between the read and the claim is a noop
+why: "Gap 2. The PR was eligible when read, so it was claimed. When another run took the lane it is released unchanged. The claim's lease comment is the only trace."
+skill: shepherd-github-pr
+target: pr#40
+eligibility_world:
+  prs:
+    - {number: 40, state: open, labels: [agent:needs-work], head: h1, base: main, mergeState: CLEAN, checks: [pass], openFindings: 0, closes: [12]}
+world:
+  prs:
+    - {number: 40, state: open, labels: [agent:needs-work], head: h1, base: main, mergeState: CLEAN, checks: [pass], openFindings: 0, closes: [12]}
+    - {number: 41, state: open, labels: [agent:ready-for-review], head: h9, base: main, mergeState: CLEAN, checks: [pass]}
+expect:
+  result: "#40 noop: merge lane held by #41"
+  effects: []

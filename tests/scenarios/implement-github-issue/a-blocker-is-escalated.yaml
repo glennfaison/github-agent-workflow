@@ -1,0 +1,12 @@
+name: A blocker the agent cannot resolve is escalated
+skill: implement-github-issue
+target: issue#12
+world:
+  issues:
+    - {number: 12, state: open, labels: [ready-for-agent]}
+expect:
+  result: "#12 escalated: needs a design decision"
+  effects:
+    - {op: comment, target: "issue#12", marker: agent:escalate}
+    - {op: label_remove, target: "issue#12", label: ready-for-agent}
+    - {op: label_add, target: "issue#12", label: agent:stuck}

@@ -35,6 +35,8 @@ skills/<bucket>/<skill>/SKILL.md     exactly three levels deep
 
 **Every pipeline skill opens with a `## Contract`**: a YAML block that says what the skill is as a function (preconditions, the closed set of results, postconditions, side effects by scope, forbidden effects). **Process** says how. Change a result line, a precondition or an effect in the contract first. `agent-workflow-protocol` defines the keys (**Contracts**), `docs/adr/0010-skills-as-functions-with-contracts.md` explains why, and `npm run validate` checks that a contract matches the rest of its skill: `params` equal the Inputs table, every result the text returns is in `returns`, and there are no `Eligibility`, `Outputs`, `Result` or `Never` sections left over. Anything not listed under `effects.writes` is forbidden.
 
+**Every result a skill can return has a scenario** under `tests/scenarios/<skill>/`: a world, the inputs, the expected result line and the net effects. `scripts/scenario.mjs` checks each against the skill's contract (scopes, invariants, eligibility oracles), and `npm run scenarios:coverage` lists results with none. A new result line without a scenario fails `npm test`. See `docs/adr/0012-scenarios.md`.
+
 ## Inputs and defaults
 
 **Every skill has an `## Inputs` section.** It names the inputs the skill accepts, in two interchangeable forms: **key-value pairs** (`key=value` on a line of its own) and **free text** (whatever the prompt says). It also names the skill's **implicit dependencies**: the tools, skills and repository state it needs that are not inputs. Every pipeline skill lists `runner` and `unattended`, and every skill that reads markers lists `trusted_authors`.

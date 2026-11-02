@@ -1,0 +1,15 @@
+name: A PR that has used its fix attempts is escalated, not tried again
+skill: shepherd-github-pr
+target: pr#40
+world:
+  issues:
+    - {number: 12, state: open, labels: [agent:pr-open]}
+  prs:
+    - {number: 40, state: open, labels: [agent:needs-work], head: h1, base: main, mergeState: CLEAN, checks: [fail], openFindings: 0, closes: [12], shepherdAttempts: 3}
+expect:
+  result: "#40 escalated: 3 fix attempts used"
+  effects:
+    - {op: comment, target: "pr#40", marker: agent:escalate}
+    - {op: label_remove, target: "pr#40", label: agent:needs-work}
+    - {op: label_add, target: "pr#40", label: agent:stuck}
+    - {op: comment, target: "issue#12"}

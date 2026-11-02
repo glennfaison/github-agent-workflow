@@ -1,0 +1,10 @@
+name: Past the limit the remaining candidates are deferred, unchecked
+why: "Gap 3. There was no limit input, so explore could not enforce explore_batch."
+skill: file-github-issues
+inputs: {limit: 2}
+world: {issues: [], prs: []}
+expect:
+  results: ["filed #101", "filed #102", "deferred: over limit"]
+  effects:
+    - {op: create_issue, number: 101, labels: []}
+    - {op: create_issue, number: 102, labels: []}

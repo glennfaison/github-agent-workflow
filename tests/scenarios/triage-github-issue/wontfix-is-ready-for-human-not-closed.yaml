@@ -1,0 +1,13 @@
+name: A wontfix recommendation goes to a person and the issue stays open
+skill: triage-github-issue
+target: issue#12
+world:
+  issues:
+    - {number: 12, state: open, labels: [needs-triage]}
+expect:
+  result: "#12 ready-for-human"
+  calls: [unattended-triage]
+  effects:
+    - {op: label_add, target: "issue#12", label: ready-for-human}
+    - {op: label_remove, target: "issue#12", label: needs-triage}
+    - {op: comment, target: "issue#12"}

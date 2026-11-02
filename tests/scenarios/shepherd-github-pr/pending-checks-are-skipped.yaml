@@ -1,0 +1,10 @@
+name: Running checks mean skip, not wait
+why: "The skill never polls CI."
+skill: shepherd-github-pr
+target: pr#40
+world:
+  prs:
+    - {number: 40, state: open, labels: [agent:needs-work], head: h1, base: main, mergeState: CLEAN, checks: [pending], openFindings: 0, closes: [12]}
+expect:
+  result: "#40 skipped: checks pending"
+  effects: []

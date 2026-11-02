@@ -1,0 +1,13 @@
+name: A missing required section means needs-info, never ready-for-agent
+skill: triage-github-issue
+target: issue#12
+world:
+  issues:
+    - {number: 12, state: open, labels: [needs-triage]}
+expect:
+  result: "#12 needs-info"
+  calls: [unattended-triage]
+  effects:
+    - {op: label_add, target: "issue#12", label: needs-info}
+    - {op: label_remove, target: "issue#12", label: needs-triage}
+    - {op: comment, target: "issue#12"}

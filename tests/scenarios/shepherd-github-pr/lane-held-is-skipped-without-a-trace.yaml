@@ -1,0 +1,11 @@
+name: A PR that can only wait on the merge lane is skipped before it is claimed
+why: "Gap 9. It used to be claimed and released on every run, leaving a lease comment each time. Skipped means no effects at all."
+skill: shepherd-github-pr
+target: pr#40
+world:
+  prs:
+    - {number: 40, state: open, labels: [agent:needs-work], head: h1, base: main, mergeState: CLEAN, checks: [pass], openFindings: 0, closes: [12]}
+    - {number: 41, state: open, labels: [agent:ready-for-review], head: h9, base: main, mergeState: CLEAN, checks: [pass]}
+expect:
+  result: "#40 skipped: merge lane held by #41"
+  effects: []

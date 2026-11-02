@@ -1,0 +1,10 @@
+name: Failing output that cannot be read is a failed run, not an attempt
+skill: shepherd-github-pr
+target: pr#40
+world:
+  prs:
+    - {number: 40, state: open, labels: [agent:needs-work], head: h1, base: main, mergeState: CLEAN, checks: [fail], openFindings: 0}
+expect:
+  result: "#40 failed: cannot read failing output"
+  effects:
+    - {op: comment, target: "pr#40", marker: agent:failure}

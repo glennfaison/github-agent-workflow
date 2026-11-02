@@ -1,0 +1,13 @@
+name: A failing PR is fixed even when another PR holds the lane
+why: "The lane only matters for a hand-off or a branch update, not for a fix."
+skill: shepherd-github-pr
+target: pr#40
+world:
+  prs:
+    - {number: 40, state: open, labels: [agent:needs-work], head: h1, base: main, mergeState: CLEAN, checks: [fail], openFindings: 0, closes: [12]}
+    - {number: 41, state: open, labels: [agent:ready-for-review], head: h9, base: main, mergeState: CLEAN, checks: [pass]}
+expect:
+  result: "#40 fix pushed"
+  effects:
+    - {op: push, target: "pr#40", sha: h2}
+    - {op: comment, target: "pr#40", marker: agent:attempt}

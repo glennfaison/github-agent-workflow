@@ -1,0 +1,9 @@
+name: An issue that already has a state label is not triaged again
+skill: triage-github-issue
+target: issue#12
+world:
+  issues:
+    - {number: 12, state: open, labels: [ready-for-agent]}
+expect:
+  result: "#12 skipped: already has a state label"
+  effects: []

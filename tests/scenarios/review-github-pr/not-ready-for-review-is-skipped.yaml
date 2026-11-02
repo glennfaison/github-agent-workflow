@@ -1,0 +1,9 @@
+name: A PR that is not labelled ready-for-review is skipped
+skill: review-github-pr
+target: pr#50
+world:
+  prs:
+    - {number: 50, state: open, labels: [agent:human-merge], head: h1, base: main, mergeState: CLEAN, checks: [pass], files: []}
+expect:
+  result: "#50 skipped: not agent:ready-for-review"
+  effects: []

@@ -1,0 +1,13 @@
+name: An issue whose PR already merged is closed, not re-implemented
+skill: implement-github-issue
+target: issue#12
+world:
+  issues:
+    - {number: 12, state: open, labels: [ready-for-agent]}
+  prs:
+    - {number: 40, state: merged, labels: [], head: h1, closes: [12]}
+expect:
+  result: "#12 already merged in #40"
+  effects:
+    - {op: label_remove, target: "issue#12", label: ready-for-agent}
+    - {op: close, target: "issue#12"}

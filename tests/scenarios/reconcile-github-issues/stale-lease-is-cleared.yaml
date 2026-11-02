@@ -1,0 +1,10 @@
+name: A lease label with no live lease is removed
+why: "Gap 5. Eligibility used to do this as a side effect. Now only the sweeper does."
+skill: reconcile-github-issues
+world:
+  issues:
+    - {number: 13, state: open, labels: [needs-triage, "agent:in-progress"], lease: stale}
+expect:
+  results: ["#13 stale lease cleared"]
+  effects:
+    - {op: label_remove, target: "issue#13", label: "agent:in-progress"}
