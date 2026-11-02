@@ -32,6 +32,8 @@ Call a skill by its name through the Skill tool (or `/name` where your runner ha
 | `merge-safety` | utility | Judging whether a PR is safe for an agent to merge. Called by `review-github-pr` |
 | `retrospective` | utility | Reviewing agent run-log issues and suggesting skill or process improvements |
 
+Every pipeline skill opens with a `## Contract`: what it needs before it runs, the results it can return, what it guarantees on every way out, and everything it may write. Read the contract to know what a skill does. Read its Process to know how.
+
 **Group skills** select the work and dispatch it. Run one on a schedule. **Item skills** do the work on one issue or PR. Run one by hand on a number. **Utility skills** are building blocks that know nothing about GitHub plumbing. User-invoked skills can only be run by a person: no other skill can call them.
 
 Two skills are not in this package: `tdd` and `code-review` from mattpocock/skills, which `implement-github-issue` and `review-github-pr` call.

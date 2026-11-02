@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Validates the skills in this package. No dependencies. Exit code 1 on any error.
+// Validates the skills in this package. Needs only the `yaml` dev dependency. Exit code 1 on any error.
 //
 // Layout:  skills/<bucket>/<skill>/SKILL.md   (exactly three levels)
 //
@@ -15,6 +15,9 @@
 //   - nothing repository-specific has leaked into skills/, scripts/ or tests/
 //   - every section a skill cites ("**Trust** in the protocol", "its **X** section") exists
 //   - the protocol's Defaults table names exactly the skills that list each input
+//   - every pipeline skill has a valid `## Contract` (scripts/contracts.mjs): its params are its Inputs
+//     table, its results are a closed set, its effects are listed by scope, and the prose no longer
+//     carries Eligibility, Outputs, Result or Never sections of its own
 // Package-wide:
 //   - .claude-plugin/plugin.json lists exactly the promoted skills
 //   - bucket READMEs and the root README link every skill
@@ -24,6 +27,7 @@ import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
+import { checkContracts } from "./contracts.mjs";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const NOT_PROMOTED = new Set(["deprecated", "in-progress"]);
@@ -282,6 +286,17 @@ if (protocol) {
       if (usedBy.has(key) && !usedBy.get(key).has(s.name)) err(`${protocol.rel}/SKILL.md`, `Defaults row \`${key}\` does not list \`${s.name}\`, whose Inputs section has it`);
     }
   }
+}
+
+// ---- contracts ---------------------------------------------------------------------------------
+{
+  const pipeline = skills
+    .filter((x) => x.bucket === "pipeline")
+    .map((x) => ({
+      ...x,
+      inputKeys: [...(inputSection(x.body) ?? "").matchAll(/^\|\s*`([a-z][a-z0-9_]*)`\s*\|/gm)].map((m) => m[1]),
+    }));
+  for (const e of checkContracts(pipeline, byName, external).errors) errors.push(e);
 }
 
 // ---- plugin manifest -----------------------------------------------------

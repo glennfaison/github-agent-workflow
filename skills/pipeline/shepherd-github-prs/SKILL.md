@@ -9,6 +9,38 @@ Pick the `agent:needs-work` PRs that can be worked on now, and give each to `she
 
 **References:** call the Skill tool with `agent-workflow-protocol`. In that skill's directory, open `references/labels.md` before you read labels and `references/log.md` when you write the log entry.
 
+## Contract
+
+See **Contracts** in the protocol for what each key means.
+
+```yaml
+kind: group
+step: Shepherding
+params: [shepherd_batch, runner, log_window_days, unattended, trusted_authors]
+dispatches: shepherd-github-pr
+requires:
+  - "None: always runnable."
+returns:
+  - "The Result line of each dispatched PR, in dispatch order."
+  - "nothing eligible"
+ensures:
+  - "At most shepherd_batch PRs were dispatched, oldest first, each one passing shepherd-github-pr's requires. PRs labelled agent:stuck or agent:human-merge were not candidates."
+  - "A PR whose checks are still running was skipped, not waited for."
+  - "One run-log entry exists."
+effects:
+  reads: [open PRs labelled agent:needs-work, their check state]
+  writes:
+    shared:
+      - "One run-log entry."
+never:
+  - "Shepherd a PR itself, or claim one. Only shepherd-github-pr claims."
+  - "Wait for CI to finish."
+  - "Merge, approve or review. review-github-prs does that."
+calls: []
+idempotent: "Dispatch is idempotent because shepherd-github-pr is."
+terminates: "One pass, bounded by shepherd_batch."
+```
+
 ## Inputs
 
 **Free text.** Any prose. This skill needs nothing from it: a repository is the only subject, and it is already checked out and authenticated.
@@ -37,10 +69,4 @@ Pick the `agent:needs-work` PRs that can be worked on now, and give each to `she
            | {number, url, title, createdAt, fork: .isCrossRepository} ] | sort_by(.createdAt)'
    ```
 
-2. **Select, dispatch and log**, as **Group skills and item skills** in the protocol describes: `shepherd-github-pr`'s **Eligibility** (check state and lease), the first `$shepherd_batch` that pass, one dispatch per `url`.
-
-## Never
-
-- Shepherd a PR yourself, or claim one. Only `shepherd-github-pr` claims.
-- Wait for CI to finish.
-- Merge, approve or review. `review-github-prs` does that.
+2. **Select, dispatch and log**, as **Group skills and item skills** in the protocol describes: `shepherd-github-pr`'s `requires` (check state and lease), the first `$shepherd_batch` that pass, one dispatch per `url`.
