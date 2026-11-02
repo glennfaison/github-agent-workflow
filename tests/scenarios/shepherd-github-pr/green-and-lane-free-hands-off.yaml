@@ -1,0 +1,12 @@
+name: Green, current, no findings and a free lane is handed off
+skill: shepherd-github-pr
+target: pr#40
+world:
+  prs:
+    - {number: 40, state: open, labels: [agent:needs-work], head: h1, base: main, mergeState: CLEAN, checks: [pass], openFindings: 0, closes: [12]}
+expect:
+  result: "#40 ready-for-review"
+  effects:
+    - {op: comment, target: "pr#40", marker: agent:handoff}
+    - {op: label_remove, target: "pr#40", label: agent:needs-work}
+    - {op: label_add, target: "pr#40", label: agent:ready-for-review}

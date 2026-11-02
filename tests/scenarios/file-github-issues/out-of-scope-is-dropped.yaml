@@ -1,0 +1,6 @@
+name: A candidate that matches an out-of-scope decision is dropped
+skill: file-github-issues
+world: {issues: [], prs: []}
+expect:
+  results: ["dropped: matches .out-of-scope/"]
+  effects: []

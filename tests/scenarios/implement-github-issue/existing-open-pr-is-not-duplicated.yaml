@@ -1,0 +1,14 @@
+name: An open PR for the issue stops a second one
+skill: implement-github-issue
+target: issue#12
+world:
+  issues:
+    - {number: 12, state: open, labels: [ready-for-agent]}
+  prs:
+    - {number: 40, state: open, labels: [], head: h1, closes: [12], marker: "agent:implements"}
+expect:
+  result: "#12 existing PR #40"
+  effects:
+    - {op: label_remove, target: "issue#12", label: ready-for-agent}
+    - {op: label_add, target: "issue#12", label: agent:pr-open}
+    - {op: label_add, target: "pr#40", label: agent:needs-work}

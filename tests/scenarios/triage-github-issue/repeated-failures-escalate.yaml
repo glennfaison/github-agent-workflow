@@ -1,0 +1,11 @@
+name: An issue that keeps failing triage is escalated
+skill: triage-github-issue
+target: issue#12
+world:
+  issues:
+    - {number: 12, state: open, labels: [needs-triage]}
+expect:
+  result: "#12 escalated: failed 3 times"
+  effects:
+    - {op: comment, target: "issue#12", marker: agent:escalate}
+    - {op: label_add, target: "issue#12", label: agent:stuck}

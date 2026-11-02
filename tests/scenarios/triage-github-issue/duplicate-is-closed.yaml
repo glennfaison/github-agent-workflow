@@ -1,0 +1,12 @@
+name: A duplicate is closed and links to the original
+skill: triage-github-issue
+target: issue#12
+world:
+  issues:
+    - {number: 7, state: open, labels: [ready-for-agent]}
+    - {number: 12, state: open, labels: [needs-triage]}
+expect:
+  result: "#12 duplicate of #7"
+  effects:
+    - {op: comment, target: "issue#12"}
+    - {op: close, target: "issue#12"}

@@ -1,0 +1,15 @@
+name: A fork PR cannot be pushed to, so it is escalated
+skill: review-github-pr
+target: pr#50
+world:
+  issues:
+    - {number: 12, state: open, labels: [agent:pr-open]}
+  prs:
+    - {number: 50, state: open, labels: [agent:ready-for-review], head: h1, readySha: h1, base: main, mergeState: CLEAN, checks: [pass], closes: [12], fork: true, files: []}
+expect:
+  result: "#50 escalated: fork PR"
+  effects:
+    - {op: comment, target: "pr#50", marker: agent:escalate}
+    - {op: label_remove, target: "pr#50", label: agent:ready-for-review}
+    - {op: label_add, target: "pr#50", label: agent:stuck}
+    - {op: comment, target: "issue#12"}

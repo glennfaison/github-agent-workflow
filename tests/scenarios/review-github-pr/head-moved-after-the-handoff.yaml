@@ -1,0 +1,12 @@
+name: A head that moved after the hand-off is sent back with a result line
+why: "Gap 2. Step 4 used to swap the label and stop with no result."
+skill: review-github-pr
+target: pr#50
+world:
+  prs:
+    - {number: 50, state: open, labels: [agent:ready-for-review], head: h2, readySha: h1, base: main, mergeState: CLEAN, checks: [pass], files: []}
+expect:
+  result: "#50 not ready: head moved after the handoff"
+  effects:
+    - {op: label_remove, target: "pr#50", label: agent:ready-for-review}
+    - {op: label_add, target: "pr#50", label: agent:needs-work}

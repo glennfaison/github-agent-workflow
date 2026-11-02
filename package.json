@@ -8,7 +8,7 @@
     "validate": "node scripts/validate-skills.mjs",
     "lint": "node scripts/lint-files.mjs --all",
     "pretest": "node scripts/check-hooks.mjs",
-    "test": "bash tests/lib.test.sh && node --test tests/helpers.test.mjs tests/lint.test.mjs tests/contracts.test.mjs",
+    "test": "bash tests/lib.test.sh && node --test tests/helpers.test.mjs tests/lint.test.mjs tests/contracts.test.mjs tests/scenarios.test.mjs",
     "check-plugin-version": "node scripts/sync-plugin-version.mjs --check",
     "check": "npm run lint && npm run validate && npm run check-plugin-version && npm test",
     "hooks:check": "node scripts/check-hooks.mjs",
@@ -17,7 +17,8 @@
     "changeset": "changeset",
     "version": "changeset version && node scripts/sync-plugin-version.mjs",
     "sync": "node scripts/sync.mjs",
-    "sync:check": "node scripts/sync.mjs --check"
+    "sync:check": "node scripts/sync.mjs --check",
+    "scenarios:coverage": "node scripts/scenario-coverage.mjs"
   },
   "dependencies": {
     "mattpocock-skills": "1.3.0"

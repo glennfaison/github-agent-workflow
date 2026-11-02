@@ -1,0 +1,11 @@
+name: A dry run reports what would change and writes nothing
+skill: reconcile-github-issues
+inputs: {dry_run: true}
+world:
+  issues:
+    - {number: 12, state: open, labels: [agent:pr-open]}
+  prs:
+    - {number: 40, state: merged, labels: [], head: h1, closes: [12]}
+expect:
+  results: ["would: #12 closed: implemented in #40"]
+  effects: []

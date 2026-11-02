@@ -1,0 +1,12 @@
+name: A conflicted PR that runs no checks is still worked on
+why: "Gap 9. Eligibility used to admit only failing or green checks, so a DIRTY branch with no checks was skipped as no-checks-yet and its conflict was never fixed."
+skill: shepherd-github-pr
+target: pr#40
+world:
+  prs:
+    - {number: 40, state: open, labels: [agent:needs-work], head: h1, base: main, mergeState: DIRTY, checks: [], openFindings: 0, closes: [12]}
+expect:
+  result: "#40 fix pushed"
+  effects:
+    - {op: push, target: "pr#40", sha: h2}
+    - {op: comment, target: "pr#40", marker: agent:attempt}

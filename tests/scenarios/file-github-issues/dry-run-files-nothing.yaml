@@ -1,0 +1,7 @@
+name: A dry run ranks and reports, and files nothing
+skill: file-github-issues
+inputs: {dry_run: true}
+world: {issues: [], prs: []}
+expect:
+  results: ["would-file: Search crashes on empty query"]
+  effects: []

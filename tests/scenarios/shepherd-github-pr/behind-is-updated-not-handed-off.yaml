@@ -1,0 +1,12 @@
+name: A branch that is behind is updated, and is not yet handed off
+why: "An update is not a fix attempt, and the PR stays agent:needs-work."
+skill: shepherd-github-pr
+target: pr#40
+world:
+  prs:
+    - {number: 40, state: open, labels: [agent:needs-work], head: h1, base: main, mergeState: BEHIND, checks: [pass], openFindings: 0, closes: [12]}
+expect:
+  result: "#40 branch updated"
+  effects:
+    - {op: push, target: "pr#40", sha: h2}
+    - {op: comment, target: "pr#40", marker: agent:branch-update}

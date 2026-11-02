@@ -1,0 +1,10 @@
+name: A failed run leaves ready-for-agent in place so it is retried
+skill: implement-github-issue
+target: issue#12
+world:
+  issues:
+    - {number: 12, state: open, labels: [ready-for-agent]}
+expect:
+  result: "#12 failed: build did not pass"
+  effects:
+    - {op: comment, target: "issue#12", marker: agent:failure}

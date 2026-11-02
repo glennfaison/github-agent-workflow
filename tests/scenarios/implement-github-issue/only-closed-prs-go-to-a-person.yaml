@@ -1,0 +1,15 @@
+name: An issue whose PRs were all closed unmerged is not retried
+why: "Sending it back to an agent is how the same fix gets re-attempted in a loop."
+skill: implement-github-issue
+target: issue#12
+world:
+  issues:
+    - {number: 12, state: open, labels: [ready-for-agent]}
+  prs:
+    - {number: 40, state: closed, labels: [], head: h1, closes: [12]}
+expect:
+  result: "#12 ready-for-human"
+  effects:
+    - {op: label_remove, target: "issue#12", label: ready-for-agent}
+    - {op: label_add, target: "issue#12", label: ready-for-human}
+    - {op: comment, target: "issue#12"}

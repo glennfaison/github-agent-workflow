@@ -1,0 +1,9 @@
+name: An issue that is not ready-for-agent is skipped
+skill: implement-github-issue
+target: issue#12
+world:
+  issues:
+    - {number: 12, state: open, labels: [agent:pr-open]}
+expect:
+  result: "#12 skipped: not ready-for-agent"
+  effects: []

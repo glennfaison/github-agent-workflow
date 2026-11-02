@@ -1,0 +1,9 @@
+name: A candidate that matches an open issue adds evidence and files nothing
+skill: file-github-issues
+world:
+  issues:
+    - {number: 7, state: open, labels: [ready-for-agent]}
+expect:
+  results: ["duplicate of #7 (commented)"]
+  effects:
+    - {op: comment, target: "issue#7"}

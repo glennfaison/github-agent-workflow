@@ -1,0 +1,16 @@
+name: A clean review merges the pinned head and closes the issue
+skill: review-github-pr
+target: pr#50
+world:
+  issues:
+    - {number: 12, state: open, labels: [agent:pr-open]}
+  prs:
+    - {number: 50, state: open, labels: [agent:ready-for-review], head: h1, readySha: h1, base: main, mergeState: CLEAN, checks: [pass], closes: [12], files: [src/a.js]}
+expect:
+  result: "#50 merged"
+  effects:
+    - {op: merge, target: "pr#50", sha: h1}
+    - {op: delete_branch, target: "pr#50"}
+    - {op: comment, target: "pr#50", marker: agent:handoff}
+    - {op: label_remove, target: "issue#12", label: agent:pr-open}
+    - {op: close, target: "issue#12"}

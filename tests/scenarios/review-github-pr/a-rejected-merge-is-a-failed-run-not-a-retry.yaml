@@ -1,0 +1,10 @@
+name: A merge that GitHub rejects fails the run and is not retried
+skill: review-github-pr
+target: pr#50
+world:
+  prs:
+    - {number: 50, state: open, labels: [agent:ready-for-review], head: h1, readySha: h1, base: main, mergeState: CLEAN, checks: [pass], files: []}
+expect:
+  result: "#50 failed: merge rejected"
+  effects:
+    - {op: comment, target: "pr#50", marker: agent:failure}

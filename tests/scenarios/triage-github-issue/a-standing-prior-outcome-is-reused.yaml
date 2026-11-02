@@ -1,0 +1,18 @@
+name: A trusted prior outcome that still stands is reused without deciding again
+why: "Gap 8. The check used to run after unattended-triage, so a pass that had already decided paid for the decision twice."
+skill: triage-github-issue
+target: issue#12
+world:
+  issues:
+    - number: 12
+      state: open
+      labels: [needs-triage]
+      comments:
+        - {author: agent, trusted: true, marker: "agent:outcome"}
+expect:
+  result: "#12 ready-for-agent"
+  calls: []
+  effects:
+    - {op: label_add, target: "issue#12", label: ready-for-agent}
+    - {op: label_remove, target: "issue#12", label: needs-triage}
+    - {op: comment, target: "issue#12"}
