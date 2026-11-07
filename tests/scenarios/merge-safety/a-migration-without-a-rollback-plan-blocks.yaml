@@ -1,0 +1,14 @@
+name: A migration that drops a column with no recovery plan is blocked
+skill: merge-safety
+inputs: {pr: 32, head: h2}
+world:
+  prs:
+    - {number: 32, state: open, head: h2, base: main, mergeState: CLEAN, checks: [pass], files: [db/migrations/0042_drop_legacy_email.sql]}
+expect:
+  document:
+    Verdict: BLOCK
+    Breaking changes: None
+    Reversibility: "High — the migration drops `users.legacy_email`. A revert restores the code but not the data, and no backup or restore step is described."
+    GitHub readiness: "Not a draft, mergeable, checks green, no required review pending."
+    Blockers or next steps: "Add a tested rollback or recovery plan for the dropped column, or split the drop into a later change."
+  effects: []

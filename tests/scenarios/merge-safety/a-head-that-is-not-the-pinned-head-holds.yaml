@@ -1,0 +1,14 @@
+name: A PR whose head moved past the pinned head is held, not assessed
+skill: merge-safety
+inputs: {pr: 34, head: h4}
+world:
+  prs:
+    - {number: 34, state: open, head: h5, base: main, mergeState: CLEAN, checks: [pass], files: [src/index.ts]}
+expect:
+  document:
+    Verdict: HOLD
+    Breaking changes: "None found, but the evidence is about `h4`, and the PR's head is now `h5`."
+    Reversibility: "Unknown — not assessed at `h5`."
+    GitHub readiness: "Checks are green at `h5`, which was not the commit that was asked about."
+    Blockers or next steps: "Assess the current head `h5`, or have the caller pin it."
+  effects: []

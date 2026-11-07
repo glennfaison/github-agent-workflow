@@ -50,7 +50,6 @@ const LEAKS = [
 // contract is still listed. Do not add to this list.
 const CONTRACT_PENDING = new Set([
   "grill-via-github-comments",
-  "merge-safety",
   "retrospective",
   "setup-github-agent-workflow",
   "unattended-triage",

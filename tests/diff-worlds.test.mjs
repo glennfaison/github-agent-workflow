@@ -4,7 +4,8 @@ import { readFileSync, readdirSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parse } from "yaml";
-import { extractContract, WRITE_SCOPES } from "../scripts/contracts.mjs";
+import { WRITE_SCOPES } from "../scripts/contracts.mjs";
+import { contractOf } from "../scripts/scenario-coverage.mjs";
 import { applyEffects, canonicalWorld, checkScenario, diffWorlds, sameWorld } from "../scripts/scenario.mjs";
 
 const PKG = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -136,7 +137,6 @@ test("checkScenario rejects an unmodelled effect unless the contract lists the s
 const dir = join(PKG, "tests/scenarios");
 const goldens = readdirSync(dir).flatMap((skill) =>
   readdirSync(join(dir, skill)).filter((f) => f.endsWith(".yaml")).map((f) => ({ file: `${skill}/${f}`, sc: parse(readFileSync(join(dir, skill, f), "utf8")) })));
-const contractOf = (skill) => parse(extractContract(readFileSync(join(PKG, "skills/pipeline", skill, "SKILL.md"), "utf8")).yaml);
 
 test("there are golden scenarios to round-trip", () => assert.ok(goldens.length > 30));
 

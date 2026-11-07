@@ -5,14 +5,10 @@ import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parse } from "yaml";
 import { extractContract } from "../scripts/contracts.mjs";
-import { coverage } from "../scripts/scenario-coverage.mjs";
+import { coverage, contractOf } from "../scripts/scenario-coverage.mjs";
 import { checkScenario, applyEffects, matchesReturn, checkState, ORACLES, ORACLE_REQUIRES } from "../scripts/scenario.mjs";
 
 const PKG = join(dirname(fileURLToPath(import.meta.url)), "..");
-const contractOf = (skill) => {
-  const body = readFileSync(join(PKG, "skills/pipeline", skill, "SKILL.md"), "utf8");
-  return parse(extractContract(body).yaml);
-};
 const dir = join(PKG, "tests/scenarios");
 const scenarios = readdirSync(dir).flatMap((skill) =>
   readdirSync(join(dir, skill)).filter((f) => f.endsWith(".yaml")).map((f) => ({ file: `${skill}/${f}`, sc: parse(readFileSync(join(dir, skill, f), "utf8")) })));
@@ -269,4 +265,57 @@ test("every oracle has a requires count, and every skill that works one target h
   assert.deepEqual(Object.keys(ORACLES).sort(), Object.keys(ORACLE_REQUIRES).sort());
   const items = readdirSync(join(PKG, "skills/pipeline")).filter((n) => existsSync(join(PKG, "skills/pipeline", n, "SKILL.md")) && contractOf(n).kind === "item" && contractOf(n).target?.param);
   assert.deepEqual(items.sort(), Object.keys(ORACLES).sort());
+});
+
+// ---- the checker for a skill that returns a document (merge-safety) -----------------------------
+const safety = contractOf("merge-safety");
+const doc = (name, edit) => { const sc = find(`merge-safety/${name}.yaml`); edit(sc); return problems(safety, sc); };
+
+test("a verdict the contract does not allow is rejected", () => {
+  const p = doc("a-clean-small-pr-passes", (sc) => { sc.expect.document.Verdict = "MAYBE"; });
+  assert.ok(p.some((m) => /none of: PASS \| BLOCK \| HOLD/.test(m)), p.join("\n"));
+});
+
+test("a section the contract names, left out of the document, is rejected", () => {
+  const p = doc("a-clean-small-pr-passes", (sc) => { delete sc.expect.document.Reversibility; });
+  assert.ok(p.some((m) => /no `Reversibility`/.test(m)), p.join("\n"));
+});
+
+test("a section the contract does not name is rejected", () => {
+  const p = doc("a-clean-small-pr-passes", (sc) => { sc.expect.document.Opinion = "looks fine"; });
+  assert.ok(p.some((m) => /`Opinion`, which is not in the contract's returns/.test(m)), p.join("\n"));
+});
+
+test("a pure skill that leaves an effect is rejected", () => {
+  const p = doc("a-clean-small-pr-passes", (sc) => { sc.expect.effects = [{ op: "label_add", target: "pr#33", label: "agent:ready-for-review" }]; });
+  assert.ok(p.some((m) => /pure skill must leave no effects/.test(m)), p.join("\n"));
+});
+
+test("a pass that still has next steps is rejected, and so is a block that has none", () => {
+  const pass = doc("a-clean-small-pr-passes", (sc) => { sc.expect.document["Blockers or next steps"] = "Fix the typo first."; });
+  assert.ok(pass.some((m) => /PASS must have no blockers/.test(m)), pass.join("\n"));
+  const block = doc("a-breaking-change-to-a-public-contract-blocks", (sc) => { sc.expect.document["Blockers or next steps"] = "None"; });
+  assert.ok(block.some((m) => /BLOCK must name at least one next step/.test(m)), block.join("\n"));
+});
+
+test("the world settles the verdict: a moved head, a pending check or a draft must be HOLD", () => {
+  const moved = doc("a-head-that-is-not-the-pinned-head-holds", (sc) => { sc.expect.document.Verdict = "PASS"; sc.expect.document["Blockers or next steps"] = "None"; });
+  assert.ok(moved.some((m) => /must be HOLD, because the pinned head h4 is not the PR's head h5/.test(m)), moved.join("\n"));
+  const pending = doc("a-pending-check-holds", (sc) => { sc.expect.document.Verdict = "BLOCK"; });
+  assert.ok(pending.some((m) => /must be HOLD, because a check is pending/.test(m)), pending.join("\n"));
+  const draft = doc("a-clean-small-pr-passes", (sc) => { sc.world.prs[0].draft = true; });
+  assert.ok(draft.some((m) => /must be HOLD, because the PR is a draft/.test(m)), draft.join("\n"));
+});
+
+test("a pass is rejected while checks fail or the PR has conflicts", () => {
+  const failing = doc("a-clean-small-pr-passes", (sc) => { sc.world.prs[0].checks = ["pass", "fail"]; });
+  assert.ok(failing.some((m) => /PASS while the checks are failing/.test(m)), failing.join("\n"));
+  const dirty = doc("a-clean-small-pr-passes", (sc) => { sc.world.prs[0].mergeState = "DIRTY"; });
+  assert.ok(dirty.some((m) => /PASS while the PR has merge conflicts/.test(m)), dirty.join("\n"));
+});
+
+test("merge-safety has a scenario for each of its three verdicts", () => {
+  const row = coverage().find((r) => r.name === "merge-safety");
+  assert.equal(row.total, 3);
+  assert.deepEqual(row.missing, []);
 });

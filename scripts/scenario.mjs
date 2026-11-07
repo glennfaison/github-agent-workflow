@@ -291,12 +291,89 @@ export function matchesReturn(line, returns) {
 
 const head = (line) => line.match(/^#\d+\s+([A-Za-z][A-Za-z-]*)/)?.[1] ?? null;
 
+// ---- pure skills: a utility skill returns a document, so a scenario compares it to the contract's shape ----
+
+/** "Verdict: PASS | BLOCK | HOLD" -> { label: "Verdict", alts: ["PASS", "BLOCK", "HOLD"] }, or null when it has no label */
+export function parseDocLine(line) {
+  const i = line.indexOf(": ");
+  if (i < 1) return null;
+  return { label: line.slice(0, i), alts: line.slice(i + 2).split(" | ").map((a) => a.trim()).filter(Boolean) };
+}
+
+/** The part of a value or alternative that names it: "Unknown — no plan" -> "Unknown" */
+export const docHead = (s) => String(s).split(" — ")[0].trim();
+
+/** A value matches an alternative when it starts with the same word, or the alternative is a `<placeholder>` and the value is not empty. */
+export function matchesAlt(value, alt) {
+  const v = String(value ?? "").trim();
+  if (!v) return false;
+  const h = docHead(alt);
+  return h.includes("<") ? true : docHead(v) === h;
+}
+
+/**
+ * What the world already settles about a document, written as code from the skill's `ensures`. Each
+ * returns problems, given the PR the skill was asked about, its inputs and the expected document.
+ */
+export const DOCUMENT_ORACLES = {
+  "merge-safety": (world, inputs, doc) => {
+    const out = [];
+    const n = Number(String(inputs.pr ?? "").match(/\d+/)?.[0]);
+    const pr = (world.prs ?? []).find((p) => p.number === n);
+    const verdict = docHead(doc.Verdict ?? "");
+    const none = docHead(doc["Blockers or next steps"] ?? "") === "None";
+    if (verdict === "PASS" && !none) out.push("PASS must have no blockers or next steps");
+    if (verdict !== "PASS" && none) out.push(`${verdict} must name at least one next step`);
+    if (!pr) return out;
+    const must = [];
+    if (pr.draft) must.push("the PR is a draft");
+    if (inputs.head !== undefined && inputs.head !== pr.head) must.push(`the pinned head ${inputs.head} is not the PR's head ${pr.head}`);
+    if (checkState(pr) === "pending") must.push("a check is pending");
+    if (must.length && verdict !== "HOLD") out.push(`the verdict must be HOLD, because ${must.join(" and ")}`);
+    if (verdict === "PASS") {
+      if (checkState(pr) !== "green") out.push(`PASS while the checks are ${checkState(pr)}`);
+      if (pr.mergeState === "DIRTY") out.push("PASS while the PR has merge conflicts");
+    }
+    return out;
+  },
+};
+
+/** The same checks as checkScenario, for a skill that returns a document. */
+export function checkPureScenario(contract, sc) {
+  const out = [];
+  const bad = (m) => out.push(m);
+  const doc = sc.expect?.document;
+  if (!doc || typeof doc !== "object" || Array.isArray(doc)) { bad("no expected document"); return out; }
+  const lines = (contract.returns ?? []).map((r) => [r, parseDocLine(r)]);
+  for (const [r, l] of lines) if (!l) bad(`the contract's returns entry \`${r}\` is not \`Label: ...\``);
+  const shape = lines.map(([, l]) => l).filter(Boolean);
+  for (const l of shape) {
+    if (!(l.label in doc)) bad(`the document has no \`${l.label}\``);
+    else if (!l.alts.some((a) => matchesAlt(doc[l.label], a))) bad(`\`${l.label}: ${doc[l.label]}\` is none of: ${l.alts.join(" | ")}`);
+  }
+  for (const k of Object.keys(doc)) if (!shape.some((l) => l.label === k)) bad(`the document has \`${k}\`, which is not in the contract's returns`);
+
+  const work = sc.expect.effects ?? [];
+  const allowed = Object.keys(contract.effects?.writes ?? {});
+  if (allowed.length === 0 && work.length) bad("a pure skill must leave no effects");
+  for (const e of work.length && allowed.length ? work : []) {
+    try {
+      const scope = scopeOf(e, { world: sc.world ?? { issues: [], prs: [] }, claimed: new Set() });
+      if (!allowed.includes(scope)) bad(`${e.op} on ${e.target ?? `#${e.number}`} is a \`${scope}\` write, which the contract does not allow`);
+    } catch (err) { bad(err.message); }
+  }
+  const oracle = DOCUMENT_ORACLES[sc.skill];
+  if (oracle) out.push(...oracle(sc.world ?? { issues: [], prs: [] }, sc.inputs ?? {}, doc));
+  return out;
+}
+
 /**
  * @param {object} contract the parsed contract of the skill
  * @param {object} sc       the scenario
  * @returns {string[]} problems, empty when the scenario is consistent with the contract
  */
 export function checkScenario(contract, sc) {
+  if (contract.kind === "utility") return checkPureScenario(contract, sc);
   const out = [];
   const bad = (m) => out.push(m);
   const world = sc.world ?? { issues: [], prs: [] };

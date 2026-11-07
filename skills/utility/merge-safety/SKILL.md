@@ -8,6 +8,41 @@ description: Assess whether a pull request is safe for an agent to merge by chec
 Give an evidence-based merge-gate assessment. This is not a substitute for a
 full code or security review, and it does not authorize or perform a merge.
 
+## Contract
+
+See **Contracts** in the protocol for what each key means. This skill returns a document, so `returns` lists the lines of the **Report**, and the first line is the verdict.
+
+```yaml
+kind: utility
+params: [pr, base, head]
+used_by: [review-github-pr]
+requires:
+  - "`pr` names one pull request that can be read."
+returns:
+  - "Verdict: PASS | BLOCK | HOLD"
+  - "Breaking changes: None | <finding and evidence>"
+  - "Reversibility: Low | Managed | High | Unknown — <rollback path and evidence>"
+  - "GitHub readiness: <draft, mergeability, checks, required reviews>"
+  - "Blockers or next steps: None | <specific actions>"
+ensures:
+  - "Exactly one verdict is given, and a missing or uncertain fact is never reported as PASS."
+  - "PASS is given only when compatibility and reversibility have no unresolved blocker and every GitHub readiness requirement is met. Its `Blockers or next steps` is `None`."
+  - "BLOCK names the concrete safety failure, and HOLD names the missing evidence, the pending check or review, or the draft status. Both give at least one next step."
+  - "A draft, a pending check or review, or a `head` input that is not the PR's current head gives HOLD, whatever else is true."
+  - "Compatibility risk, rollback risk and GitHub readiness are reported on separate lines, so a green check suite cannot hide a breaking change or an unsafe rollback."
+effects:
+  reads: ["the PR and its complete diff", "check state, mergeability and required reviews", "the callers and contracts the diff touches", "the linked issue, when it clarifies the intended behaviour"]
+  writes: {}
+never:
+  - "Merge the PR, or authorize a merge."
+  - "Change a label, post a comment or edit the PR."
+  - "Treat the PR description as proof that checks or review passed."
+  - "Turn uncertainty into a pass."
+calls: []
+idempotent: "It only reads, so assessing the same PR at the same head again gives the same verdict."
+terminates: "A single pass over one PR's diff."
+```
+
 ## Inputs
 
 **Free text.** The pull request to assess, as a URL or a number, plus anything
@@ -32,6 +67,9 @@ behaviour. It merges nothing and changes no labels.
 1. Establish the exact PR, base and head, then inspect the complete diff and
    relevant callers or contracts. Read the linked issue when it clarifies the
    intended behavior.
+   If `head` is given and is not the PR's current head, assess nothing: any
+   evidence would be about a different commit. Report **HOLD**, and make the
+   next step to assess the current head.
 2. Check GitHub readiness from the PR itself: draft status, mergeability,
    required checks, and required reviews. Treat the PR description as a claim,
    not proof that checks or review passed.
