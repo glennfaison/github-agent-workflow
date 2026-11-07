@@ -28,7 +28,7 @@ A **scenario** is a world, a skill and its inputs, and the expected outcome: one
 ## Consequences
 
 - A new result line, or a changed write scope, cannot land without a scenario. The old behaviour of the gap-9 bug (a conflicted PR skipped as `no-checks-yet`) is now a failing test.
-- The same checker can judge a real run. Diff the world before and after, turn the diff into effects, and pass the result line. The part that is not built is the part that needs infrastructure: a `gh` simulator over a world file, and a runner that drives a model against it.
+- The same checker can judge a real run. `diffWorlds(before, after)` in `scripts/scenario.mjs` turns the change a run left behind into the effects the checker takes, and `applyEffects(before, diffWorlds(before, after))` gives `after` back (tested on every golden scenario and on generated worlds). A change no effect can express, such as a title or a body edit, comes out as an `unmodelled` effect, which the checker rejects unless the contract lists an `unmodelled` write. The part that is not built is the part that needs infrastructure: a `gh` simulator over a world file, and a runner that drives a model against it.
 
 ## What this does not prove
 

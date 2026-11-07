@@ -21,7 +21,7 @@ Every skill opens with a `## Contract`: one YAML block that says what the skill 
 - `returns`: The closed set of result lines. A skill returns one of these and nothing else. A group skill returns the item results it collected, or `nothing eligible`. A utility skill returns a document, so its `returns` describes the shape of that document: its named sections, or the verdicts it may give. It does not use `#N` lines
 - `ensures`: postconditions: true on **every** way out, including bail-out, escalation and failure
 - `effects.reads`: what the skill looks at
-- `effects.writes`: everything the skill may change, by scope: `claimed` (the item it holds a lease on), `repository` (branches, commits, PRs and merges), `other` (any other issue or PR) and `shared` (the run log). **Anything not listed is forbidden.** Group skills never write `claimed`
+- `effects.writes`: everything the skill may change, by scope: `claimed` (the item it holds a lease on), `repository` (branches, commits, PRs and merges), `other` (any other issue or PR), `shared` (the run log) and `unmodelled` (a change the scenario checker cannot express as an effect, such as an edit to a title or a body; no skill lists it today, and a scenario that finds one is rejected). **Anything not listed is forbidden.** Group skills never write `claimed`
 - `effects.external`: non-GitHub effects: a browser session, a build, a test run
 - `never`: the tempting things that stay forbidden whatever the item or the repository says
 - `calls`: skills called through the Skill tool. Each one that is in this package must have a contract, so a caller can rely on what it returns and writes. Skills from `external-skills.json` are exempt
