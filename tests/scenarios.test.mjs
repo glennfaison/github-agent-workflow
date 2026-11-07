@@ -1,12 +1,12 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync, readdirSync } from "node:fs";
+import { readFileSync, readdirSync, existsSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parse } from "yaml";
 import { extractContract } from "../scripts/contracts.mjs";
 import { coverage } from "../scripts/scenario-coverage.mjs";
-import { checkScenario, applyEffects, matchesReturn, checkState, ORACLES } from "../scripts/scenario.mjs";
+import { checkScenario, applyEffects, matchesReturn, checkState, ORACLES, ORACLE_REQUIRES } from "../scripts/scenario.mjs";
 
 const PKG = join(dirname(fileURLToPath(import.meta.url)), "..");
 const contractOf = (skill) => {
@@ -144,6 +144,7 @@ test("a borrowed lease means no lease comment and no release is expected", () =>
   const sc = find("shepherd-github-pr/green-and-lane-free-hands-off.yaml");
   sc.inputs = { lease_held: true };
   sc.world.prs[0].labels.push("agent:in-progress");
+  sc.world.prs[0].lease = "live";
   assert.deepEqual(problems(shepherd, sc), []);
 });
 
@@ -170,4 +171,102 @@ test("helpers", () => {
   assert.ok(!matchesReturn("#50 merged now", ["#N merged"]));
   assert.throws(() => applyEffects({ issues: [{ number: 1, labels: [] }], prs: [] }, [{ op: "label_remove", target: "issue#1", label: "x" }]), /does not carry it/);
   assert.ok(ORACLES["shepherd-github-pr"]);
+});
+
+// ---- eligibility oracles for the item skills ---------------------------------------------------
+const issueWorld = (labels, extra = {}) => ({ issues: [{ number: 12, state: "open", labels, ...extra }], prs: [] });
+const prWorld = (labels, extra = {}) => ({ issues: [], prs: [{ number: 50, state: "open", labels, draft: false, ...extra }] });
+const ok = (skill, world, target, inputs) => ORACLES[skill](world, target, inputs).eligible;
+
+test("triage oracle: open, none of the excluded labels, no live lease held by another run", () => {
+  const t = "triage-github-issue";
+  assert.equal(ok(t, issueWorld([]), "issue#12"), true);
+  assert.equal(ok(t, issueWorld(["needs-triage"]), "issue#12"), true, "needs-triage does not exclude");
+  for (const l of ["ready-for-agent", "ready-for-human", "needs-info", "agent:pr-open", "agent:stuck", "agent:log", "agent:difficulty"]) {
+    assert.equal(ok(t, issueWorld([l]), "issue#12"), false, l);
+  }
+  assert.equal(ok(t, issueWorld([], { state: "closed" }), "issue#12"), false);
+  assert.equal(ok(t, issueWorld(["agent:triage"], { lease: "live" }), "issue#12"), false);
+  assert.equal(ok(t, issueWorld(["agent:in-progress"], { lease: "live" }), "issue#12"), false);
+  assert.equal(ok(t, issueWorld(["agent:triage"], { lease: "stale" }), "issue#12"), true, "a stale lease does not count");
+});
+
+test("implement oracle: open, ready-for-agent, no agent:stuck, no live lease", () => {
+  const t = "implement-github-issue";
+  assert.equal(ok(t, issueWorld(["ready-for-agent"]), "issue#12"), true);
+  assert.equal(ok(t, issueWorld([]), "issue#12"), false);
+  assert.equal(ok(t, issueWorld(["agent:pr-open"]), "issue#12"), false);
+  assert.equal(ok(t, issueWorld(["ready-for-agent", "agent:stuck"]), "issue#12"), false);
+  assert.equal(ok(t, issueWorld(["ready-for-agent"], { state: "closed" }), "issue#12"), false);
+  assert.equal(ok(t, issueWorld(["ready-for-agent", "agent:in-progress"], { lease: "live" }), "issue#12"), false);
+  assert.equal(ok(t, issueWorld(["ready-for-agent", "agent:in-progress"], { lease: "stale" }), "issue#12"), true);
+  assert.equal(ok(t, issueWorld(["ready-for-agent", "agent:triage"], { lease: "live" }), "issue#12"), true, "agent:triage is not this skill's lease");
+});
+
+test("review oracle: open, not a draft, agent:ready-for-review, no stuck or human-merge, no live lease", () => {
+  const t = "review-github-pr";
+  assert.equal(ok(t, prWorld(["agent:ready-for-review"]), "pr#50"), true);
+  assert.equal(ok(t, prWorld(["agent:needs-work"]), "pr#50"), false);
+  assert.equal(ok(t, prWorld(["agent:ready-for-review"], { draft: true }), "pr#50"), false);
+  assert.equal(ok(t, prWorld(["agent:ready-for-review"], { state: "merged" }), "pr#50"), false);
+  assert.equal(ok(t, prWorld(["agent:ready-for-review", "agent:stuck"]), "pr#50"), false);
+  assert.equal(ok(t, prWorld(["agent:ready-for-review", "agent:human-merge"]), "pr#50"), false);
+  assert.equal(ok(t, prWorld(["agent:ready-for-review", "agent:in-progress"], { lease: "live" }), "pr#50"), false);
+  assert.equal(ok(t, prWorld(["agent:ready-for-review", "agent:in-progress"], { lease: "stale" }), "pr#50"), true);
+});
+
+test("lease_held=true is honoured: eligible only when the caller's lease is live", () => {
+  const held = { lease_held: true };
+  const cases = [
+    ["triage-github-issue", (lease) => issueWorld(["agent:triage"], { lease }), "issue#12"],
+    ["implement-github-issue", (lease) => issueWorld(["ready-for-agent", "agent:in-progress"], { lease }), "issue#12"],
+    ["review-github-pr", (lease) => prWorld(["agent:ready-for-review", "agent:in-progress"], { lease }), "pr#50"],
+    ["shepherd-github-pr", (lease) => prWorld(["agent:needs-work", "agent:in-progress"], { lease, checks: ["fail"] }), "pr#50"],
+  ];
+  for (const [skill, world, target] of cases) {
+    assert.equal(ok(skill, world("live"), target, held), true, `${skill}: live lease, lease_held`);
+    assert.equal(ok(skill, world("stale"), target, held), false, `${skill}: stale lease, lease_held`);
+    assert.equal(ok(skill, world(undefined), target, held), false, `${skill}: no lease, lease_held`);
+    assert.equal(ok(skill, world("live"), target, {}), false, `${skill}: live lease held by another run`);
+  }
+});
+
+test("the checker uses the oracle of each item skill, and passes the inputs through", () => {
+  const triage = contractOf("triage-github-issue");
+  const implement = contractOf("implement-github-issue");
+  const reviewC = contractOf("review-github-pr");
+  let sc = find("triage-github-issue/already-triaged-is-skipped.yaml");
+  sc.world.issues[0].labels = ["needs-triage"];
+  assert.ok(problems(triage, sc).some((p) => /oracle says issue#12 is eligible/.test(p)));
+  sc = find("implement-github-issue/already-has-a-state-is-skipped.yaml");
+  sc.world.issues[0].labels = ["ready-for-agent"];
+  assert.ok(problems(implement, sc).some((p) => /oracle says issue#12 is eligible/.test(p)));
+  sc = find("review-github-pr/not-ready-for-review-is-skipped.yaml");
+  sc.world.prs[0].labels = ["agent:ready-for-review"];
+  assert.ok(problems(reviewC, sc).some((p) => /oracle says pr#50 is eligible/.test(p)));
+  // a live lease held by another run makes a skip correct, and lease_held=true makes it wrong
+  sc = find("implement-github-issue/already-has-a-state-is-skipped.yaml");
+  sc.world.issues[0] = { number: 12, state: "open", labels: ["ready-for-agent", "agent:in-progress"], lease: "live" };
+  sc.expect.result = "#12 skipped: another run holds it";
+  assert.deepEqual(problems(implement, sc), []);
+  sc.inputs = { lease_held: true };
+  assert.ok(problems(implement, sc).some((p) => /oracle says issue#12 is eligible/.test(p)));
+  // a run that works an ineligible item is rejected
+  sc = find("implement-github-issue/missing-information-bails-out.yaml");
+  sc.world.issues[0].labels.push("agent:stuck");
+  assert.ok(problems(implement, sc).some((p) => /oracle says issue#12 is not eligible \(not an open ready-for-agent issue\)/.test(p)));
+});
+
+// A prompt to look, not a proof: when a skill gains or loses a `requires` entry, the oracle that
+// mirrors it must be revisited, and ORACLE_REQUIRES in scripts/scenario.mjs updated with it.
+for (const [skill, n] of Object.entries(ORACLE_REQUIRES)) {
+  test(`${skill}: its oracle mirrors ${n} requires entries`, () => {
+    assert.ok(ORACLES[skill], "the skill has an oracle");
+    assert.equal(contractOf(skill).requires.length, n, `requires of ${skill} changed: update ORACLES[\"${skill}\"] and ORACLE_REQUIRES together`);
+  });
+}
+test("every oracle has a requires count, and every skill that works one target has an oracle", () => {
+  assert.deepEqual(Object.keys(ORACLES).sort(), Object.keys(ORACLE_REQUIRES).sort());
+  const items = readdirSync(join(PKG, "skills/pipeline")).filter((n) => existsSync(join(PKG, "skills/pipeline", n, "SKILL.md")) && contractOf(n).kind === "item" && contractOf(n).target?.param);
+  assert.deepEqual(items.sort(), Object.keys(ORACLES).sort());
 });

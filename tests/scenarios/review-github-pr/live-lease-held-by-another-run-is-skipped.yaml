@@ -1,0 +1,10 @@
+name: A PR another run is reviewing is skipped
+why: "Issue #64. A ready-for-review PR with a live agent:in-progress lease is held by another run."
+skill: review-github-pr
+target: pr#50
+world:
+  prs:
+    - {number: 50, state: open, labels: [agent:ready-for-review, "agent:in-progress"], lease: live, head: h1, base: main, mergeState: CLEAN, checks: [pass], files: []}
+expect:
+  result: "#50 skipped: another run holds the lease"
+  effects: []

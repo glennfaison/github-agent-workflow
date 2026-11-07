@@ -21,7 +21,7 @@ A **scenario** is a world, a skill and its inputs, and the expected outcome: one
    - a merge is pinned to the reviewed head, is not in a run that pushed, and is not of a fork, a draft, an `agent:stuck` PR or a protected path;
    - `skipped` leaves no effects, `noop` leaves only the lease comment, `escalated` adds `agent:stuck` with an `agent:escalate` comment, `failed` leaves the labels alone;
    - a dry run writes nothing, `limit` is respected, and only skills in the contract's `calls` are called.
-4. Eligibility **oracles**, which are `requires` written as code, agree with the result. `shepherd-github-pr` has one.
+4. Eligibility **oracles**, which are `requires` written as code, agree with the result. Every skill that works one target has one: `triage-github-issue`, `implement-github-issue`, `review-github-pr` and `shepherd-github-pr`. The lease is part of the world (`lease: live | stale | none` on the item), and `lease_held: true` makes the oracle require a live lease.
 
 `tests/scenarios.test.mjs` runs every scenario, runs negative tests that prove the checker rejects broken ones, and requires every result a skill declares to have at least one scenario (`npm run scenarios:coverage`).
 
@@ -35,4 +35,4 @@ A **scenario** is a world, a skill and its inputs, and the expected outcome: one
 - **It does not run a skill.** The goldens are written from the skill text, so they check that the contract, the expected outcomes and the invariants agree with each other. They cannot show that a model follows the text.
 - **The goldens can be wrong in the same way as the contract.** Both came from the same reading of the skills. A scenario that a real run contradicts should change one of them.
 - **Scopes are checked, not the lists under them.** The contract's `effects.writes` entries are prose, so an effect is checked against its scope and not against the exact sentence.
-- **Only one eligibility oracle exists.** Writing `requires` as code for the other skills duplicates the prose, so each one is a judgement about whether the check is worth keeping in step.
+- **An oracle duplicates the prose.** Each oracle is `requires` written a second time, so the two can drift. A test compares the number of `requires` entries with `ORACLE_REQUIRES` in `scripts/scenario.mjs` and fails when they differ. It is a prompt to look, not a proof: rewording an entry without changing the count goes unnoticed. Group skills have no oracle.

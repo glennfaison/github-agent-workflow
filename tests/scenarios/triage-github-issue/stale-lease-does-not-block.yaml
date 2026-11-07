@@ -1,0 +1,14 @@
+name: A stale lease label does not stop an issue from being triaged
+why: "Issue #64. A lease label with no live lease is stale and does not count. Only the sweeper removes it, and the new claim replaces it."
+skill: triage-github-issue
+target: issue#12
+world:
+  issues:
+    - {number: 12, state: open, labels: [needs-triage, "agent:triage"], lease: stale}
+expect:
+  result: "#12 needs-info"
+  effects:
+    - {op: label_remove, target: "issue#12", label: "agent:triage"}
+    - {op: label_remove, target: "issue#12", label: needs-triage}
+    - {op: label_add, target: "issue#12", label: needs-info}
+    - {op: comment, target: "issue#12"}
