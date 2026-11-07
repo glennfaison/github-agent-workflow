@@ -44,14 +44,72 @@ export function checkState(pr) {
 
 // ---- oracles: eligibility written as code, from the skill's `requires` -------------------------
 
+/**
+ * The lease clause every item skill's `requires` ends its first clause with. The world models a
+ * lease as `lease: live | stale | none` on the item (none when absent). A lease label whose lease is
+ * not live is stale and does not count. With `lease_held=true` the caller holds the lease, so it
+ * must be live. Returns a reason when the item is not eligible, otherwise null.
+ */
+export function leaseProblem(it, leaseLabels, inputs = {}) {
+  const lease = it.lease ?? "none";
+  if (inputs.lease_held === true) return lease === "live" ? null : "lease_held=true but the caller's lease is not live";
+  const held = (it.labels ?? []).some((l) => leaseLabels.includes(l)) && lease === "live";
+  return held ? "another run holds a live lease" : null;
+}
+
+/** How many `requires` entries each oracle mirrors. A test fails when a skill's count differs. */
+export const ORACLE_REQUIRES = {
+  "triage-github-issue": 3,
+  "implement-github-issue": 2,
+  "review-github-pr": 2,
+  "shepherd-github-pr": 4,
+};
+
+const NOT_TRIAGEABLE = ["ready-for-agent", "ready-for-human", "needs-info", "agent:pr-open", "agent:stuck", "agent:log", "agent:difficulty"];
+
 export const ORACLES = {
+  /** Mirrors the `requires` of triage-github-issue. `needs-triage` does not exclude an issue. */
+  "triage-github-issue"(world, target, inputs = {}) {
+    const issue = item(world, target);
+    const L = issue.labels ?? [];
+    if (issue.state !== "open") return { eligible: false, reason: "not open" };
+    const hit = NOT_TRIAGEABLE.find((l) => L.includes(l));
+    if (hit) return { eligible: false, reason: `carries ${hit}` };
+    const lease = leaseProblem(issue, ["agent:triage", "agent:in-progress"], inputs);
+    return lease ? { eligible: false, reason: lease } : { eligible: true };
+  },
+
+  /** Mirrors the `requires` of implement-github-issue. */
+  "implement-github-issue"(world, target, inputs = {}) {
+    const issue = item(world, target);
+    const L = issue.labels ?? [];
+    if (issue.state !== "open" || !L.includes("ready-for-agent") || L.includes("agent:stuck")) {
+      return { eligible: false, reason: "not an open ready-for-agent issue" };
+    }
+    const lease = leaseProblem(issue, ["agent:in-progress"], inputs);
+    return lease ? { eligible: false, reason: lease } : { eligible: true };
+  },
+
+  /** Mirrors the `requires` of review-github-pr. */
+  "review-github-pr"(world, target, inputs = {}) {
+    const pr = item(world, target);
+    const L = pr.labels ?? [];
+    if (pr.state !== "open" || pr.draft || !L.includes("agent:ready-for-review") || L.includes("agent:stuck") || L.includes("agent:human-merge")) {
+      return { eligible: false, reason: "not an open, non-draft agent:ready-for-review PR" };
+    }
+    const lease = leaseProblem(pr, ["agent:in-progress"], inputs);
+    return lease ? { eligible: false, reason: lease } : { eligible: true };
+  },
+
   /** Mirrors the `requires` of shepherd-github-pr. Returns { eligible, reason }. */
-  "shepherd-github-pr"(world, target) {
+  "shepherd-github-pr"(world, target, inputs = {}) {
     const pr = item(world, target);
     const L = pr.labels ?? [];
     if (pr.state !== "open" || !L.includes("agent:needs-work") || L.includes("agent:stuck") || L.includes("agent:human-merge")) {
       return { eligible: false, reason: "not an open agent:needs-work PR" };
     }
+    const lease = leaseProblem(pr, ["agent:in-progress"], inputs);
+    if (lease) return { eligible: false, reason: lease };
     const checks = checkState(pr);
     const conflict = pr.mergeState === "DIRTY";
     if (!(checks === "failing" || checks === "green" || conflict)) return { eligible: false, reason: `checks ${checks}` };
@@ -167,7 +225,7 @@ export function checkScenario(contract, sc) {
   }
   const lanes = after.prs.filter((p) => p.state === "open" && (p.labels ?? []).includes("agent:ready-for-review"));
   if (lanes.length > 1) bad(`${lanes.length} PRs hold the merge lane: ${lanes.map((p) => `#${p.number}`).join(", ")}`);
-  if (isItem && !leaseHeld) {
+  if (isItem && !leaseHeld && outcome !== "skipped") { // a skipped item's lease label, if any, belongs to the run that holds it
     const t = item(after, sc.target);
     for (const l of LEASE_LABELS) if ((t.labels ?? []).includes(l)) bad(`${sc.target} still carries the lease label ${l}`);
   }
@@ -194,7 +252,7 @@ export function checkScenario(contract, sc) {
   const oracle = ORACLES[sc.skill];
   if (oracle && isItem) {
     // a `noop` is a PR that was eligible when read and not after the claim, so the oracle reads the earlier world
-    const o = oracle(sc.eligibility_world ?? world, sc.target);
+    const o = oracle(sc.eligibility_world ?? world, sc.target, sc.inputs ?? {});
     if (!o.eligible && outcome !== "skipped") bad(`the oracle says ${sc.target} is not eligible (${o.reason}), but the result is \`${results[0]}\``);
     if (o.eligible && outcome === "skipped") bad(`the oracle says ${sc.target} is eligible, but the result is \`${results[0]}\``);
   }

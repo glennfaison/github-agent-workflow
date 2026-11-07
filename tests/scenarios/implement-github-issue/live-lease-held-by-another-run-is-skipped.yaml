@@ -1,0 +1,10 @@
+name: An issue another run is implementing is skipped
+why: "Issue #64. A ready-for-agent issue with a live agent:in-progress lease is held by another run."
+skill: implement-github-issue
+target: issue#12
+world:
+  issues:
+    - {number: 12, state: open, labels: [ready-for-agent, "agent:in-progress"], lease: live}
+expect:
+  result: "#12 skipped: another run holds the lease"
+  effects: []
