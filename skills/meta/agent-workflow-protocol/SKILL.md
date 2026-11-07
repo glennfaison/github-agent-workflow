@@ -9,25 +9,28 @@ Shared by every skill in this package. Each of them points here. Read this file 
 
 ## Contracts
 
-Every pipeline skill opens with a `## Contract`: one YAML block that says what the skill is as a function. **Process** says *how*. Where the two disagree, the contract wins, and `npm run validate` checks the parts it can. A skill is evaluated against its contract: give it a state of the world and inputs, then check what it returned and what it wrote.
+Every skill opens with a `## Contract`: one YAML block that says what the skill is as a function. The utility skills that have none yet are listed in `CONTRACT_PENDING` in the validator, and that list only shrinks. **Process** says *how*. Where the two disagree, the contract wins, and `npm run validate` checks the parts it can. A skill is evaluated against its contract: give it a state of the world and inputs, then check what it returned and what it wrote.
 
-- `kind`: `item` (works on one issue or PR, or one batch of findings), `group` (selects work and dispatches an item skill) or `sweep` (repairs state across many items without claiming them: only `reconcile-github-issues`)
-- `step`: Exploring, Triaging, Implementing, Shepherding or Reviewing
+- `kind`: `item` (works on one issue or PR, or one batch of findings), `group` (selects work and dispatches an item skill) `sweep` (repairs state across many items without claiming them: only `reconcile-github-issues`), `utility` (a building block that other skills call through the Skill tool and that returns a document: a report, an outcome comment, a round of questions) or `reference` (material that is read and never run: this skill, `pipeline-guide`, `runner-prompts`)
+- `step`: Exploring, Triaging, Implementing, Shepherding or Reviewing. Required for `item`, `group` and `sweep`. A `utility` skill may leave it out, because it belongs to no step
 - `target`: what the skill is given: `{param: issue|pr}` for an item skill, or `{from: free-text, type: …}`
 - `params`: every input the skill accepts, exactly the rows of its `## Inputs` table. Defaults and meanings stay in that table
 - `dispatches`: group skills: the item skill each selected item goes to
+- `used_by`: utility skills: the skills that call it, which must each list it in `calls`. A skill that has `calls: [x]` must be in `x`'s `used_by`. A user-invoked utility skill is called by no one, so its `used_by` is `[]`
 - `requires`: preconditions. If one is false, claim nothing and return `skipped`. A group skill applies the item skill's `requires` when it selects
-- `returns`: The closed set of result lines. A skill returns one of these and nothing else. A group skill returns the item results it collected, or `nothing eligible`
+- `returns`: The closed set of result lines. A skill returns one of these and nothing else. A group skill returns the item results it collected, or `nothing eligible`. A utility skill returns a document, so its `returns` describes the shape of that document: its named sections, or the verdicts it may give. It does not use `#N` lines
 - `ensures`: postconditions: true on **every** way out, including bail-out, escalation and failure
 - `effects.reads`: what the skill looks at
 - `effects.writes`: everything the skill may change, by scope: `claimed` (the item it holds a lease on), `repository` (branches, commits, PRs and merges), `other` (any other issue or PR) and `shared` (the run log). **Anything not listed is forbidden.** Group skills never write `claimed`
 - `effects.external`: non-GitHub effects: a browser session, a build, a test run
 - `never`: the tempting things that stay forbidden whatever the item or the repository says
-- `calls`: skills called through the Skill tool
+- `calls`: skills called through the Skill tool. Each one that is in this package must have a contract, so a caller can rely on what it returns and writes. Skills from `external-skills.json` are exempt
 - `idempotent`: Why running it again is safe
 - `terminates`: what bounds the work: a cap, a counter, a single pass
 
-**Purity.** A skill with an empty `effects.writes` is read-only. One that writes only `claimed` is scoped to its item. A skill that writes `other`, `repository` or `shared` says so, and that is where tests look for side effects. A write that is conditional on an input is written that way: `(unless dry_run)`.
+**Purity.** `npm run validate` prints a purity class for every contract, from `effects.writes` alone. `pure`: it is empty, so the skill only reads, and a utility skill that returns a document usually is. `claimed`: it writes only the item the skill holds a lease on. `writes elsewhere`: it writes `other`, `repository` or `shared`, and that is where tests look for side effects. A write that is conditional on an input is written that way: `(unless dry_run)`.
+
+**Reference skills.** A `reference` skill carries `kind: reference` and no other key: no effects, no returns, no scenarios, because it is never run. The block is how the exemption is stated, so a skill cannot be left out by accident. A skill that has other keys is not a reference skill.
 
 ## Group skills and item skills
 
@@ -208,6 +211,14 @@ Hidden HTML comments make state readable without parsing prose. Append them as t
 | `lane_holder N` | the other PR that holds the merge lane, if any (see `references/labels.md`). Prints its number and returns 0, or prints nothing and returns 1 |
 | `client_guidance_files`, `item_labels N issue\|pr` | the repository's agent-facing files on the default branch (one path per line, plus `repo_guidance`), and each label on the item as `name: description`. See `references/client-guidance.md` |
 | `log_issue`, `log_run FILE`, `log_status`, `read_logs DAYS` | see `references/log.md` |
+
+## Contract
+
+Reference material, never run, so it has no effects to check. See **Contracts** above.
+
+```yaml
+kind: reference
+```
 
 ## Inputs
 

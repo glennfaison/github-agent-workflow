@@ -33,7 +33,7 @@ Call a skill by its name through the Skill tool (or `/name` where your runner ha
 | `merge-safety` | utility | Judging whether a PR is safe for an agent to merge. Called by `review-github-pr` |
 | `retrospective` | utility | Reviewing agent run-log issues and suggesting skill or process improvements |
 
-Every pipeline skill opens with a `## Contract`: what it needs before it runs, the results it can return, what it guarantees on every way out, and everything it may write. Read the contract to know what a skill does. Read its Process to know how.
+Every skill opens with a `## Contract`: what it needs before it runs, the results it can return, what it guarantees on every way out, and everything it may write. A utility skill's contract also names the skills that call it, and a reference skill's says only that it is reference material. Read the contract to know what a skill does. Read its Process to know how.
 
 **Group skills** select the work and dispatch it. Run one on a schedule. **Item skills** do the work on one issue or PR. Run one by hand on a number. **Utility skills** are building blocks that know nothing about GitHub plumbing. User-invoked skills can only be run by a person: no other skill can call them.
 
@@ -56,6 +56,14 @@ The steps never call each other. They coordinate through labels, hidden marker c
 | Implementing | Opens a PR and sets `agent:pr-open` on the issue and `agent:needs-work` on the PR. Lease: `agent:in-progress` |
 | Shepherding | Fixes failures, then the ready handoff and `agent:ready-for-review`. Lease: `agent:in-progress` |
 | Reviewing | Merges pinned to the reviewed commit, or the review handoff and back to `agent:needs-work`. Lease: `agent:in-progress` |
+
+## Contract
+
+Reference material, never run, so it has no effects to check. See **Contracts** in the protocol.
+
+```yaml
+kind: reference
+```
 
 ## Inputs
 

@@ -8,6 +8,14 @@ disable-model-invocation: true
 
 Print the copy-paste prompts a scheduler, webhook or person gives to a runner. Each block names one pipeline skill and lists **every** input that skill takes, with its default as the value, so nothing a skill accepts is hidden.
 
+## Contract
+
+It only prints text and writes nothing, but it is run by hand, so it is exempt from the rest of the contract like the other reference skills. See **Contracts** in the protocol.
+
+```yaml
+kind: reference
+```
+
 ## Inputs
 
 **Free text.** Which step or skill the prompts are for (for example "triage", "review-github-prs"), and optionally the repository as `owner/repo`. With no step named, print every block.

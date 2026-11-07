@@ -15,9 +15,12 @@
 //   - nothing repository-specific has leaked into skills/, scripts/ or tests/
 //   - every section a skill cites ("**Trust** in the protocol", "its **X** section") exists
 //   - the protocol's Defaults table names exactly the skills that list each input
-//   - every pipeline skill has a valid `## Contract` (scripts/contracts.mjs): its params are its Inputs
-//     table, its results are a closed set, its effects are listed by scope, and the prose no longer
-//     carries Eligibility, Outputs, Result or Never sections of its own
+//   - every promoted skill has a valid `## Contract` (scripts/contracts.mjs), except those in
+//     CONTRACT_PENDING: its params are its Inputs table, its results are a closed set, its effects are
+//     listed by scope, and the prose no longer carries Eligibility, Outputs, Result or Never sections of
+//     its own. Reference skills say `kind: reference` and are exempt from the rest. A skill that another
+//     skill calls must have one, and a utility skill's `used_by` must list its callers
+//   - each skill's purity class (pure, claimed, writes elsewhere) is printed
 // Package-wide:
 //   - .claude-plugin/plugin.json lists exactly the promoted skills
 //   - bucket READMEs and the root README link every skill
@@ -27,7 +30,7 @@ import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
-import { checkContracts } from "./contracts.mjs";
+import { checkContracts, purity } from "./contracts.mjs";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const NOT_PROMOTED = new Set(["deprecated", "in-progress"]);
@@ -41,6 +44,17 @@ const LEAKS = [
   [/\.agents\/skills\/agent-workflow-protocol/, "hard-codes the protocol skill's path"],
   [/--base[= ]+"?`?(?:develop|main)`?/, "hard-codes a PR base branch (use $pr_base_branch)"],
 ];
+
+// Skills that do not have a `## Contract` yet. A pipeline skill may call one. Each is waiting for its own
+// change (see ADR 0013), and each change removes its name here: the check fails if a skill that has a
+// contract is still listed. Do not add to this list.
+const CONTRACT_PENDING = new Set([
+  "grill-via-github-comments",
+  "merge-safety",
+  "retrospective",
+  "setup-github-agent-workflow",
+  "unattended-triage",
+]);
 
 const errors = [];
 const err = (where, msg) => errors.push(`${where}: ${msg}`);
@@ -289,14 +303,18 @@ if (protocol) {
 }
 
 // ---- contracts ---------------------------------------------------------------------------------
+let contracts = new Map();
 {
-  const pipeline = skills
-    .filter((x) => x.bucket === "pipeline")
+  const withInputs = skills
+    .filter((x) => x.promoted)
     .map((x) => ({
       ...x,
       inputKeys: [...(inputSection(x.body) ?? "").matchAll(/^\|\s*`([a-z][a-z0-9_]*)`\s*\|/gm)].map((m) => m[1]),
     }));
-  for (const e of checkContracts(pipeline, byName, external).errors) errors.push(e);
+  const result = checkContracts(withInputs, byName, external, { pending: CONTRACT_PENDING });
+  for (const e of result.errors) errors.push(e);
+  contracts = result.contracts;
+  for (const n of CONTRACT_PENDING) if (!byName.has(n)) err("scripts/validate-skills.mjs", `CONTRACT_PENDING lists \`${n}\`, which is not a skill in this package`);
 }
 
 // ---- plugin manifest -----------------------------------------------------
@@ -333,3 +351,12 @@ if (errors.length) {
   process.exit(1);
 }
 console.log(`${skills.length} skills OK (${skills.filter((s) => s.promoted).length} promoted, ${skills.filter((s) => s.userInvoked).length} user-invoked)`);
+// What each contract lets its skill change: the places a test has to look for side effects.
+{
+  const rows = [...contracts].map(([name, c]) => [purity(c) ?? "?", name]).sort((a, b) => a[0].localeCompare(b[0]) || a[1].localeCompare(b[1]));
+  const width = Math.max(...rows.map(([p]) => p.length), 0);
+  console.log("\nPurity (from effects.writes):");
+  for (const [p, name] of rows) console.log(`  ${p.padEnd(width)}  ${name}`);
+  const pending = [...CONTRACT_PENDING].filter((n) => !contracts.has(n)).sort();
+  if (pending.length) console.log(`  ${"no contract yet".padEnd(width)}  ${pending.join(", ")}`);
+}
