@@ -22,6 +22,7 @@ skills/<bucket>/<skill>/SKILL.md     exactly three levels deep
 ## Rules
 
 - **Add or move a skill, and touch these places:** the bucket `README.md`, the root `README.md`, the guide's table, and the skill's `agents/openai.yaml`. Then run `npm run sync`, which regenerates `.claude-plugin/plugin.json` and the runner prompts. `npm run validate` checks all of it.
+- **Every promoted skill has a `## Contract`** (`kind: item | group | sweep | utility | reference`). A skill a pipeline skill calls must have one, and a utility skill lists its callers in `used_by`. A skill with no contract yet is named in `CONTRACT_PENDING` in `scripts/validate-skills.mjs`: remove it from there when you add one, never add to that list. See **Contracts** in `agent-workflow-protocol`.
 - **`name` must equal the directory name.** Harnesses discover skills by directory, so a mismatch hides the skill.
 - **A skill's `description` must never contain an unquoted `: ` or ` #`.** It is invalid YAML and harnesses skip the skill. Reword it.
 - **Skills reach each other through the Skill tool, never through paths or links.** "Call the Skill tool with `name`". A skill's own files (`references/`, `scripts/`) are read relative to its `SKILL.md`. Where a skill lives depends on how the package was installed, and installers flatten the buckets.
