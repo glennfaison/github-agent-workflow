@@ -12,7 +12,7 @@ import { parse } from "yaml";
 export const STEPS = ["Exploring", "Triaging", "Implementing", "Shepherding", "Reviewing"];
 export const PIPELINE_KINDS = ["item", "group", "sweep"];
 export const KINDS = [...PIPELINE_KINDS, "utility", "reference"];
-export const WRITE_SCOPES = ["claimed", "repository", "other", "shared"];
+export const WRITE_SCOPES = ["claimed", "repository", "other", "shared", "unmodelled"];
 
 const COMMON = ["kind", "step", "params", "requires", "returns", "ensures", "effects", "never", "calls", "idempotent", "terminates"];
 // A utility skill is called from other skills and has no step of its own, but says who calls it.

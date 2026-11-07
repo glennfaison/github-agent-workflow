@@ -7,14 +7,17 @@
 //   3. Do the invariants hold in the world after the effects (one state label, lease released, ...)?
 //   4. Do the executable eligibility oracles agree with the result?
 //
-// It does not run a skill. A real run is checked the same way: diff the world before and after,
-// turn the diff into effects, and pass the result line. See docs/adr/0012-scenarios.md.
+// It does not run a skill. A real run is checked the same way: `diffWorlds(before, after)` turns the
+// change a run left behind into effects, and the result line goes with them. See docs/adr/0012-scenarios.md.
+
+import { isDeepStrictEqual } from "node:util";
 
 export const MUTEX_ISSUE = ["needs-info", "ready-for-agent", "ready-for-human", "agent:pr-open"];
 export const MUTEX_PR = ["agent:needs-work", "agent:ready-for-review", "agent:human-merge"];
 export const LEASE_LABELS = ["agent:triage", "agent:in-progress"];
 const REPOSITORY_OPS = ["push", "merge", "delete_branch", "create_pr"];
-const OPS = ["label_add", "label_remove", "comment", "close", "push", "merge", "delete_branch", "create_pr", "create_issue", "review_request"];
+// `unmodelled` is not something a skill does: diffWorlds reports a change it cannot express with it.
+const OPS = ["label_add", "label_remove", "comment", "close", "push", "merge", "delete_branch", "create_pr", "create_issue", "review_request", "unmodelled"];
 
 /** "pr#40" -> { kind: "pr", n: 40 } */
 export function ref(t) {
@@ -127,6 +130,7 @@ export const ORACLES = {
 
 /** Which scope of `effects.writes` an effect falls in. */
 export function scopeOf(effect, ctx) {
+  if (effect.op === "unmodelled") return "unmodelled";
   if (REPOSITORY_OPS.includes(effect.op)) return "repository";
   if (effect.op === "comment") {
     const t = item(ctx.world, effect.target);
@@ -136,14 +140,21 @@ export function scopeOf(effect, ctx) {
   return "other";
 }
 
+/** The item that a `create_pr` or `create_issue` effect adds to the world `w`. */
+export function createdItem(w, e) {
+  if (e.op === "create_pr") return { number: e.number, state: "open", labels: e.labels ?? [], draft: false, head: e.sha ?? "new", base: e.base ?? w.default_branch ?? "main", checks: [], openFindings: 0, closes: e.closes ?? [], comments: [] };
+  return { number: e.number, state: "open", labels: e.labels ?? [], comments: [] };
+}
+
 /** Apply effects to a copy of the world. Throws when an effect is impossible. */
 export function applyEffects(world, effects) {
   const w = structuredClone(world);
   w.issues ??= []; w.prs ??= [];
   for (const e of effects) {
     if (!OPS.includes(e.op)) throw new Error(`unknown effect op \`${e.op}\``);
-    if (e.op === "create_pr") { w.prs.push({ number: e.number, state: "open", labels: e.labels ?? [], draft: false, head: e.sha ?? "new", base: e.base ?? w.default_branch ?? "main", checks: [], openFindings: 0, closes: e.closes ?? [], comments: [] }); continue; }
-    if (e.op === "create_issue") { w.issues.push({ number: e.number, state: "open", labels: e.labels ?? [], comments: [] }); continue; }
+    if (e.op === "create_pr") { w.prs.push(createdItem(w, e)); continue; }
+    if (e.op === "create_issue") { w.issues.push(createdItem(w, e)); continue; }
+    if (e.op === "unmodelled") continue; // a change the checker cannot express: scope-checked, never applied
     const t = item(w, e.target);
     if (!t) throw new Error(`effect ${e.op} targets ${e.target}, which is not in the world`);
     t.labels ??= []; t.comments ??= [];
@@ -161,6 +172,114 @@ export function applyEffects(world, effects) {
     }
   }
   return w;
+}
+
+// ---- diffWorlds: what a run changed, as effects ----------------------------------------------------
+
+// What a world is, for comparing two of them. Labels are a set. Items are ordered by number. A comment
+// is its marker and its text: who wrote it, and whether that author is trusted, belong to the world and
+// are not something a run does. `pushed` says what the run did, not what the world is, and a branch that is
+// not deleted is the same as one with no `branchDeleted`.
+export function canonicalWorld(world) {
+  const item = (kind) => (i) => {
+    const c = JSON.parse(JSON.stringify(i)); // plain data: drops `undefined`
+    c.labels = [...new Set(c.labels ?? [])].sort();
+    c.comments = (c.comments ?? []).map((m) => ({ marker: m.marker, text: m.text })).map((m) => JSON.parse(JSON.stringify(m)));
+    if (kind === "pr") { delete c.pushed; if (!c.branchDeleted) delete c.branchDeleted; }
+    return c;
+  };
+  const { issues = [], prs = [], ...rest } = JSON.parse(JSON.stringify(world));
+  return {
+    ...rest,
+    issues: issues.map(item("issue")).sort((a, b) => a.number - b.number),
+    prs: prs.map(item("pr")).sort((a, b) => a.number - b.number),
+  };
+}
+
+/** True when two worlds are the same world by `canonicalWorld`. */
+export const sameWorld = (a, b) => isDeepStrictEqual(canonicalWorld(a), canonicalWorld(b));
+
+const MODELLED = { issue: ["number", "labels", "comments", "state"], pr: ["number", "labels", "comments", "state", "head", "pushed", "branchDeleted"] };
+const defined = (o) => Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined));
+
+/**
+ * The net effects that turn `before` into `after`, in the ops `applyEffects` accepts, so that
+ * `sameWorld(applyEffects(before, diffWorlds(before, after)), after)` holds whenever the result has no
+ * `unmodelled` effect. A label added and removed in one run does not appear. The lease label and the
+ * `agent:lease` comment are ordinary effects here: the checker adds a claim's marker to a scenario's
+ * effects itself, so a caller that passes a diff to `checkScenario` leaves that comment out of it.
+ *
+ * Anything that no op can express (a changed title, body, checks or base; an edited or removed comment;
+ * a reopened item; a removed item) becomes `{ op: "unmodelled", target, field, before, after }`.
+ * `checkScenario` rejects it unless the contract lists an `unmodelled` write scope. `review_request`
+ * changes nothing in a world, so a diff never contains one.
+ *
+ * @returns {object[]} effects: creations first, then each item's changes, then `unmodelled` ones
+ */
+export function diffWorlds(before, after) {
+  const created = [], changed = [], unmodelled = [];
+  const odd = (target, field, b, a) => unmodelled.push({ op: "unmodelled", target, field, before: b, after: a });
+  const kinds = [["issue", "issues"], ["pr", "prs"]];
+
+  const diffItem = (kind, b, a) => {
+    const target = `${kind}#${a.number}`;
+    const out = [];
+    const bl = new Set(b.labels ?? []), al = new Set(a.labels ?? []);
+    for (const label of bl) if (!al.has(label)) out.push({ op: "label_remove", target, label });
+    for (const label of al) if (!bl.has(label)) out.push({ op: "label_add", target, label });
+
+    if (kind === "pr" && a.head !== b.head) {
+      if (typeof a.head === "string") out.push({ op: "push", target, sha: a.head });
+      else odd(target, "head", b.head, a.head);
+    }
+
+    const bc = b.comments ?? [], ac = a.comments ?? [];
+    const same = (x, y) => x.marker === y.marker && x.text === y.text;
+    if (bc.length > ac.length || bc.some((c, i) => !same(c, ac[i]))) odd(target, "comments", bc, ac);
+    else for (const c of ac.slice(bc.length)) out.push({ op: "comment", target, ...defined({ marker: c.marker, text: c.text }) });
+
+    if (a.state !== b.state) {
+      const open = b.state === "open" || b.state === undefined;
+      if (open && a.state === "closed") out.push({ op: "close", target });
+      else if (open && kind === "pr" && a.state === "merged") out.push({ op: "merge", target, ...defined({ sha: typeof a.head === "string" ? a.head : undefined }) });
+      else odd(target, "state", b.state, a.state);
+    }
+
+    if (kind === "pr" && Boolean(a.branchDeleted) !== Boolean(b.branchDeleted)) {
+      if (a.branchDeleted) out.push({ op: "delete_branch", target });
+      else odd(target, "branchDeleted", b.branchDeleted, a.branchDeleted);
+    }
+
+    for (const k of new Set([...Object.keys(b), ...Object.keys(a)])) {
+      if (MODELLED[kind].includes(k)) continue;
+      if (!isDeepStrictEqual(b[k], a[k])) odd(target, k, b[k], a[k]);
+    }
+    changed.push(...out);
+  };
+
+  for (const [kind, key] of kinds) {
+    const was = new Map((before[key] ?? []).map((i) => [i.number, i]));
+    const now = new Map((after[key] ?? []).map((i) => [i.number, i]));
+    for (const n of [...was.keys()].sort((x, y) => x - y)) if (!now.has(n)) odd(`${kind}#${n}`, "(removed)", was.get(n), undefined);
+    for (const n of [...now.keys()].sort((x, y) => x - y)) {
+      const a = now.get(n);
+      if (was.has(n)) { diffItem(kind, was.get(n), a); continue; }
+      // a new item: create it, then diff what is left against what the creation gives
+      const e = kind === "pr"
+        ? { op: "create_pr", number: n, labels: [...new Set(a.labels ?? [])], ...defined({ sha: typeof a.head === "string" ? a.head : undefined, base: a.base }), closes: a.closes ?? [] }
+        : { op: "create_issue", number: n, labels: [...new Set(a.labels ?? [])] };
+      created.push(e);
+      const stub = applyEffects({ issues: [], prs: [], default_branch: before.default_branch }, [e]);
+      diffItem(kind, (kind === "pr" ? stub.prs : stub.issues)[0], a);
+    }
+  }
+
+  const { issues: _i, prs: _p, ...restBefore } = before;
+  const { issues: _i2, prs: _p2, ...restAfter } = after;
+  for (const k of new Set([...Object.keys(restBefore), ...Object.keys(restAfter)])) {
+    if (!isDeepStrictEqual(restBefore[k], restAfter[k])) odd("world", k, restBefore[k], restAfter[k]);
+  }
+  return [...created, ...changed, ...unmodelled];
 }
 
 export function matchesReturn(line, returns) {
@@ -206,7 +325,9 @@ export function checkScenario(contract, sc) {
   for (const e of work) {
     let scope;
     try { scope = scopeOf(e, ctx); } catch (err) { bad(err.message); continue; }
-    if (!allowed.includes(scope)) bad(`${e.op} on ${e.target ?? `#${e.number}`} is a \`${scope}\` write, which the contract does not allow`);
+    if (allowed.includes(scope)) continue;
+    if (e.op === "unmodelled") bad(`the run changed \`${e.field}\` of ${e.target}, which the checker cannot model, and the contract lists no \`unmodelled\` write`);
+    else bad(`${e.op} on ${e.target ?? `#${e.number}`} is a \`${scope}\` write, which the contract does not allow`);
   }
   if (outcome === "skipped" && work.length) bad("skipped must leave no effects");
   if (outcome === "noop" && work.length) bad("noop may leave only the lease comment");
