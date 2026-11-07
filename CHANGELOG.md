@@ -1,5 +1,23 @@
 # github-agent-workflow
 
+## 1.10.0
+
+### Minor Changes
+
+- ce94b8f: The contract format now covers utility and reference skills (ADR 0013). `kind: utility` has an optional `step`, a `used_by` that lists the skills that call it, and a `returns` that describes a document (named sections, an allowed set of verdicts) rather than `#N` lines. `kind: reference` carries no other key, so `pipeline-guide`, `agent-workflow-protocol` and `runner-prompts` are exempt on the record. An empty `effects.writes` means a skill is pure, and `npm run validate` now prints a purity class (`pure`, `claimed`, `writes elsewhere`) for every contract. Every skill a contracted skill calls must have a contract, and a utility skill's `used_by` must list its callers. `CONTRACT_PENDING` names the five skills that have no contract yet (`unattended-triage`, `grill-via-github-comments`, `merge-safety`, `retrospective`, `setup-github-agent-workflow`); each follow-up removes its own name. No skill behaviour changes.
+- 479906e: Every step now reads the client repository's own agent guidance (`AGENTS.md`, `CLAUDE.md`, contributing guide, templates, and label descriptions) before it acts, and follows it over this package's defaults. An issue the repository says to keep open (for example one labelled `evergreen`) is never closed: the PR uses `Refs #N` instead of `Closes #N`, Reviewing and Triaging leave it open after a merge, dedupe does not close it, and an issue GitHub closed anyway is reopened. New helpers `client_guidance_files` and `item_labels`; `repo_guidance` is now read by Exploring's filing step, Triaging, Implementing, Shepherding and Reviewing.
+- b6f8cb2: Fixes the ten gaps found while writing the skill contracts (ADR 0011).
+
+  New inputs: `write_log` (default `true`) on the four item skills, so a dispatched item no longer writes a second run-log entry; `lease_held` (default `false`), so a nested call can borrow its caller's lease; and `limit` on `file-github-issues`. Group skills now pass the item its URL, `write_log=false` and every group input the item also accepts, where a sub-agent used to get only the URL and lose `runner`, `unattended` and `trusted_authors`.
+
+  New results: `#N noop: <reason>` (claimed, nothing to do, released), `#N not ready: <reason>` from `review-github-pr`, and `deferred: over limit` from `file-github-issues`. `skipped` now always means nothing was claimed.
+
+  `shepherd-github-pr` now treats a conflicting branch as work whatever its checks say, and reads the merge lane and merge state before claiming, so a PR that can only wait no longer collects a lease comment on every run. Eligibility checks only read: `clear_stale_lease` is no longer part of them.
+
+  New skill `reconcile-github-issues`, which takes over the housekeeping that `triage-github-issues` did (closing issues whose PR merged, abandoned PRs, label repair) and clears stale lease labels. The rule for what an issue becomes after its PRs settle is now one reference, `references/issue-after-pr.md`. `triage-github-issue` reconciles a prior trusted outcome before it decides, not after. `explore_batch` is always `5`; it no longer drops to `3` on a "large" backlog.
+
+- f013512: Every pipeline skill now opens with a `## Contract`: a YAML block giving its preconditions (`requires`), the closed set of result lines it can return (`returns`), its postconditions (`ensures`), every side effect by scope (`effects`), what it must never do, the skills it calls, and why it is idempotent and terminates. The contract replaces the separate Eligibility, Context read, Outputs, Result, Never and Success criteria sections. Behaviour is unchanged, with two corrections to the documented results: `triage-github-issue` and `implement-github-issue` now list `#N escalated: <reason>`, which their steps could already produce. `npm run validate` checks every contract against its skill (new `scripts/contracts.mjs`, with tests). `file-github-issues`' Inputs table is split into two valid tables, and `AGENTS.md` now lists `runner-prompts` as a meta, user-invoked skill. See `docs/adr/0010-skills-as-functions-with-contracts.md`.
+
 ## 1.9.0
 
 ### Minor Changes
