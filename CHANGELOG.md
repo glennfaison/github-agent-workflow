@@ -1,5 +1,15 @@
 # github-agent-workflow
 
+## 1.10.1
+
+### Patch Changes
+
+- f92015c: `diffWorlds(before, after)` in `scripts/scenario.mjs` turns the change a run left behind into the effects the scenario checker takes, so a real run can be judged by the same scope, invariant and oracle checks as a golden scenario. A change that no effect can express (a title or body edit, an edited or removed comment, a reopened item) is reported as an `unmodelled` effect, which `checkScenario` rejects unless the contract lists a new `unmodelled` write scope. Tests round-trip every golden scenario and 600 generated worlds.
+- f25834a: `merge-safety` has a `## Contract` (`kind: utility`, pure, `used_by: [review-github-pr]`) and five scenarios: a breaking change and a migration with no rollback plan (BLOCK), a clean small PR (PASS), and a moved head and a pending check (HOLD). The scenario checker has a mode for a skill that returns a document: the report must have the contract's lines and a verdict it allows, a pure skill must leave no effects, and the world settles what it can (a draft, a pending check or a head that is not the pinned one must give HOLD). The coverage gate counts a utility skill's verdicts. One behaviour is now written down: when `head` is given and is not the PR's current head, `merge-safety` assesses nothing and reports HOLD. See ADR 0013.
+- e5fad13: Scenario checks now have an eligibility oracle for every item skill: `triage-github-issue`, `implement-github-issue` and `review-github-pr` join `shepherd-github-pr`. Each mirrors its skill's `requires`, models the lease as `lease: live | stale | none` on the item, and honours `lease_held`. A test compares each skill's number of `requires` entries with the oracle's, so a changed precondition prompts a look at the oracle. A skipped item no longer has to be free of lease labels, because the label may belong to the run that holds it. Test tooling only, with no change to any skill. See `docs/adr/0012-scenarios.md`.
+- cd2e13c: `docs/RUNNERS.md` now covers the sweeper and the newer inputs. It says when to schedule `reconcile-github-issues` (and that Triaging also runs it), what a runner that dispatches items itself must pass (the item's URL, `write_log=false` and the group's inputs), and where `write_log`, `lease_held` and `limit` are defined. The README's schedule table lists the sweeper.
+- 87feef1: `tests/lib.test.sh` now checks for `jq`, `git` and `node` first and exits with one line naming the missing tool, instead of printing dozens of `jq: command not found` errors and ending with a long list of failures. The hooks check in `npm test` now says how to install the hooks (`npm ci`) and how to skip the check (`HUSKY=0`). `AGENTS.md` lists what the checks need.
+
 ## 1.10.0
 
 ### Minor Changes
