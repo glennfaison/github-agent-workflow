@@ -22,7 +22,7 @@ This package stays runner-agnostic: it does not run a product `npm ci` or instal
 
 ## Prompts
 
-Schedule the **group skill** of each step. Run an **item skill** by hand, with its issue or PR as a number or URL on the command line (or as `issue=N` / `pr=N` on a line of its own).
+Schedule the **group skill** of each step, and optionally the **sweeper**, `reconcile-github-issues` (see [Cadence](#cadence-starting-point)). Run an **item skill** by hand, with its issue or PR as a number or URL on the command line (or as `issue=N` / `pr=N` on a line of its own).
 
 A prompt is the skill's command plus any `key=value` inputs, one per line. The shortest useful prompt is one line:
 
@@ -36,18 +36,37 @@ For the full prompt of any skill, with **every** input it takes and its default 
 /runner-prompts
 ```
 
-It prints one block per pipeline skill, so a runner edits only what it cares about and deletes the rest. An empty value means *no default*. The blocks are generated from the skills' own **Inputs** sections, so they cannot go stale ([ADR 0005](./adr/0005-runner-prompts-skill.md)).
+It prints one block per pipeline skill, including the sweeper, so a runner edits only what it cares about and deletes the rest. An empty value means *no default*. The blocks are generated from the skills' own **Inputs** sections, so they cannot go stale ([ADR 0005](./adr/0005-runner-prompts-skill.md)).
 
 Two inputs belong on every prompt: `runner=NAME`, so the run id and the run log say who did what, and `unattended`. It defaults to `true`, meaning no human is present and nobody answers questions. Set `unattended=false` when a person is at the keyboard.
+
+## A runner that dispatches items itself
+
+Group skills dispatch to item skills. If your runner starts its own sub-agent for each item (the protocol allows it), the sub-agent starts with none of the group's inputs, so give it three things:
+
+- the item's URL,
+- `write_log=false`, because the group writes the one run-log entry. Without it every item logs again,
+- every key-value input of the run that the item skill also lists, such as `runner`, `unattended` and `trusted_authors`. Without them the item falls back to its defaults and loses the runner name and the trusted accounts.
+
+Pass `lease_held=true` only when your runner already holds the item's lease and the lease is live. The item skill then neither claims nor releases it. The full rule is **Dispatching** under **Group skills and item skills** in [agent-workflow-protocol](../skills/meta/agent-workflow-protocol/SKILL.md).
 
 ## Inputs
 
 The canonical lists are the skills' own **Inputs** sections and the **Defaults** table in [agent-workflow-protocol](../skills/meta/agent-workflow-protocol/SKILL.md). Everything else, including the prompt blocks, is derived from them.
 
+Three inputs are mostly for skills that call other skills, and a scheduled prompt rarely sets them:
+
+| Input | Defined in | Meant for |
+|---|---|---|
+| `write_log` | the **Defaults** table, and the item skills and `reconcile-github-issues` | A caller that writes the run-log entry itself |
+| `lease_held` | the **Defaults** table, and the item skills | A nested call that borrows its caller's lease |
+| `limit` | `file-github-issues` | Capping one call. `explore-github-repo` passes `explore_batch` as `limit`, so set `explore_batch` on a schedule instead |
+
 ## Cadence (starting point)
 
 - Exploring: a few times a week
-- Triaging: daily
+- Triaging: daily. `triage-github-issues` runs `reconcile-github-issues` first, so a daily Triaging schedule already tidies issue state
+- Sweeping (`reconcile-github-issues`, optional): schedule it on its own when state should be tidied between Triaging runs, since stale lease labels and issues whose PR has merged are otherwise fixed only when Triaging runs. It claims nothing and a second run finds nothing to do, so overlapping with Triaging is safe
 - Implementing: as capacity allows
 - Shepherding / Reviewing: often enough that CI and review do not stall
 

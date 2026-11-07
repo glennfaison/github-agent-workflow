@@ -24,8 +24,9 @@ Each step is a pair of skills. A **group skill** selects the work (`/triage-gith
    | Implementing | `Run /implement-github-issues on github.com/OWNER/REPO` |
    | Shepherding | `Run /shepherd-github-prs on github.com/OWNER/REPO` |
    | Reviewing | `Run /review-github-prs on github.com/OWNER/REPO` |
+   | Sweeping (optional) | `Run /reconcile-github-issues on github.com/OWNER/REPO` |
 
-   The runner owns timing, frequency and triggers (a schedule, a webhook). The skills own what a run does. Add repository settings as key-value inputs on the prompt (see [Inputs and defaults](#inputs-and-defaults)); Exploring browses the live app when one is given. Run `/runner-prompts` for the full prompt of every skill, with all its inputs. [docs/RUNNERS.md](./docs/RUNNERS.md) covers what a runner needs and a starting cadence.
+   The runner owns timing, frequency and triggers (a schedule, a webhook). The skills own what a run does. Add repository settings as key-value inputs on the prompt (see [Inputs and defaults](#inputs-and-defaults)); Exploring browses the live app when one is given. Run `/runner-prompts` for the full prompt of every skill, with all its inputs. [docs/RUNNERS.md](./docs/RUNNERS.md) covers what a runner needs and a starting cadence. Triaging already runs the sweeper first; schedule `reconcile-github-issues` separately only to tidy issue state between Triaging runs.
 
 ## Skills
 
