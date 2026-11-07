@@ -4,6 +4,12 @@
 # Needs bash, jq, git and Node.js. No network and no real `gh`.
 set -u
 
+# Fail once, with one line, when a tool the stub `gh` or the tests rely on is missing. Without this
+# the suite keeps going and reports dozens of failures that are really one missing tool.
+for tool in jq git node; do
+  command -v "$tool" >/dev/null 2>&1 || { echo "tests/lib.test.sh needs $tool on PATH" >&2; exit 2; }
+done
+
 PKG="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 LIB="$PKG/skills/meta/agent-workflow-protocol/scripts/lib.sh"
 
