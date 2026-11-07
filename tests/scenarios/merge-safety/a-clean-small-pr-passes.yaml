@@ -1,0 +1,14 @@
+name: A small, reversible, green PR passes
+skill: merge-safety
+inputs: {pr: 33, head: h3}
+world:
+  prs:
+    - {number: 33, state: open, head: h3, base: main, mergeState: CLEAN, checks: [pass, pass], files: [docs/RUNNERS.md]}
+expect:
+  document:
+    Verdict: PASS
+    Breaking changes: None
+    Reversibility: "Low — documentation only, so a revert leaves nothing stranded."
+    GitHub readiness: "Not a draft, mergeable, checks green, no required review pending."
+    Blockers or next steps: None
+  effects: []

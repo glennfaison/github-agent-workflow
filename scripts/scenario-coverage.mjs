@@ -7,23 +7,42 @@ import { join, dirname } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { parse } from "yaml";
 import { extractContract } from "./contracts.mjs";
-import { matchesReturn } from "./scenario.mjs";
+import { matchesReturn, parseDocLine, docHead } from "./scenario.mjs";
 
 const PKG = join(dirname(fileURLToPath(import.meta.url)), "..");
-const skills = readdirSync(join(PKG, "skills/pipeline")).filter((n) => existsSync(join(PKG, "skills/pipeline", n, "SKILL.md"))).sort();
-/** @returns {{name: string, total: number, missing: string[]}[]} one row per non-group pipeline skill */
+const SKILLS = join(PKG, "skills");
+/** Every skill directory in the package, by name: `skills/<bucket>/<skill>`. */
+const skillDirs = () => readdirSync(SKILLS, { withFileTypes: true }).filter((b) => b.isDirectory()).flatMap((b) =>
+  readdirSync(join(SKILLS, b.name), { withFileTypes: true })
+    .filter((d) => d.isDirectory() && existsSync(join(SKILLS, b.name, d.name, "SKILL.md")))
+    .map((d) => ({ name: d.name, dir: join(SKILLS, b.name, d.name) })));
+/** The parsed contract of a skill, or null when it has none (yet) or is not a skill of this package. */
+export function contractOf(name) {
+  const found = skillDirs().find((s) => s.name === name);
+  const block = found && extractContract(readFileSync(join(found.dir, "SKILL.md"), "utf8"));
+  return block ? parse(block.yaml) : null;
+}
+const scenariosOf = (name) => {
+  const dir = join(PKG, "tests/scenarios", name);
+  return existsSync(dir) ? readdirSync(dir).filter((f) => f.endsWith(".yaml")).map((f) => parse(readFileSync(join(dir, f), "utf8"))) : [];
+};
+/**
+ * @returns {{name: string, total: number, missing: string[]}[]} one row per skill that is run and has a result to cover:
+ * a pipeline skill's result lines, or a utility skill's verdicts (the alternatives of the first line of `returns`)
+ */
 export function coverage() {
   const rows = [];
-  for (const name of skills) {
-    const c = parse(extractContract(readFileSync(join(PKG, "skills/pipeline", name, "SKILL.md"), "utf8")).yaml);
-    if (c.kind === "group") continue; // a group's results are its items' results
-    const dir = join(PKG, "tests/scenarios", name);
-    const results = existsSync(dir)
-      ? readdirSync(dir).filter((f) => f.endsWith(".yaml")).flatMap((f) => {
-          const sc = parse(readFileSync(join(dir, f), "utf8"));
-          return (sc.expect.results ?? [sc.expect.result]).flatMap((r) => [r, r.replace(/^would: /, "")]);
-        })
-      : [];
+  for (const { name } of skillDirs().sort((a, b) => a.name.localeCompare(b.name))) {
+    const c = contractOf(name);
+    if (!c || c.kind === "group" || c.kind === "reference") continue; // a group's results are its items' results; reference material is never run
+    if (c.kind === "utility") {
+      const first = parseDocLine(c.returns[0]);
+      const verdicts = first.alts.filter((a) => !a.includes("<")).map(docHead);
+      const seen = scenariosOf(name).map((sc) => docHead(sc.expect?.document?.[first.label] ?? ""));
+      rows.push({ name, total: verdicts.length, missing: verdicts.filter((v) => !seen.includes(v)).map((v) => `${first.label}: ${v}`) });
+      continue;
+    }
+    const results = scenariosOf(name).flatMap((sc) => (sc.expect.results ?? [sc.expect.result]).flatMap((r) => [r, r.replace(/^would: /, "")]));
     rows.push({ name, total: c.returns.length, missing: c.returns.filter((r) => !results.some((x) => matchesReturn(x, [r]))) });
   }
   return rows;

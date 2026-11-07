@@ -1,0 +1,14 @@
+name: A PR that drops a field of a public response is blocked
+skill: merge-safety
+inputs: {pr: 31, head: h1}
+world:
+  prs:
+    - {number: 31, state: open, head: h1, base: main, mergeState: CLEAN, checks: [pass], files: [src/api/orders.ts]}
+expect:
+  document:
+    Verdict: BLOCK
+    Breaking changes: "`GET /v1/orders` no longer returns `total` (src/api/orders.ts:48). Existing clients read it, and the issue does not ask for the removal."
+    Reversibility: "Low — a revert restores the field, and nothing is written to stored data."
+    GitHub readiness: "Not a draft, mergeable, checks green, no required review pending."
+    Blockers or next steps: "Keep `total` in the response, or version the endpoint and add a test for the old shape."
+  effects: []

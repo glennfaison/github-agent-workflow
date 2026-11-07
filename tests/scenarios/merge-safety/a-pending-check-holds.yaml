@@ -1,0 +1,14 @@
+name: A PR with a pending check is held
+skill: merge-safety
+inputs: {pr: 35, head: h6}
+world:
+  prs:
+    - {number: 35, state: open, head: h6, base: main, mergeState: CLEAN, checks: [pass, pending], files: [src/format.ts]}
+expect:
+  document:
+    Verdict: HOLD
+    Breaking changes: None
+    Reversibility: "Low — a pure formatting change with no stored state."
+    GitHub readiness: "Not a draft and mergeable, but the `build` check is still pending."
+    Blockers or next steps: "Wait for the `build` check to finish, then assess again."
+  effects: []
