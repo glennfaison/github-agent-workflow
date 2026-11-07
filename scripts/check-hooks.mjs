@@ -30,7 +30,7 @@ for (const h of HOOKS) {
 }
 
 if (problems.length) {
-  console.error(`hooks: not installed\n  - ${problems.join("\n  - ")}\nRun \`npm run prepare\` (or \`npm install\`) in the package root.`);
+  console.error(`hooks: not installed\n  - ${problems.join("\n  - ")}\nFix: run \`npm ci\` in the package root (or \`npm run prepare\` if dependencies are already installed); it installs husky and sets core.hooksPath to .husky/_. To skip this check on purpose, set HUSKY=0.`);
   process.exit(1);
 }
 console.log("hooks: installed");

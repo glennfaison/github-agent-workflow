@@ -61,6 +61,8 @@ Boilerplate every skill shares lives once in the protocol. Do not copy it back i
 
 ## Checks
 
+What the checks need on the machine: Node.js, `npm ci` run once (it installs dependencies and the git hooks), `jq` and `git` on `PATH` (`tests/lib.test.sh` drives a stub `gh` written in shell that uses `jq`, and exits with one line naming a missing tool), and installed hooks. `npm test` starts with `hooks:check`, which says how to install them; `HUSKY=0` skips it.
+
 ```bash
 npm run lint                  # syntax of .mjs, .sh, .json, .yml and skill front matter (scripts/lint-files.mjs)
 npm run validate
