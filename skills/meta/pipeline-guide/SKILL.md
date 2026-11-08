@@ -29,7 +29,7 @@ Call a skill by its name through the Skill tool (or `/name` where your runner ha
 | `review-github-prs` | group, Reviewing | Reviewing and merging the PRs that are ready |
 | `review-github-pr` | item, Reviewing | One specific ready PR should be reviewed and, when safe, merged |
 | `unattended-triage` | utility | Deciding an issue's category and state, and drafting its outcome comment for the caller to post, with nobody to ask. Called by `triage-github-issue` |
-| `grill-via-github-comments` | utility | Writing every question that is ready to ask as one round, each with a recommended answer. Called by `unattended-triage` |
+| `grill-via-github-comments` | utility | Drafting every question that is ready to ask as one round, each with a recommended answer. Called by `unattended-triage` |
 | `merge-safety` | utility | Judging whether a PR is safe for an agent to merge. Called by `review-github-pr` |
 | `retrospective` | utility | Reviewing agent run-log issues and suggesting skill or process improvements |
 

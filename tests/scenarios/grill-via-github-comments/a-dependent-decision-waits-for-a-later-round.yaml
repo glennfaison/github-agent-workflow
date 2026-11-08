@@ -1,0 +1,18 @@
+name: A decision that depends on an open one is left for a later round
+skill: grill-via-github-comments
+inputs: {subject: "Let teams share saved filters"}
+decisions:
+  - {id: A, open: true, needs: []}
+  - {id: B, open: true, needs: [A]}
+expect:
+  asks: [A]
+  document:
+    Outcome: asked
+    Questions:
+      - |
+        ❓ **Q1** - **Who can see a shared filter?**: Everyone in the workspace, or only members of the team that owns it?
+
+        ➡️ Only members of the owning team.
+    Waiting on those answers: "B, whether a person outside the team can copy a shared filter, depends on who can see it."
+    Findings: None
+  effects: []

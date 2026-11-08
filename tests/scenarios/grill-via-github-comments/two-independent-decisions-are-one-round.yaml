@@ -1,0 +1,22 @@
+name: Two independent open decisions are asked together, each with a recommended answer
+skill: grill-via-github-comments
+inputs: {subject: "Add CSV export to the reports page"}
+decisions:
+  - {id: A, open: true, needs: []}
+  - {id: B, open: true, needs: []}
+expect:
+  asks: [A, B]
+  document:
+    Outcome: asked
+    Questions:
+      - |
+        ❓ **Q1** - **Which columns?**: The report has twelve columns. Export all of them, or only the visible ones?
+
+        ➡️ Only the visible ones, so the file matches what the person sees.
+      - |
+        ❓ **Q2** - **Which delimiter?**: Comma, or the locale's list separator?
+
+        ➡️ Comma, with quoting, because every spreadsheet reads it.
+    Waiting on those answers: None
+    Findings: None
+  effects: []

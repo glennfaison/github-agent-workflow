@@ -1,0 +1,13 @@
+name: An open question the code answers is stated as a finding and not asked
+skill: grill-via-github-comments
+inputs: {subject: "Retry failed webhook deliveries"}
+decisions:
+  - {id: A, open: true, lookup: true}
+expect:
+  asks: []
+  document:
+    Outcome: nothing to ask
+    Questions: None
+    Waiting on those answers: None
+    Findings: "Deliveries already retry three times with backoff (src/webhooks/deliver.ts:61), so the request is about the limit, which the issue states."
+  effects: []
