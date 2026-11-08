@@ -47,9 +47,8 @@ const LEAKS = [
 
 // Skills that do not have a `## Contract` yet. A pipeline skill may call one. Each is waiting for its own
 // change (see ADR 0013), and each change removes its name here: the check fails if a skill that has a
-// contract is still listed. Do not add to this list.
+// contract is still listed. It is empty now, because every skill has a contract. Do not add to it.
 const CONTRACT_PENDING = new Set([
-  "setup-github-agent-workflow",
 ]);
 
 const errors = [];

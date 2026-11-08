@@ -1,0 +1,17 @@
+name: An existing agent label is reset to its description and an existing triage label is kept
+skill: setup-github-agent-workflow
+inputs: {}
+world:
+  labels:
+    - {name: "agent:stuck", description: "my own words"}
+    - {name: needs-info, description: "We need more from you"}
+  files:
+    AGENTS.md: |
+      # Agents
+expect:
+  effects:
+    - {op: labels_sync}
+  document:
+    Outcome: set up
+    Settings file: None
+    Next step: "Run /runner-prompts, then run each step once by hand and read its run-log comment before scheduling."

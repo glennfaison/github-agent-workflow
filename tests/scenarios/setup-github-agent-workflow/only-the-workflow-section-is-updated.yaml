@@ -1,0 +1,37 @@
+name: An existing settings section is updated and the rest of the file is kept
+skill: setup-github-agent-workflow
+inputs: {pr_base_branch: develop}
+world:
+  labels:
+    - from: labels.md
+  files:
+    AGENTS.md: |
+      # Agents
+
+      ## GitHub workflow
+
+      pr_base_branch: main
+      merge_method: squash
+
+      ## Testing
+
+      Run npm test.
+expect:
+  effects:
+    - op: write_file
+      path: AGENTS.md
+      text: |
+        # Agents
+
+        ## GitHub workflow
+
+        pr_base_branch: develop
+        merge_method: squash
+
+        ## Testing
+
+        Run npm test.
+  document:
+    Outcome: set up
+    Settings file: AGENTS.md
+    Next step: "Run /runner-prompts, then run each step once by hand and read its run-log comment before scheduling."

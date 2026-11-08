@@ -1,0 +1,27 @@
+name: An empty repository gets every label of labels.md and its settings recorded
+skill: setup-github-agent-workflow
+inputs: {pr_base_branch: develop}
+world:
+  labels: []
+  files:
+    AGENTS.md: |
+      # Agents
+
+      Be kind.
+expect:
+  effects:
+    - {op: labels_sync}
+    - op: write_file
+      path: AGENTS.md
+      text: |
+        # Agents
+
+        Be kind.
+
+        ## GitHub workflow
+
+        pr_base_branch: develop
+  document:
+    Outcome: set up
+    Settings file: AGENTS.md
+    Next step: "Run /runner-prompts, then run each step once by hand and read its run-log comment before scheduling."

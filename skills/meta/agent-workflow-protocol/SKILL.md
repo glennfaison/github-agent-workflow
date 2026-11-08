@@ -21,7 +21,7 @@ Every skill opens with a `## Contract`: one YAML block that says what the skill 
 - `returns`: The closed set of result lines. A skill returns one of these and nothing else. A group skill returns the item results it collected, or `nothing eligible`. A utility skill returns a document, so its `returns` describes the shape of that document: its named sections, or the verdicts it may give. It does not use `#N` lines
 - `ensures`: postconditions: true on **every** way out, including bail-out, escalation and failure
 - `effects.reads`: what the skill looks at
-- `effects.writes`: everything the skill may change, by scope: `claimed` (the item it holds a lease on), `repository` (branches, commits, PRs and merges), `other` (any other issue or PR), `shared` (the run log) and `unmodelled` (a change the scenario checker cannot express as an effect, such as an edit to a title or a body; no skill lists it today, and a scenario that finds one is rejected). **Anything not listed is forbidden.** Group skills never write `claimed`
+- `effects.writes`: everything the skill may change, by scope: `claimed` (the item it holds a lease on), `repository` (branches, commits, PRs and merges, and repository settings such as the label set and the agent instructions file), `other` (any other issue or PR), `shared` (the run log) and `unmodelled` (a change the scenario checker cannot express as an effect, such as an edit to a title or a body; no skill lists it today, and a scenario that finds one is rejected). **Anything not listed is forbidden.** Group skills never write `claimed`
 - `effects.external`: non-GitHub effects: a browser session, a build, a test run
 - `never`: the tempting things that stay forbidden whatever the item or the repository says
 - `calls`: skills called through the Skill tool. Each one that is in this package must have a contract, so a caller can rely on what it returns and writes. Skills from `external-skills.json` are exempt
@@ -82,21 +82,21 @@ A key-value pair and free text that name the same thing resolve to the pair. An 
 
 | Name | Default | Where it is used |
 |---|---|---|
-| `app_url` | *(none)* | `explore-github-repo` |
+| `app_url` | *(none)* | `explore-github-repo`, `setup-github-agent-workflow` |
 | `explore_batch` | `5` | `explore-github-repo` |
 | `log_window_days` | `14` | `explore-github-repo`, `triage-github-issues`, `triage-github-issue`, `implement-github-issues`, `implement-github-issue`, `shepherd-github-prs`, `shepherd-github-pr`, `review-github-prs`, `review-github-pr`, `reconcile-github-issues` |
 | `dedupe_closed_days` | `30` | `file-github-issues`, `triage-github-issue` |
-| `pr_base_branch` | `main` | `implement-github-issue`, `review-github-pr` |
-| `merge_method` | `squash` | `review-github-pr` |
-| `human_reviewer` | *(none)* | `shepherd-github-pr`, `review-github-pr` |
-| `build_cmd` | *(none)* | `implement-github-issue` |
-| `git_hooks_path` | *(none)* | `implement-github-issue`, `shepherd-github-pr`, `review-github-pr` |
-| `repo_guidance` | `AGENTS.md` | `file-github-issues`, `triage-github-issues`, `triage-github-issue`, `implement-github-issue`, `shepherd-github-pr`, `review-github-pr`, `reconcile-github-issues` |
+| `pr_base_branch` | `main` | `implement-github-issue`, `review-github-pr`, `setup-github-agent-workflow` |
+| `merge_method` | `squash` | `review-github-pr`, `setup-github-agent-workflow` |
+| `human_reviewer` | *(none)* | `shepherd-github-pr`, `review-github-pr`, `setup-github-agent-workflow` |
+| `build_cmd` | *(none)* | `implement-github-issue`, `setup-github-agent-workflow` |
+| `git_hooks_path` | *(none)* | `implement-github-issue`, `shepherd-github-pr`, `review-github-pr`, `setup-github-agent-workflow` |
+| `repo_guidance` | `AGENTS.md` | `file-github-issues`, `triage-github-issues`, `triage-github-issue`, `implement-github-issue`, `shepherd-github-pr`, `review-github-pr`, `reconcile-github-issues`, `setup-github-agent-workflow` |
 | `lease_ttl_triage` | `1 hour` | `triage-github-issue` |
 | `lease_ttl_implement` | `3 hours` | `implement-github-issue` |
 | `lease_ttl_pr` | `1 hour` | `shepherd-github-pr`, `review-github-pr` |
 | `ready_lane_ttl` | `2 hours` | `shepherd-github-pr` |
-| `human_merge_paths` | *(none)* | `review-github-pr` |
+| `human_merge_paths` | *(none)* | `review-github-pr`, `setup-github-agent-workflow` |
 | `triage_batch` | `5` | `triage-github-issues` |
 | `implement_batch` | `1` | `implement-github-issues` |
 | `shepherd_batch` | `3` | `shepherd-github-prs` |
@@ -106,7 +106,7 @@ A key-value pair and free text that name the same thing resolve to the pair. An 
 | `max_item_failures` | `3` | `triage-github-issue`, `implement-github-issue`, `shepherd-github-pr`, `review-github-pr` |
 | `runner` | `unknown` | `explore-github-repo`, `triage-github-issues`, `triage-github-issue`, `implement-github-issues`, `implement-github-issue`, `shepherd-github-prs`, `shepherd-github-pr`, `review-github-prs`, `review-github-pr`, `reconcile-github-issues` |
 | `unattended` | `true` | `explore-github-repo`, `file-github-issues`, `triage-github-issues`, `triage-github-issue`, `implement-github-issues`, `implement-github-issue`, `shepherd-github-prs`, `shepherd-github-pr`, `review-github-prs`, `review-github-pr`, `reconcile-github-issues` |
-| `trusted_authors` | *(none)* | `triage-github-issues`, `triage-github-issue`, `implement-github-issues`, `implement-github-issue`, `shepherd-github-prs`, `shepherd-github-pr`, `review-github-prs`, `review-github-pr`, `reconcile-github-issues` |
+| `trusted_authors` | *(none)* | `triage-github-issues`, `triage-github-issue`, `implement-github-issues`, `implement-github-issue`, `shepherd-github-prs`, `shepherd-github-pr`, `review-github-prs`, `review-github-pr`, `reconcile-github-issues`, `setup-github-agent-workflow` |
 | `write_log` | `true` | `triage-github-issue`, `implement-github-issue`, `shepherd-github-pr`, `review-github-pr`, `reconcile-github-issues` |
 | `lease_held` | `false` | `triage-github-issue`, `implement-github-issue`, `shepherd-github-pr`, `review-github-pr` |
 
