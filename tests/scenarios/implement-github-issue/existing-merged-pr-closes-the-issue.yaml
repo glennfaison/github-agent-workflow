@@ -7,6 +7,7 @@ world:
   prs:
     - {number: 40, state: merged, labels: [], head: h1, closes: [12]}
 expect:
+  rerun: ineligible
   result: "#12 already merged in #40"
   effects:
     - {op: label_remove, target: "issue#12", label: ready-for-agent}

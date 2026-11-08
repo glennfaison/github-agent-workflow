@@ -8,6 +8,7 @@ world:
   prs:
     - {number: 40, state: closed, labels: [], head: h1, closes: [12]}
 expect:
+  rerun: ineligible
   result: "#12 ready-for-human"
   effects:
     - {op: label_remove, target: "issue#12", label: ready-for-agent}

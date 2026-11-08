@@ -6,6 +6,7 @@ world:
   issues:
     - {number: 12, state: open, labels: [needs-triage, "agent:triage"], lease: stale}
 expect:
+  rerun: ineligible
   result: "#12 needs-info"
   effects:
     - {op: label_remove, target: "issue#12", label: "agent:triage"}

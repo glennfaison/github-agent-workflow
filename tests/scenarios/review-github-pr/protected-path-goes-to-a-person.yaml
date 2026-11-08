@@ -6,6 +6,7 @@ world:
   prs:
     - {number: 50, state: open, labels: [agent:ready-for-review], head: h1, readySha: h1, base: main, mergeState: CLEAN, checks: [pass], closes: [12], files: [.github/workflows/ci.yml]}
 expect:
+  rerun: ineligible
   result: "#50 handed to a human: protected-paths"
   effects:
     - {op: comment, target: "pr#50", marker: agent:human-merge}

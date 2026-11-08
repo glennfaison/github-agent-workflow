@@ -6,6 +6,7 @@ world:
     - {number: 7, state: open, labels: [ready-for-agent]}
     - {number: 12, state: open, labels: [needs-triage]}
 expect:
+  rerun: ineligible
   result: "#12 duplicate of #7"
   effects:
     - {op: comment, target: "issue#12"}

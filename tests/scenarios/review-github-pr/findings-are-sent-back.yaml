@@ -5,6 +5,7 @@ world:
   prs:
     - {number: 50, state: open, labels: [agent:ready-for-review], head: h1, readySha: h1, base: main, mergeState: CLEAN, checks: [pass], files: []}
 expect:
+  rerun: ineligible
   result: "#50 sent back: 2 open findings"
   effects:
     - {op: comment, target: "pr#50", marker: agent:handoff}

@@ -5,6 +5,7 @@ world:
   issues:
     - {number: 12, state: open, labels: [ready-for-agent]}
 expect:
+  rerun: ineligible
   result: "#12 escalated: needs a design decision"
   effects:
     - {op: comment, target: "issue#12", marker: agent:escalate}

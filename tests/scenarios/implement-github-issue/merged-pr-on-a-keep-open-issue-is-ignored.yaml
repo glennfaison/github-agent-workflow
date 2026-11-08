@@ -7,6 +7,7 @@ world:
   prs:
     - {number: 40, state: merged, labels: [], head: h1, closes: []}
 expect:
+  rerun: ineligible
   result: "#12 PR #41 opened"
   effects:
     - {op: create_pr, number: 41, labels: [agent:needs-work], closes: []}

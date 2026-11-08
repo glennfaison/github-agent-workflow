@@ -5,6 +5,7 @@ world:
   prs:
     - {number: 40, state: open, labels: [agent:needs-work], head: h1, base: main, mergeState: CLEAN, checks: [pass], openFindings: 0, closes: [12]}
 expect:
+  rerun: ineligible
   result: "#40 ready-for-review"
   effects:
     - {op: comment, target: "pr#40", marker: agent:handoff}

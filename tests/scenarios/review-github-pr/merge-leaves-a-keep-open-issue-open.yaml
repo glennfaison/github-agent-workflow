@@ -8,6 +8,7 @@ world:
   prs:
     - {number: 50, state: open, labels: [agent:ready-for-review], head: h1, readySha: h1, base: main, mergeState: CLEAN, checks: [pass], closes: [12], files: [src/a.js]}
 expect:
+  rerun: ineligible
   result: "#50 merged"
   effects:
     - {op: merge, target: "pr#50", sha: h1}

@@ -1,0 +1,16 @@
+name: A pass that died after posting the outcome is repeated without posting it again
+skill: triage-github-issue
+target: issue#15
+interrupted: true
+world:
+  issues:
+    - {number: 15, state: open, labels: [needs-triage]}
+expect:
+  rerun: eligible
+  effects:
+    - {op: label_add, target: "issue#15", label: agent:triage}
+    - {op: comment, target: "issue#15", marker: "agent:outcome", text: "Agent Brief"}
+  rerun_effects:
+    - {op: label_remove, target: "issue#15", label: needs-triage}
+    - {op: label_add, target: "issue#15", label: ready-for-agent}
+    - {op: label_remove, target: "issue#15", label: agent:triage}

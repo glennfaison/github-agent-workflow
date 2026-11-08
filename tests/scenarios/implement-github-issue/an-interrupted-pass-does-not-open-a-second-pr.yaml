@@ -1,0 +1,16 @@
+name: A pass that died after opening the PR is repeated without opening another
+skill: implement-github-issue
+target: issue#30
+interrupted: true
+world:
+  issues:
+    - {number: 30, state: open, labels: [ready-for-agent]}
+expect:
+  rerun: eligible
+  effects:
+    - {op: label_add, target: "issue#30", label: agent:in-progress}
+    - {op: create_pr, number: 41, labels: [agent:needs-work], closes: [30]}
+  rerun_effects:
+    - {op: label_remove, target: "issue#30", label: ready-for-agent}
+    - {op: label_add, target: "issue#30", label: agent:pr-open}
+    - {op: label_remove, target: "issue#30", label: agent:in-progress}

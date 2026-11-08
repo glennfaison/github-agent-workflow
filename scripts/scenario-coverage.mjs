@@ -7,7 +7,7 @@ import { join, dirname } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { parse } from "yaml";
 import { extractContract } from "./contracts.mjs";
-import { matchesReturn, parseDocLine, docHead } from "./scenario.mjs";
+import { matchesReturn, parseDocLine, docHead, ORACLES } from "./scenario.mjs";
 
 const PKG = join(dirname(fileURLToPath(import.meta.url)), "..");
 const SKILLS = join(PKG, "skills");
@@ -21,6 +21,21 @@ export function contractOf(name) {
   const found = skillDirs().find((s) => s.name === name);
   const block = found && extractContract(readFileSync(join(found.dir, "SKILL.md"), "utf8"));
   return block ? parse(block.yaml) : null;
+}
+/**
+ * @returns {string[]} the scenarios of a skill with an eligibility oracle that completed a run (not `skipped`) and
+ * have no `rerun`: what a second run would find is not said, and so not checked. An interrupted scenario has one.
+ */
+export function rerunGaps() {
+  return Object.keys(ORACLES).flatMap((name) => {
+    const dir = join(PKG, "tests/scenarios", name);
+    if (!existsSync(dir)) return [];
+    return readdirSync(dir).filter((f) => f.endsWith(".yaml")).flatMap((f) => {
+      const sc = parse(readFileSync(join(dir, f), "utf8"));
+      const result = (sc.expect.results ?? [sc.expect.result]).filter(Boolean)[0] ?? "";
+      return sc.expect.rerun === undefined && !/^#\d+ skipped/.test(result) ? [`${name}/${f}`] : [];
+    });
+  });
 }
 const scenariosOf = (name) => {
   const dir = join(PKG, "tests/scenarios", name);
@@ -42,7 +57,7 @@ export function coverage() {
       rows.push({ name, total: verdicts.length, missing: verdicts.filter((v) => !seen.includes(v)).map((v) => `${first.label}: ${v}`) });
       continue;
     }
-    const results = scenariosOf(name).flatMap((sc) => (sc.expect.results ?? [sc.expect.result]).flatMap((r) => [r, r.replace(/^would: /, "")]));
+    const results = scenariosOf(name).flatMap((sc) => (sc.expect.results ?? [sc.expect.result]).filter(Boolean).flatMap((r) => [r, r.replace(/^would: /, "")]));
     rows.push({ name, total: c.returns.length, missing: c.returns.filter((r) => !results.some((x) => matchesReturn(x, [r]))) });
   }
   return rows;
@@ -56,4 +71,7 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
     for (const m of missing) console.log(`    not covered: ${m}`);
   }
   console.log(`\n${covered}/${total} declared results have a scenario`);
+  const gaps = rerunGaps();
+  for (const g of gaps) console.log(`    no rerun: ${g}`);
+  console.log(`${gaps.length} scenario(s) that completed a run have no \`rerun\``);
 }
