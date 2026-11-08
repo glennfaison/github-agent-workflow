@@ -384,3 +384,48 @@ test("an outcome that disagrees with the questions is rejected", () => {
   const p = gr("a-question-the-code-answers-is-a-finding", (sc) => { sc.expect.document.Outcome = "asked"; });
   assert.ok(p.some((m) => /`asked` exactly when there are questions/.test(m)), p.join("\n"));
 });
+
+// ---- retrospective: a report checked against the run-log world and the inputs ----------------------
+const retro = contractOf("retrospective");
+const rt = (name, edit) => { const sc = find(`retrospective/${name}.yaml`); edit(sc); return problems(retro, sc); };
+
+test("using an entry older than days is rejected", () => {
+  const p = rt("entries-older-than-days-are-not-used", (sc) => { sc.expect.used = ["r1", "r2"]; sc.expect.document["Entries considered"] = "2 (from issue #90)"; });
+  assert.ok(p.some((m) => /uses r2, which is older than 14 days/.test(m)), p.join("\n"));
+});
+
+test("leaving out an entry inside the scope is rejected", () => {
+  const p = rt("step-filters-the-entries", (sc) => { sc.expect.used = ["r2"]; sc.expect.document["Entries considered"] = "1 (from issue #90)"; });
+  assert.ok(p.some((m) => /leaves out r3, which falls inside the scope/.test(m)), p.join("\n"));
+});
+
+test("using another step's or another runner's entry is rejected", () => {
+  const step = rt("step-filters-the-entries", (sc) => { sc.expect.used.push("r1"); sc.expect.document["Entries considered"] = "3 (from issue #90)"; });
+  assert.ok(step.some((m) => /uses r1, which is a Triaging entry, and step=Reviewing/.test(m)), step.join("\n"));
+  const runner = rt("only-runner-filters-the-entries", (sc) => { sc.expect.used.push("r2"); sc.expect.document["Entries considered"] = "2 (from issue #90)"; });
+  assert.ok(runner.some((m) => /uses r2, which is from ci-bot, and only_runner=nightly/.test(m)), runner.join("\n"));
+});
+
+test("more ranked suggestions than max_suggestions is rejected", () => {
+  const p = rt("suggestions-never-exceed-max-suggestions", (sc) => { sc.expect.document["Ranked suggestions"].push("**A third** — change `x`. Evidence: r3."); });
+  assert.ok(p.some((m) => /3 ranked suggestions with max_suggestions=2/.test(m)), p.join("\n"));
+});
+
+test("a suggestion with no evidence, or a count that disagrees with the entries used, is rejected", () => {
+  const bare = rt("entries-older-than-days-are-not-used", (sc) => { sc.expect.document["Ranked suggestions"] = ["**Do something** — change `x`."]; });
+  assert.ok(bare.some((m) => /suggestion 1 has no evidence/.test(m)), bare.join("\n"));
+  const count = rt("entries-older-than-days-are-not-used", (sc) => { sc.expect.document["Entries considered"] = "5 (from issue #90)"; });
+  assert.ok(count.some((m) => /`Entries considered` says 5, but the report used 1/.test(m)), count.join("\n"));
+});
+
+test("an empty report that still ranks suggestions, or an idle entry that is counted, is rejected", () => {
+  const rank = rt("no-entries-is-an-empty-report", (sc) => { sc.expect.document["Ranked suggestions"] = ["**Idle** — change `x`. Evidence: r1."]; });
+  assert.ok(rank.some((m) => /an empty report has no ranked suggestions/.test(m)), rank.join("\n"));
+  const idle = rt("no-entries-is-an-empty-report", (sc) => { sc.expect.used = ["r1"]; sc.expect.document.Outcome = "report"; sc.expect.document["Entries considered"] = "1 (idle)"; });
+  assert.ok(idle.some((m) => /uses r1, which is idle/.test(m)), idle.join("\n"));
+});
+
+test("a retrospective that edits a label is rejected, because nothing is written", () => {
+  const p = rt("no-entries-is-an-empty-report", (sc) => { sc.expect.effects = [{ op: "label_add", target: "issue#90", label: "agent:stuck" }]; });
+  assert.ok(p.some((m) => /pure skill must leave no effects/.test(m)), p.join("\n"));
+});

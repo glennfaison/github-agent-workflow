@@ -376,6 +376,42 @@ export const DOCUMENT_ORACLES = {
     if ((docHead(doc.Outcome ?? "") === "asked") !== (qs.length > 0)) out.push("the outcome is `asked` exactly when there are questions");
     return out;
   },
+  // The world holds run-log issues (labelled agent:log) whose `entries` are {run, step, runner, at, outcome, problems}.
+  // The scenario says what time it is (`now`) and which entries the report drew on (`expect.used`, by run id).
+  retrospective: (world, inputs, doc, sc) => {
+    const out = [];
+    if (!sc.now || Number.isNaN(Date.parse(sc.now))) return ["the scenario needs a `now` date"];
+    const now = Date.parse(sc.now);
+    const days = Number(inputs.days ?? 14);
+    const max = Number(inputs.max_suggestions ?? 10);
+    const entries = (world.issues ?? []).filter((i) => (i.labels ?? []).includes("agent:log")).flatMap((i) => (i.entries ?? []).map((e) => ({ ...e, issue: i.number })));
+    const why = (e) => {
+      if (Date.parse(e.at) < now - days * 86400000) return `is older than ${days} days`;
+      if (Date.parse(e.at) > now) return "is dated after now";
+      if (inputs.step && e.step !== inputs.step) return `is a ${e.step} entry, and step=${inputs.step}`;
+      if (inputs.only_runner && e.runner !== inputs.only_runner) return `is from ${e.runner}, and only_runner=${inputs.only_runner}`;
+      if (e.outcome === "nothing eligible" && (e.problems ?? []).length === 0) return "is idle";
+      return null;
+    };
+    const used = sc.expect?.used ?? [];
+    for (const run of used) {
+      const e = entries.find((x) => x.run === run);
+      if (!e) out.push(`uses ${run}, which is not in the log`);
+      else if (why(e)) out.push(`uses ${run}, which ${why(e)}`);
+    }
+    for (const e of entries) if (!why(e) && !used.includes(e.run)) out.push(`leaves out ${e.run}, which falls inside the scope`);
+    const counted = String(doc["Entries considered"] ?? "").match(/^\s*(\d+)/)?.[1];
+    if (counted === undefined || Number(counted) !== used.length) out.push(`\`Entries considered\` says ${counted ?? "nothing"}, but the report used ${used.length}`);
+    if ((docHead(doc.Outcome ?? "") === "report") !== (used.length > 0)) out.push("the outcome is `report` exactly when there is an entry to consider");
+    const suggestions = Array.isArray(doc["Ranked suggestions"]) ? doc["Ranked suggestions"] : [];
+    if (suggestions.length > max) out.push(`${suggestions.length} ranked suggestions with max_suggestions=${max}`);
+    for (const [i, t] of suggestions.entries()) if (!/Evidence:/.test(String(t))) out.push(`suggestion ${i + 1} has no evidence`);
+    if (used.length === 0) for (const k of ["Ranked suggestions", "Recurring problems"]) if (docHead(doc[k] ?? "") !== "None") out.push(`an empty report has no ${k.toLowerCase()}`);
+    const scope = String(doc.Scope ?? "");
+    if (!scope.includes(String(days))) out.push("the scope does not say how many days it covers");
+    for (const k of ["step", "only_runner"]) if (inputs[k] && !scope.includes(inputs[k])) out.push(`the scope does not say ${k}=${inputs[k]}`);
+    return out;
+  },
 };
 
 /** The same checks as checkScenario, for a skill that returns a document. */

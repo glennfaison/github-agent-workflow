@@ -1,0 +1,26 @@
+name: With step set, only that step's entries are used
+skill: retrospective
+now: 2026-11-08
+inputs: {step: Reviewing}
+world:
+  issues:
+    - number: 90
+      state: open
+      labels: [agent:log]
+      entries:
+        - {run: r1, step: Triaging, runner: ci-bot, at: 2026-11-06, outcome: failed, problems: [{tag: failed, text: "label drift"}]}
+        - {run: r2, step: Reviewing, runner: ci-bot, at: 2026-11-06, outcome: escalated, problems: [{tag: escalated, text: "fork PR"}]}
+        - {run: r3, step: Reviewing, runner: ci-bot, at: 2026-11-07, outcome: escalated, problems: [{tag: escalated, text: "fork PR"}]}
+expect:
+  used: [r2, r3]
+  document:
+    Outcome: report
+    Scope: "last 14 days, step=Reviewing"
+    Entries considered: "2 (from issue #90)"
+    Summary: "Both review runs escalated on a fork PR."
+    Recurring problems: "`escalated`, 2, fork PR."
+    Ranked suggestions:
+      - "**Tell the caller about fork PRs before dispatch** — change `review-github-prs`: skip a fork PR when selecting. Evidence: r2 and r3 both escalated with `fork PR`."
+    Runner notes: None
+    Out of scope this pass: None
+  effects: []

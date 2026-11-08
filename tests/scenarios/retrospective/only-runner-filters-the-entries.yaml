@@ -1,0 +1,25 @@
+name: With only_runner set, another runner's entries are not used
+skill: retrospective
+now: 2026-11-08
+inputs: {only_runner: nightly}
+world:
+  issues:
+    - number: 90
+      state: open
+      labels: [agent:log]
+      entries:
+        - {run: r1, step: Shepherding, runner: nightly, at: 2026-11-07, outcome: failed, problems: [{tag: flaky, text: "test run timed out"}]}
+        - {run: r2, step: Shepherding, runner: ci-bot, at: 2026-11-07, outcome: failed, problems: [{tag: failed, text: "merge conflict"}]}
+expect:
+  used: [r1]
+  document:
+    Outcome: report
+    Scope: "last 14 days, only_runner=nightly"
+    Entries considered: "1 (from issue #90)"
+    Summary: "The nightly runner's one shepherding run timed out in the test step."
+    Recurring problems: "None recur."
+    Ranked suggestions:
+      - "**Give the test run a longer limit** — change `shepherd-github-pr`: raise the timeout it suggests. Evidence: r1 failed with `test run timed out`."
+    Runner notes: None
+    Out of scope this pass: None
+  effects: []

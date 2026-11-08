@@ -1,0 +1,25 @@
+name: An entry older than the window is not counted
+skill: retrospective
+now: 2026-11-08
+inputs: {}
+world:
+  issues:
+    - number: 90
+      state: open
+      labels: [agent:log]
+      entries:
+        - {run: r1, step: Triaging, runner: ci-bot, at: 2026-11-05, outcome: failed, problems: [{tag: failed, text: "could not read the attachment"}]}
+        - {run: r2, step: Triaging, runner: ci-bot, at: 2026-10-01, outcome: failed, problems: [{tag: flaky, text: "the label call timed out"}]}
+expect:
+  used: [r1]
+  document:
+    Outcome: report
+    Scope: "last 14 days, step and only_runner not set"
+    Entries considered: "1 (from issue #90)"
+    Summary: "One triage run in the window failed on an unreadable attachment."
+    Recurring problems: "None recur: `failed` appears once (could not read the attachment)."
+    Ranked suggestions:
+      - "**Say what to do with an unreadable attachment** — change `triage-github-issue`: note the gap in the outcome comment and go on. Evidence: r1 failed with `could not read the attachment`."
+    Runner notes: None
+    Out of scope this pass: "r2 is outside the window and was not read."
+  effects: []
