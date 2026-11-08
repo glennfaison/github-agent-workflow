@@ -249,7 +249,9 @@ export function checkContracts(skills, byName, external = new Set(), { pending =
       if (c.used_by.length) err("it is user-invoked, so no skill can call it and `used_by` must be `[]`");
       continue;
     }
-    if (c.used_by.length === 0) err("`used_by` is empty, but nothing is a caller of a skill that is not user-invoked. List the skills that call it");
+    if (c.used_by.length === 0 && !/run by hand/i.test(s.body.replace(extractContract(s.body)?.text ?? "", ""))) {
+      err("`used_by` is empty, but nothing is a caller of a skill that is not user-invoked. List the skills that call it, or say in the text that a person runs it by hand");
+    }
     for (const n of c.used_by) {
       const caller = byName.get(n);
       const cc = parsed.get(n);

@@ -289,6 +289,10 @@ test("everything in used_by must exist, have a contract and call the skill", () 
 
 test("a utility skill that no one calls says so, unless a person runs it", () => {
   assert.ok(run([item(), util(UTIL.replace("[do-it]", "[]"))]).some((e) => /`used_by` is empty/.test(e)));
+  const noted = skill("check-it", UTIL.replace("[do-it]", "[]"), "This skill is run by hand: nothing calls it.", ["pr"]);
+  assert.deepEqual(run([item(), noted]), [], "a model-invocable skill that is run by hand says so, and needs no caller");
+  const inContract = skill("check-it", UTIL.replace("[do-it]", "[]").replace("never:", "# run by hand\nnever:"), "", ["pr"]);
+  assert.ok(run([item(), inContract]).some((e) => /`used_by` is empty/.test(e)), "the note belongs in the text, not in a comment inside the contract");
   const byHand = util(UTIL.replace("[do-it]", "[]"), ["pr"], { userInvoked: true });
   assert.deepEqual(run([byHand]), []);
   const wrong = util(UTIL, ["pr"], { userInvoked: true });

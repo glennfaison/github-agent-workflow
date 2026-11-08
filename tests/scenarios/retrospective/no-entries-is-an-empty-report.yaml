@@ -1,0 +1,23 @@
+name: A log with only idle entries gives an empty report
+skill: retrospective
+now: 2026-11-08
+inputs: {}
+world:
+  issues:
+    - number: 90
+      state: open
+      labels: [agent:log]
+      entries:
+        - {run: r1, step: Exploring, runner: ci-bot, at: 2026-11-06, outcome: nothing eligible, problems: []}
+expect:
+  used: []
+  document:
+    Outcome: empty report
+    Scope: "last 14 days, step and only_runner not set"
+    Entries considered: "0 (the only entry was idle)"
+    Summary: "Nothing was found in the last 14 days: the one entry was idle."
+    Recurring problems: None
+    Ranked suggestions: None
+    Runner notes: None
+    Out of scope this pass: None
+  effects: []

@@ -42,3 +42,9 @@ This change does not alter how any skill behaves.
 - **Rules that follow from the world are code.** `DOCUMENT_ORACLES` in `scripts/scenario.mjs` holds them, as `ORACLES` holds eligibility. For `merge-safety`: a draft, a pending check or a pinned `head` that is not the PR's head must give HOLD, PASS needs green checks and no conflicts, PASS has no next steps and BLOCK or HOLD has at least one.
 
 Still not checked: whether the model's assessment of a real diff is right. That needs the agent runner (#61).
+
+### A utility skill that a person runs by hand
+
+`retrospective` can be called by the model (it is not user-invoked) and no skill in the package calls it. ADR 0013 asked for `used_by` to list the callers of any such skill, which left it nothing to list. The rule is relaxed in one place: `used_by: []` is accepted for a skill that is not user-invoked when its text, outside the contract, says that it is **run by hand**. The validator looks for that phrase, so the exemption stays visible in the skill and a forgotten caller is still reported: a skill that lists another in `calls` fails if that skill's `used_by` leaves it out, whatever the note says. Making `retrospective` user-invoked instead would have changed how the package ships and disabled implicit invocation, which nobody asked for.
+
+For `retrospective` the scenario world holds run-log issues (labelled `agent:log`, with `entries` of `run`, `step`, `runner`, `at`, `outcome` and `problems`), and a scenario says what time it is (`now`) and which entries the report used (`expect.used`). The oracle works out which entries fall inside `days`, `step` and `only_runner` and are not idle, and checks the report against that set and against `max_suggestions`.

@@ -1,0 +1,27 @@
+name: Three clusters with max_suggestions=2 rank two and leave the third out of scope
+skill: retrospective
+now: 2026-11-08
+inputs: {max_suggestions: 2}
+world:
+  issues:
+    - number: 90
+      state: open
+      labels: [agent:log]
+      entries:
+        - {run: r1, step: Triaging, runner: ci-bot, at: 2026-11-05, outcome: failed, problems: [{tag: failed, text: "attachment"}, {tag: flaky, text: "label timeout"}]}
+        - {run: r2, step: Triaging, runner: ci-bot, at: 2026-11-06, outcome: failed, problems: [{tag: failed, text: "attachment"}, {tag: flaky, text: "label timeout"}]}
+        - {run: r3, step: Reviewing, runner: ci-bot, at: 2026-11-07, outcome: escalated, problems: [{tag: escalated, text: "fork PR"}]}
+expect:
+  used: [r1, r2, r3]
+  document:
+    Outcome: report
+    Scope: "last 14 days, step and only_runner not set"
+    Entries considered: "3 (from issue #90)"
+    Summary: "Triage fails on attachments and a flaky label call. One review escalated."
+    Recurring problems: "`failed` 2 (attachment), `flaky` 2 (label timeout), `escalated` 1 (fork PR)."
+    Ranked suggestions:
+      - "**Handle an unreadable attachment** — change `triage-github-issue`. Evidence: r1 and r2 both failed on `attachment`."
+      - "**Retry the label call once** — change `agent-workflow-protocol`. Evidence: r1 and r2 both hit `label timeout`."
+    Runner notes: None
+    Out of scope this pass: "The single fork PR escalation (r3) is a one-off."
+  effects: []
