@@ -1,0 +1,14 @@
+name: A wontfix recommendation goes to a person and the issue stays open
+skill: unattended-triage
+inputs: {subject: "issue#23"}
+world:
+  issues:
+    - {number: 23, state: open, labels: [needs-triage], kind: feature, useCase: stated, wontfix: true, openQuestions: 0}
+expect:
+  document:
+    Recommended state: ready-for-human
+    Category: enhancement
+    Comment structure: ready-for-human structure
+    Outcome comment: "## Agent Brief — Recommend wontfix: ADR 0007 rules out a plugin API. A person decides, so the issue stays open."
+    Proposed repository changes: "Add `.out-of-scope/plugin-api.md` recording the decision and linking ADR 0007."
+  effects: []

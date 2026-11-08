@@ -319,3 +319,32 @@ test("merge-safety has a scenario for each of its three verdicts", () => {
   assert.equal(row.total, 3);
   assert.deepEqual(row.missing, []);
 });
+
+// ---- unattended-triage: the same checker, a different document -----------------------------------
+const triage = contractOf("unattended-triage");
+const tri = (name, edit) => { const sc = find(`unattended-triage/${name}.yaml`); edit(sc); return problems(triage, sc); };
+
+test("a state that does not match the comment structure is rejected", () => {
+  const p = tri("a-complete-bug-is-ready-for-agent", (sc) => { sc.expect.document["Comment structure"] = "Triage Notes"; });
+  assert.ok(p.some((m) => /ready-for-agent needs the Agent Brief, not Triage Notes/.test(m)), p.join("\n"));
+});
+
+test("ready-for-agent is rejected for a feature with no use case", () => {
+  const p = tri("a-feature-with-no-use-case-needs-info", (sc) => { Object.assign(sc.expect.document, { "Recommended state": "ready-for-agent", "Comment structure": "Agent Brief" }); });
+  assert.ok(p.some((m) => /no stated use case is never ready-for-agent/.test(m)), p.join("\n"));
+});
+
+test("an open question is never ready-for-agent", () => {
+  const p = tri("an-open-question-is-never-ready-for-agent", (sc) => { Object.assign(sc.expect.document, { "Recommended state": "ready-for-agent", "Comment structure": "Agent Brief" }); });
+  assert.ok(p.some((m) => /open question\(s\), so the state must be needs-info/.test(m)), p.join("\n"));
+});
+
+test("a wontfix recommendation must be ready-for-human", () => {
+  const p = tri("a-wontfix-is-ready-for-human-never-a-close", (sc) => { Object.assign(sc.expect.document, { "Recommended state": "needs-info", "Comment structure": "Triage Notes" }); });
+  assert.ok(p.some((m) => /wontfix recommendation is ready-for-human, not needs-info/.test(m)), p.join("\n"));
+});
+
+test("triage that posts a comment is rejected, because the caller owns every write", () => {
+  const p = tri("a-complete-bug-is-ready-for-agent", (sc) => { sc.expect.effects = [{ op: "comment", target: "issue#21", marker: "agent:outcome" }]; });
+  assert.ok(p.some((m) => /pure skill must leave no effects/.test(m)), p.join("\n"));
+});

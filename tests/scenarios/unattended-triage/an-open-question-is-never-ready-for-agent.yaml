@@ -1,0 +1,14 @@
+name: An issue with an open question is needs-info and carries the question
+skill: unattended-triage
+inputs: {subject: "issue#24"}
+world:
+  issues:
+    - {number: 24, state: open, labels: [needs-triage], kind: bug, openQuestions: 1}
+expect:
+  document:
+    Recommended state: needs-info
+    Category: bug
+    Comment structure: Triage Notes
+    Outcome comment: "## Triage Notes — Established: the crash is in the importer. Still needed: whether it happens with an empty file. Question: does it? Recommended answer: yes, try a zero-byte file."
+    Proposed repository changes: None
+  effects: []

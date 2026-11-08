@@ -1,0 +1,14 @@
+name: A bug with steps, expected behaviour and a located cause is ready for an agent
+skill: unattended-triage
+inputs: {subject: "issue#21"}
+world:
+  issues:
+    - {number: 21, state: open, labels: [needs-triage], kind: bug, openQuestions: 0}
+expect:
+  document:
+    Recommended state: ready-for-agent
+    Category: bug
+    Comment structure: Agent Brief
+    Outcome comment: "## Agent Brief — `parseDuration` rejects `1h30m`. Reproduce with the input in the issue. Done when it returns 5400 seconds and the existing cases still pass."
+    Proposed repository changes: None
+  effects: []
