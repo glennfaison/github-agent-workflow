@@ -1,4 +1,5 @@
-// Checks a scenario against a skill's contract. Pure functions, no GitHub and no model.
+// Checks a scenario against a skill's contract. Pure functions, no GitHub and no model. The one file it reads is
+// the protocol's references/labels.md, which the setup scenarios need.
 //
 // A scenario says: this skill, these inputs, this world. The expected result is one line, and the
 // expected effects are the net changes the run leaves behind. The checker then asks four things:
@@ -11,13 +12,64 @@
 // change a run left behind into effects, and the result line goes with them. See docs/adr/0012-scenarios.md.
 
 import { isDeepStrictEqual } from "node:util";
+import { readFileSync } from "node:fs";
 
 export const MUTEX_ISSUE = ["needs-info", "ready-for-agent", "ready-for-human", "agent:pr-open"];
 export const MUTEX_PR = ["agent:needs-work", "agent:ready-for-review", "agent:human-merge"];
 export const LEASE_LABELS = ["agent:triage", "agent:in-progress"];
-const REPOSITORY_OPS = ["push", "merge", "delete_branch", "create_pr"];
+const REPOSITORY_OPS = ["push", "merge", "delete_branch", "create_pr", "label_create", "label_update", "write_file"];
 // `unmodelled` is not something a skill does: diffWorlds reports a change it cannot express with it.
-const OPS = ["label_add", "label_remove", "comment", "close", "push", "merge", "delete_branch", "create_pr", "create_issue", "review_request", "unmodelled"];
+const OPS = ["label_add", "label_remove", "comment", "close", "push", "merge", "delete_branch", "create_pr", "create_issue", "review_request", "label_create", "label_update", "write_file", "unmodelled"];
+
+// ---- repository state: the label set and the agent instructions file ------------------------------
+// A world may hold `labels: [{name, description}]` (the repository's label set) and `files: {path: text}`.
+// Effects: `label_create {name, description}`, `label_update {name, description}` (a label that exists, reset)
+// and `write_file {path, text}`. All three are `repository` writes.
+
+/**
+ * The labels the setup block of the protocol's references/labels.md creates, read from that file so a
+ * scenario cannot drift from it: [{ name, description?, force }]. `force` is `--force`, which resets an
+ * existing label's description. A label made without it is left alone when it exists.
+ */
+export function labelCatalog(markdown) {
+  const section = markdown.split(/^## Setup.*$/m)[1] ?? "";
+  return [...section.matchAll(/^gh label create "([^"]+)"(.*)$/gm)].map(([, name, rest]) => {
+    const description = rest.match(/--description "([^"]*)"/)?.[1];
+    return { name, ...(description !== undefined ? { description } : {}), force: /--force\b/.test(rest) };
+  });
+}
+export const SETTINGS = ["pr_base_branch", "app_url", "merge_method", "human_reviewer", "human_merge_paths", "build_cmd", "git_hooks_path", "repo_guidance", "trusted_authors"];
+export const LABEL_CATALOG = labelCatalog(readFileSync(new URL("../skills/meta/agent-workflow-protocol/references/labels.md", import.meta.url), "utf8"));
+
+/** The effects that running the setup block against `labels` leaves behind. */
+export function syncLabels(labels, catalog = LABEL_CATALOG) {
+  return catalog.flatMap((c) => {
+    const have = (labels ?? []).find((l) => l.name === c.name);
+    if (!have) return [{ op: "label_create", name: c.name, ...(c.description !== undefined ? { description: c.description } : {}) }];
+    if (c.force && (have.description ?? "") !== (c.description ?? "")) return [{ op: "label_update", name: c.name, description: c.description ?? "" }];
+    return [];
+  });
+}
+
+/**
+ * Expands the two shorthands a scenario may use for the catalog, so that it never lists labels itself:
+ * `{from: labels.md}` inside `world.labels` is every label of the catalog (a later entry of the same name
+ * overrides it), and `{op: labels_sync}` in `expect.effects` is what the setup block does to that world.
+ * Tests expand a scenario before they apply its effects. checkScenario expands it too, which is harmless.
+ */
+export function expandScenario(sc, catalog = LABEL_CATALOG) {
+  const c = structuredClone(sc);
+  if (Array.isArray(c.world?.labels)) {
+    const out = new Map();
+    for (const l of c.world.labels) {
+      if (l.from === "labels.md") for (const x of catalog) out.set(x.name, { name: x.name, ...(x.description !== undefined ? { description: x.description } : {}) });
+      else out.set(l.name, l);
+    }
+    c.world.labels = [...out.values()];
+  }
+  if (Array.isArray(c.expect?.effects)) c.expect.effects = c.expect.effects.flatMap((e) => (e.op === "labels_sync" ? syncLabels(c.world?.labels ?? [], catalog) : [e]));
+  return c;
+}
 
 /** "pr#40" -> { kind: "pr", n: 40 } */
 export function ref(t) {
@@ -155,6 +207,19 @@ export function applyEffects(world, effects) {
     if (e.op === "create_pr") { w.prs.push(createdItem(w, e)); continue; }
     if (e.op === "create_issue") { w.issues.push(createdItem(w, e)); continue; }
     if (e.op === "unmodelled") continue; // a change the checker cannot express: scope-checked, never applied
+    if (e.op === "label_create") {
+      w.labels ??= [];
+      if (w.labels.some((l) => l.name === e.name)) throw new Error(`creates label \`${e.name}\`, which already exists`);
+      w.labels.push({ name: e.name, ...(e.description ? { description: e.description } : {}) });
+      continue;
+    }
+    if (e.op === "label_update") {
+      const l = w.labels?.find((x) => x.name === e.name);
+      if (!l) throw new Error(`updates label \`${e.name}\`, which does not exist`);
+      if (e.description) l.description = e.description; else delete l.description;
+      continue;
+    }
+    if (e.op === "write_file") { w.files ??= {}; w.files[e.path] = e.text; continue; }
     const t = item(w, e.target);
     if (!t) throw new Error(`effect ${e.op} targets ${e.target}, which is not in the world`);
     t.labels ??= []; t.comments ??= [];
@@ -189,6 +254,7 @@ export function canonicalWorld(world) {
     return c;
   };
   const { issues = [], prs = [], ...rest } = JSON.parse(JSON.stringify(world));
+  if (rest.labels) rest.labels = rest.labels.map((l) => ({ name: l.name, ...(l.description ? { description: l.description } : {}) })).sort((a, b) => a.name.localeCompare(b.name));
   return {
     ...rest,
     issues: issues.map(item("issue")).sort((a, b) => a.number - b.number),
@@ -274,8 +340,18 @@ export function diffWorlds(before, after) {
     }
   }
 
-  const { issues: _i, prs: _p, ...restBefore } = before;
-  const { issues: _i2, prs: _p2, ...restAfter } = after;
+  const lb = new Map((before.labels ?? []).map((l) => [l.name, l.description ?? ""]));
+  const la = new Map((after.labels ?? []).map((l) => [l.name, l.description ?? ""]));
+  for (const [name, d] of la) {
+    if (!lb.has(name)) changed.push({ op: "label_create", name, ...(d ? { description: d } : {}) });
+    else if (lb.get(name) !== d) changed.push({ op: "label_update", name, description: d });
+  }
+  for (const name of lb.keys()) if (!la.has(name)) odd("world", "labels", name, "(removed)");
+  const fb = before.files ?? {}, fa = after.files ?? {};
+  for (const [path, text] of Object.entries(fa)) if (fb[path] !== text) changed.push({ op: "write_file", path, text });
+  for (const path of Object.keys(fb)) if (!(path in fa)) odd("world", "files", path, "(removed)");
+  const { issues: _i, prs: _p, labels: _l, files: _f, ...restBefore } = before;
+  const { issues: _i2, prs: _p2, labels: _l2, files: _f2, ...restAfter } = after;
   for (const k of new Set([...Object.keys(restBefore), ...Object.keys(restAfter)])) {
     if (!isDeepStrictEqual(restBefore[k], restAfter[k])) odd("world", k, restBefore[k], restAfter[k]);
   }
@@ -376,6 +452,47 @@ export const DOCUMENT_ORACLES = {
     if ((docHead(doc.Outcome ?? "") === "asked") !== (qs.length > 0)) out.push("the outcome is `asked` exactly when there are questions");
     return out;
   },
+  // The world holds `labels` and `files`. The labels the run changes must be exactly what the setup block of
+  // references/labels.md calls for, and the instructions file is edited only inside its `## GitHub workflow` section.
+  "setup-github-agent-workflow": (world, inputs, doc, sc) => {
+    const out = [];
+    const work = sc.expect?.effects ?? [];
+    const names = new Set(LABEL_CATALOG.map((c) => c.name));
+    const want = syncLabels(world.labels ?? []);
+    const got = work.filter((e) => e.op === "label_create" || e.op === "label_update");
+    const same = (a, b) => a.op === b.op && a.name === b.name && (a.description ?? "") === (b.description ?? "");
+    for (const w of want) if (!got.some((g) => same(g, w))) out.push(`does not ${w.op} \`${w.name}\`, which labels.md calls for`);
+    for (const g of got) {
+      if (want.some((w) => same(g, w))) continue;
+      out.push(names.has(g.name) ? `${g.op} \`${g.name}\` is not what labels.md calls for, given the labels the repository has` : `${g.op} \`${g.name}\`, which labels.md does not declare`);
+    }
+    const files = world.files ?? {};
+    const target = "CLAUDE.md" in files ? "CLAUDE.md" : "AGENTS.md";
+    const writes = work.filter((e) => e.op === "write_file");
+    for (const w of writes) if (w.path !== target) out.push(`writes ${w.path}, but the agent instructions file is ${target}`);
+    if (writes.length > 1) out.push("writes the instructions file more than once");
+    const split = (t) => {
+      const lines = String(t ?? "").split("\n");
+      const i = lines.findIndex((l) => /^## GitHub workflow\s*$/.test(l));
+      if (i < 0) return { section: "", rest: lines.join("\n") };
+      let j = lines.findIndex((l, k) => k > i && /^## /.test(l));
+      if (j < 0) j = lines.length;
+      return { section: lines.slice(i, j).join("\n"), rest: [...lines.slice(0, i), ...lines.slice(j)].join("\n") };
+    };
+    const norm = (t) => t.replace(/\n{2,}/g, "\n").trim();
+    const w = writes.find((x) => x.path === target) ?? writes[0];
+    if (w && norm(w.text ?? "") === norm(files[target] ?? "")) out.push(`writes ${w.path} unchanged`);
+    if (w && norm(split(w.text).rest) !== norm(split(files[w.path]).rest)) out.push(`changes ${w.path} outside its \`## GitHub workflow\` section`);
+    const final = split(w ? w.text : files[target]).section;
+    const esc = (v) => String(v).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    for (const k of SETTINGS) {
+      if (inputs[k] === undefined) continue;
+      if (!new RegExp(`^\\s*(?:[-*]\\s*)?${k}:\\s*${esc(inputs[k])}\\s*$`, "m").test(final)) out.push(`does not record ${k}: ${inputs[k]} in ${target}`);
+    }
+    if ((docHead(doc.Outcome ?? "") === "set up") !== (work.length > 0)) out.push("the outcome is `set up` exactly when the run changed something");
+    if (docHead(doc["Settings file"] ?? "") !== (w?.path ?? "None")) out.push(`\`Settings file\` is ${docHead(doc["Settings file"] ?? "")}, but the run wrote ${w?.path ?? "no file"}`);
+    return out;
+  },
   // The world holds run-log issues (labelled agent:log) whose `entries` are {run, step, runner, at, outcome, problems}.
   // The scenario says what time it is (`now`) and which entries the report drew on (`expect.used`, by run id).
   retrospective: (world, inputs, doc, sc) => {
@@ -438,6 +555,7 @@ export function checkPureScenario(contract, sc) {
       if (!allowed.includes(scope)) bad(`${e.op} on ${e.target ?? `#${e.number}`} is a \`${scope}\` write, which the contract does not allow`);
     } catch (err) { bad(err.message); }
   }
+  if (work.length) { try { applyEffects(sc.world ?? { issues: [], prs: [] }, work); } catch (err) { bad(err.message); } }
   const oracle = DOCUMENT_ORACLES[sc.skill];
   if (oracle) out.push(...oracle(sc.world ?? { issues: [], prs: [] }, sc.inputs ?? {}, doc, sc));
   return out;
@@ -449,6 +567,7 @@ export function checkPureScenario(contract, sc) {
  * @returns {string[]} problems, empty when the scenario is consistent with the contract
  */
 export function checkScenario(contract, sc) {
+  sc = expandScenario(sc);
   if (contract.kind === "utility") return checkPureScenario(contract, sc);
   const out = [];
   const bad = (m) => out.push(m);

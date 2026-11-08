@@ -1,0 +1,27 @@
+name: The settings go into CLAUDE.md when it exists, and AGENTS.md is not created
+skill: setup-github-agent-workflow
+inputs: {merge_method: rebase}
+world:
+  labels:
+    - from: labels.md
+  files:
+    CLAUDE.md: |
+      # Claude
+
+      Prefer small PRs.
+expect:
+  effects:
+    - op: write_file
+      path: CLAUDE.md
+      text: |
+        # Claude
+
+        Prefer small PRs.
+
+        ## GitHub workflow
+
+        merge_method: rebase
+  document:
+    Outcome: set up
+    Settings file: CLAUDE.md
+    Next step: "Run /runner-prompts, then run each step once by hand and read its run-log comment before scheduling."

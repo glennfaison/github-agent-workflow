@@ -1,0 +1,19 @@
+name: A second run creates no label, writes no file and says it is already set up
+skill: setup-github-agent-workflow
+inputs: {pr_base_branch: develop}
+world:
+  labels:
+    - from: labels.md
+  files:
+    AGENTS.md: |
+      # Agents
+
+      ## GitHub workflow
+
+      pr_base_branch: develop
+expect:
+  effects: []
+  document:
+    Outcome: already set up
+    Settings file: None
+    Next step: "Run /runner-prompts, then run each step once by hand and read its run-log comment before scheduling."

@@ -8,11 +8,60 @@ disable-model-invocation: true
 
 Run once per repository, by a maintainer, before any other skill in this package. A human is present, so ask questions one at a time and show the default for each.
 
+## Contract
+
+See **Contracts** in the protocol for what each key means. A maintainer invokes this skill, so no skill calls it and `used_by` is empty. It is interactive: it returns a short document, and what it changes it changes in the repository.
+
+```yaml
+kind: utility
+params: [pr_base_branch, app_url, merge_method, human_reviewer, human_merge_paths, build_cmd, git_hooks_path, repo_guidance, trusted_authors]
+used_by: []
+requires:
+  - "`gh` is authenticated, `jq` and `node` exist, and the maintainer confirmed the repository to set up."
+returns:
+  - "Outcome: set up | already set up"
+  - "Settings file: <the agent instructions file that was written> | None"
+  - "Next step: <run /runner-prompts, and run each step once by hand before scheduling>"
+ensures:
+  - "Afterwards every label in the setup block of the protocol's `references/labels.md` exists. A missing label is created, and an existing `agent:` label is reset to its description (the block uses `--force`). A triage label that already exists is left as it is."
+  - "No label that `references/labels.md` does not declare is created or changed."
+  - "A second run changes nothing: every label already matches, and the settings section is already what the maintainer confirmed. The outcome is then `already set up`."
+  - "The settings the maintainer gave are recorded as `key: value` lines in a `## GitHub workflow` section of `CLAUDE.md` if it exists, otherwise `AGENTS.md`. The second file is never created when the first exists, and nothing outside that section changes."
+  - "The maintainer saw the section and said yes before it was written."
+effects:
+  reads: ["`gh auth status`, `gh repo view` and `gh label list`", "the tools and the skills available to the runner", "the repository's agent instructions file"]
+  writes:
+    repository:
+      - "The labels in `references/labels.md`: created when missing, and the `agent:` ones reset to their description."
+      - "The `## GitHub workflow` section of the agent instructions file."
+  external: ["The probes for `gh`, `jq`, `node` and the external skills."]
+never:
+  - "Write a settings file. A repository's values belong in the prompt or the agent instructions."
+  - "Change anything outside the repository's agent instructions and the label set. Issues and PRs are never touched."
+  - "Overwrite an existing section without showing the change first."
+  - "Run the pipeline steps themselves."
+calls: []
+idempotent: "A second run creates no label and changes none, because each label already matches `references/labels.md`, and the settings section is already what was confirmed."
+terminates: "A fixed sequence of seven steps with one question for each setting."
+```
+
 ## Inputs
 
 **Free text.** Anything the maintainer says. This skill is interactive, so treat every answer as the next input.
 
-**Key-value pairs.** `key=value` on a line of its own. Optional overrides for the shared defaults in `agent-workflow-protocol`: `pr_base_branch`, `app_url`, `merge_method`, `human_reviewer`, `human_merge_paths`, `build_cmd`, `git_hooks_path`, `repo_guidance`, `trusted_authors`.
+**Key-value pairs.** `key=value` on a line of its own. Optional overrides for the shared defaults in `agent-workflow-protocol`. A key given this way skips its question in step 3:
+
+| Input | Default | What it does |
+|---|---|---|
+| `pr_base_branch` | `main` | The branch agent PRs target |
+| `app_url` | *(none)* | The URL of the deployed app Exploring browses |
+| `merge_method` | `squash` | `squash`, `merge` or `rebase` |
+| `human_reviewer` | *(none)* | The GitHub user asked to review an escalated or handed-over PR |
+| `human_merge_paths` | *(none)* | Gitignore-style paths an agent never merges |
+| `build_cmd` | *(none)* | The command to run before opening a PR |
+| `git_hooks_path` | *(none)* | A git hooks directory to use when committing |
+| `repo_guidance` | `AGENTS.md` | The files that hold the repository's contributor rules |
+| `trusted_authors` | *(none)* | Logins of bot accounts the agent runs as |
 
 **Implicit dependencies.** There is **no config file**: the skills' defaults are the source of truth, so this skill installs nothing for a value. It needs `gh` (authenticated), `jq` and Node.js for the checks below, write access to the repository, permission to create labels, and the rest of this package installed so the pipeline skills are available.
 
@@ -34,10 +83,3 @@ Run once per repository, by a maintainer, before any other skill in this package
 5. **Create the labels.** Run the setup block in `references/labels.md` of `agent-workflow-protocol`. It is safe to run twice.
 6. **Check it works.** Run `gh label list` and confirm the `agent:` labels are there.
 7. **Tell the user how to start.** The ready-to-paste scheduler prompts, one per automation, come from the user-invoked `runner-prompts` skill: tell the user to run `/runner-prompts`. Suggest running each step once by hand and reading the run-log comment for **Problems** before scheduling anything. Reviewing merges PRs, so a sandbox repository is the safest place to start.
-
-## Never
-
-- Write a settings file. A repository's values belong in the prompt or the agent instructions.
-- Change anything outside the repository's agent instructions and the label set.
-- Overwrite an existing section without showing the change first.
-- Run the pipeline steps themselves.

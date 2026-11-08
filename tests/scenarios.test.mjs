@@ -6,12 +6,12 @@ import { fileURLToPath } from "node:url";
 import { parse } from "yaml";
 import { extractContract } from "../scripts/contracts.mjs";
 import { coverage, contractOf } from "../scripts/scenario-coverage.mjs";
-import { checkScenario, applyEffects, matchesReturn, checkState, ORACLES, ORACLE_REQUIRES } from "../scripts/scenario.mjs";
+import { checkScenario, expandScenario, labelCatalog, syncLabels, LABEL_CATALOG, diffWorlds, applyEffects, matchesReturn, checkState, ORACLES, ORACLE_REQUIRES } from "../scripts/scenario.mjs";
 
 const PKG = join(dirname(fileURLToPath(import.meta.url)), "..");
 const dir = join(PKG, "tests/scenarios");
 const scenarios = readdirSync(dir).flatMap((skill) =>
-  readdirSync(join(dir, skill)).filter((f) => f.endsWith(".yaml")).map((f) => ({ file: `${skill}/${f}`, sc: parse(readFileSync(join(dir, skill, f), "utf8")) })));
+  readdirSync(join(dir, skill)).filter((f) => f.endsWith(".yaml")).map((f) => ({ file: `${skill}/${f}`, sc: expandScenario(parse(readFileSync(join(dir, skill, f), "utf8"))) })));
 
 // ---- every golden scenario agrees with its skill's real contract ------------------------------
 for (const { file, sc } of scenarios) {
@@ -428,4 +428,63 @@ test("an empty report that still ranks suggestions, or an idle entry that is cou
 test("a retrospective that edits a label is rejected, because nothing is written", () => {
   const p = rt("no-entries-is-an-empty-report", (sc) => { sc.expect.effects = [{ op: "label_add", target: "issue#90", label: "agent:stuck" }]; });
   assert.ok(p.some((m) => /pure skill must leave no effects/.test(m)), p.join("\n"));
+});
+
+// ---- setup-github-agent-workflow: labels from labels.md, and one section of one file ----------------
+const setup = contractOf("setup-github-agent-workflow");
+const su = (name, edit) => { const sc = find(`setup-github-agent-workflow/${name}.yaml`); edit(sc); return problems(setup, sc); };
+
+test("the label catalog is read from labels.md: agent labels are forced, triage labels are not", () => {
+  assert.ok(LABEL_CATALOG.length > 0);
+  for (const c of LABEL_CATALOG) assert.equal(c.force, c.name.startsWith("agent:"), c.name);
+  assert.deepEqual(labelCatalog("## Setup\n```bash\ngh label create \"x\" --description \"d\" --force\ngh label create \"y\"\n```"), [{ name: "x", description: "d", force: true }, { name: "y", force: false }]);
+});
+
+test("running the setup block against a complete label set leaves nothing to do", () => {
+  assert.deepEqual(syncLabels(LABEL_CATALOG.map(({ name, description }) => ({ name, description }))), []);
+});
+
+test("a label that labels.md does not declare, or a missing one, is rejected", () => {
+  const extra = su("an-empty-repository-gets-every-label", (sc) => { sc.expect.effects.push({ op: "label_create", name: "agent:extra" }); });
+  assert.ok(extra.some((m) => /label_create `agent:extra`, which labels.md does not declare/.test(m)), extra.join("\n"));
+  const missing = su("an-empty-repository-gets-every-label", (sc) => { sc.expect.effects = sc.expect.effects.filter((e) => e.name !== "agent:log"); });
+  assert.ok(missing.some((m) => /does not label_create `agent:log`, which labels.md calls for/.test(m)), missing.join("\n"));
+});
+
+test("overwriting a kept triage label, or creating one that exists, is rejected", () => {
+  const kept = su("an-agent-label-is-reset-and-a-triage-label-is-kept", (sc) => { sc.expect.effects.push({ op: "label_update", name: "needs-info", description: "mine" }); });
+  assert.ok(kept.some((m) => /label_update `needs-info` is not what labels.md calls for/.test(m)), kept.join("\n"));
+  const again = su("an-agent-label-is-reset-and-a-triage-label-is-kept", (sc) => { sc.expect.effects.push({ op: "label_create", name: "needs-info" }); });
+  assert.ok(again.some((m) => /creates label `needs-info`, which already exists/.test(m)), again.join("\n"));
+});
+
+test("an existing agent label that is not reset is rejected", () => {
+  const p = su("an-agent-label-is-reset-and-a-triage-label-is-kept", (sc) => { sc.expect.effects = sc.expect.effects.filter((e) => e.name !== "agent:stuck"); });
+  assert.ok(p.some((m) => /does not label_update `agent:stuck`/.test(m)), p.join("\n"));
+});
+
+test("setup that touches an issue is rejected", () => {
+  const p = su("a-second-run-changes-nothing", (sc) => { sc.world.issues = [{ number: 1, state: "open", labels: [] }]; sc.expect.effects = [{ op: "label_add", target: "issue#1", label: "bug" }]; sc.expect.document.Outcome = "set up"; });
+  assert.ok(p.some((m) => /is a `other` write, which the contract does not allow/.test(m)), p.join("\n"));
+});
+
+test("editing the instructions file outside its section, in the wrong file, or not at all is rejected", () => {
+  const outside = su("an-empty-repository-gets-every-label", (sc) => { sc.expect.effects[sc.expect.effects.length - 1].text = sc.expect.effects[sc.expect.effects.length - 1].text.replace("Be kind.", "Be rude."); });
+  assert.ok(outside.some((m) => /changes AGENTS.md outside its `## GitHub workflow` section/.test(m)), outside.join("\n"));
+  const second = su("claude-md-is-edited-when-it-exists", (sc) => { sc.expect.effects[0].path = "AGENTS.md"; sc.expect.document["Settings file"] = "AGENTS.md"; });
+  assert.ok(second.some((m) => /writes AGENTS.md, but the agent instructions file is CLAUDE.md/.test(m)), second.join("\n"));
+  const unrecorded = su("an-empty-repository-gets-every-label", (sc) => { sc.expect.effects = sc.expect.effects.filter((e) => e.op !== "write_file"); sc.expect.document["Settings file"] = "None"; });
+  assert.ok(unrecorded.some((m) => /does not record pr_base_branch: develop in AGENTS.md/.test(m)), unrecorded.join("\n"));
+});
+
+test("a second run that rewrites the file, or reports a change it did not make, is rejected", () => {
+  const rewrite = su("a-second-run-changes-nothing", (sc) => { sc.expect.effects = [{ op: "write_file", path: "AGENTS.md", text: sc.world.files["AGENTS.md"] }]; sc.expect.document.Outcome = "set up"; sc.expect.document["Settings file"] = "AGENTS.md"; });
+  assert.ok(rewrite.some((m) => /writes AGENTS.md unchanged/.test(m)), rewrite.join("\n"));
+  const lie = su("a-second-run-changes-nothing", (sc) => { sc.expect.document.Outcome = "set up"; });
+  assert.ok(lie.some((m) => /`set up` exactly when the run changed something/.test(m)), lie.join("\n"));
+});
+
+test("a label removed from the world is something no effect can express", () => {
+  const before = { issues: [], prs: [], labels: [{ name: "a" }, { name: "b" }] };
+  assert.deepEqual(diffWorlds(before, { ...before, labels: [{ name: "a" }] }).map((e) => `${e.op} ${e.field}`), ["unmodelled labels"]);
 });

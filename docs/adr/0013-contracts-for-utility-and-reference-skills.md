@@ -48,3 +48,17 @@ Still not checked: whether the model's assessment of a real diff is right. That 
 `retrospective` can be called by the model (it is not user-invoked) and no skill in the package calls it. ADR 0013 asked for `used_by` to list the callers of any such skill, which left it nothing to list. The rule is relaxed in one place: `used_by: []` is accepted for a skill that is not user-invoked when its text, outside the contract, says that it is **run by hand**. The validator looks for that phrase, so the exemption stays visible in the skill and a forgotten caller is still reported: a skill that lists another in `calls` fails if that skill's `used_by` leaves it out, whatever the note says. Making `retrospective` user-invoked instead would have changed how the package ships and disabled implicit invocation, which nobody asked for.
 
 For `retrospective` the scenario world holds run-log issues (labelled `agent:log`, with `entries` of `run`, `step`, `runner`, `at`, `outcome` and `problems`), and a scenario says what time it is (`now`) and which entries the report used (`expect.used`). The oracle works out which entries fall inside `days`, `step` and `only_runner` and are not idle, and checks the report against that set and against `max_suggestions`.
+
+### A utility skill that writes: `setup-github-agent-workflow`
+
+The last skill without a contract is the one that changes repository settings, so its contract is not pure. Its writes are `repository` writes: the label set and the agent instructions file are repository settings, and `other` means any other issue or PR. The protocol's definition of `repository` now says so. A user-invoked skill has `used_by: []`, and the skill never touches an issue or a PR, which the scope check enforces.
+
+The world model gained repository state to express this. A world may hold `labels` (`name`, `description`) and `files` (path to text), and three effects change them: `label_create`, `label_update` (a label that exists, reset) and `write_file`. `diffWorlds` produces them, so a real run is judged like a golden. A removed label or file is `unmodelled`.
+
+- **The label set is read from `references/labels.md`**, not copied. `labelCatalog` parses the setup block, and a scenario writes `{from: labels.md}` in `world.labels` and `{op: labels_sync}` in `expect.effects`. The oracle also compares the label effects of any scenario with what the block does to that world, so a hand-written list is checked too.
+- **What the block does to a label that exists differs by label.** The eight `agent:` labels are made with `--force`, which resets an existing label to the description in the file. The three triage labels are made without it, and an existing one is left as it is. Ticket #58 expected every existing label to be kept. The contract and the scenarios state what the block actually does, and `ensures` says it. Whether an existing `agent:` label should be reset or kept is a decision about the block, not about the contract.
+- **The instructions file** is `CLAUDE.md` if it exists, otherwise `AGENTS.md`. The oracle checks that each setting the maintainer gave is a `key: value` line in the `## GitHub workflow` section, that nothing outside that section changes, and that a file written unchanged is not a write.
+- **`params` is now an Inputs table.** The skill listed its nine settings in prose, so it has a table, and the protocol's Defaults rows name the skill as a user of each.
+
+`CONTRACT_PENDING` is empty. Every skill has a contract.
+
