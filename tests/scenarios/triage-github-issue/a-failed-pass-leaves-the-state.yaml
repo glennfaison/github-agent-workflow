@@ -5,6 +5,7 @@ world:
   issues:
     - {number: 12, state: open, labels: [needs-triage]}
 expect:
+  rerun: eligible
   result: "#12 failed: could not read the attachment"
   effects:
     - {op: comment, target: "issue#12", marker: agent:failure}

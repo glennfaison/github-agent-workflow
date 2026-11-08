@@ -5,7 +5,7 @@ import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parse } from "yaml";
 import { extractContract } from "../scripts/contracts.mjs";
-import { coverage, contractOf } from "../scripts/scenario-coverage.mjs";
+import { coverage, contractOf, rerunGaps } from "../scripts/scenario-coverage.mjs";
 import { checkScenario, expandScenario, labelCatalog, syncLabels, LABEL_CATALOG, diffWorlds, applyEffects, matchesReturn, checkState, ORACLES, ORACLE_REQUIRES } from "../scripts/scenario.mjs";
 
 const PKG = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -487,4 +487,47 @@ test("a second run that rewrites the file, or reports a change it did not make, 
 test("a label removed from the world is something no effect can express", () => {
   const before = { issues: [], prs: [], labels: [{ name: "a" }, { name: "b" }] };
   assert.deepEqual(diffWorlds(before, { ...before, labels: [{ name: "a" }] }).map((e) => `${e.op} ${e.field}`), ["unmodelled labels"]);
+});
+
+// ---- rerun: a second run must find nothing to redo ---------------------------------------------------
+const rr = (path, edit) => { const sc = find(path); edit(sc); return problems(contractOf(sc.skill), sc); };
+
+test("every scenario that completed a run says what a second run finds", () => {
+  assert.deepEqual(rerunGaps(), []);
+});
+
+test("a terminal outcome that leaves the item eligible fails: a broken oracle, or effects that did not change the state", () => {
+  const path = "review-github-pr/merge-closes-the-linked-issue.yaml";
+  const real = ORACLES["review-github-pr"];
+  ORACLES["review-github-pr"] = () => ({ eligible: true });
+  try {
+    const p = problems(contractOf("review-github-pr"), find(path));
+    assert.ok(p.some((m) => /rerun is `ineligible`, but the oracle says pr#\d+ is eligible/.test(m)), p.join("\n"));
+  } finally { ORACLES["review-github-pr"] = real; }
+  const left = rr("triage-github-issue/open-questions-mean-needs-info.yaml", (sc) => { sc.expect.effects = sc.expect.effects.filter((e) => e.label !== "needs-info"); });
+  assert.ok(left.some((m) => /rerun is `ineligible`, but the oracle says issue#12 is eligible/.test(m)), left.join("\n"));
+});
+
+test("a failed run that the scenario calls ineligible, or a pushed fix that it calls eligible, is rejected", () => {
+  const failed = rr("shepherd-github-pr/unreadable-failure-is-a-failed-run.yaml", (sc) => { sc.expect.rerun = "ineligible"; });
+  assert.ok(failed.some((m) => /rerun is `ineligible`, but the oracle says pr#\d+ is eligible/.test(m)), failed.join("\n"));
+  const pushed = rr("shepherd-github-pr/failing-checks-are-fixed-while-the-lane-is-held.yaml", (sc) => { sc.expect.rerun = "eligible"; });
+  assert.ok(pushed.some((m) => /rerun is `eligible`, but the oracle says pr#\d+ is not eligible \(checks pending\)/.test(m)), pushed.join("\n"));
+});
+
+test("an unknown rerun value, a skip with no reason, or a rerun on a skill with no item is rejected", () => {
+  assert.ok(rr("review-github-pr/merge-closes-the-linked-issue.yaml", (sc) => { sc.expect.rerun = "maybe"; }).some((m) => /`rerun` is `eligible`, `ineligible` or `\{skip/.test(m)));
+  assert.ok(rr("review-github-pr/merge-closes-the-linked-issue.yaml", (sc) => { sc.expect.rerun = { skip: " " }; }).some((m) => /needs the reason/.test(m)));
+  assert.deepEqual(rr("review-github-pr/merge-closes-the-linked-issue.yaml", (sc) => { sc.expect.rerun = { skip: "the merge is its own proof" }; }), []);
+});
+
+test("an interrupted pass must be eligible again, return nothing, and not repeat what it made", () => {
+  const path = "triage-github-issue/an-interrupted-pass-is-safe-to-repeat.yaml";
+  assert.deepEqual(problems(contractOf("triage-github-issue"), find(path)), []);
+  assert.ok(rr(path, (sc) => { sc.expect.rerun = "ineligible"; }).some((m) => /must be safe to repeat/.test(m)));
+  assert.ok(rr(path, (sc) => { sc.expect.result = "#15 needs-info"; }).some((m) => /returned no result/.test(m)));
+  const again = rr(path, (sc) => { sc.expect.rerun_effects.push({ op: "comment", target: "issue#15", marker: "agent:outcome", text: "Agent Brief" }); });
+  assert.ok(again.some((m) => /the rerun repeats comment on issue#15/.test(m)), again.join("\n"));
+  const wrong = rr(path, (sc) => { sc.expect.rerun_effects.push({ op: "label_add", target: "issue#15", label: "agent:triage" }); });
+  assert.ok(wrong.some((m) => /repeats label_add on issue#15/.test(m)), wrong.join("\n"));
 });

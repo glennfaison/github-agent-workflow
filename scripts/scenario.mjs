@@ -562,6 +562,25 @@ export function checkPureScenario(contract, sc) {
 }
 
 /**
+ * The same skill's eligibility oracle, asked about the same item in the world a run leaves behind: could a
+ * scheduler pick the item up again? A run that completes released its lease. A run that was `interrupted`
+ * died holding it, and the lease has run out by the time the skill is called again, so it is `stale`.
+ * A push by the run puts the PR's checks back to pending.
+ * @returns {{eligible: boolean, reason?: string} | null} null when the skill has no oracle or the scenario has no item
+ */
+export function rerunEligibility(sc, after) {
+  const oracle = ORACLES[sc.skill];
+  if (!oracle || !sc.target) return null;
+  const w = structuredClone(after);
+  const t = item(w, sc.target);
+  // A push restarts CI and GitHub recomputes mergeability, so the PR is not eligible again until they report.
+  if (t && (sc.expect?.effects ?? []).some((e) => e.op === "push" && e.target === sc.target)) { t.checks = ["pending"]; t.mergeState = "UNKNOWN"; }
+  if (sc.interrupted && t && LEASE_LABELS.some((l) => (t.labels ?? []).includes(l))) t.lease = "stale";
+  const { lease_held: _held, ...fresh } = sc.inputs ?? {}; // a rerun is a fresh call: nobody lends it a lease
+  return oracle(w, sc.target, fresh);
+}
+
+/**
  * @param {object} contract the parsed contract of the skill
  * @param {object} sc       the scenario
  * @returns {string[]} problems, empty when the scenario is consistent with the contract
@@ -579,7 +598,9 @@ export function checkScenario(contract, sc) {
   const leaseHeld = sc.inputs?.lease_held === true;
 
   // 1. results
-  if (results.length === 0) bad("no expected result");
+  const interrupted = sc.interrupted === true; // the pass died partway, so it returned nothing
+  if (interrupted && results.length) bad("an interrupted run returned no result, so it has none to expect");
+  if (results.length === 0 && !interrupted) bad("no expected result");
   for (const r of results) {
     const line = r.replace(/^would: /, "");
     if (!matchesReturn(r, contract.returns) && !matchesReturn(line, contract.returns)) bad(`result \`${r}\` is not in the contract's returns`);
@@ -618,7 +639,7 @@ export function checkScenario(contract, sc) {
   }
   const lanes = after.prs.filter((p) => p.state === "open" && (p.labels ?? []).includes("agent:ready-for-review"));
   if (lanes.length > 1) bad(`${lanes.length} PRs hold the merge lane: ${lanes.map((p) => `#${p.number}`).join(", ")}`);
-  if (isItem && !leaseHeld && outcome !== "skipped") { // a skipped item's lease label, if any, belongs to the run that holds it
+  if (isItem && !leaseHeld && outcome !== "skipped" && !interrupted) { // a skipped item's lease label, if any, belongs to the run that holds it
     const t = item(after, sc.target);
     for (const l of LEASE_LABELS) if ((t.labels ?? []).includes(l)) bad(`${sc.target} still carries the lease label ${l}`);
   }
@@ -692,6 +713,34 @@ export function checkScenario(contract, sc) {
     const i = cs.findLastIndex((c) => c.marker === "agent:outcome" && c.trusted);
     const stands = i !== -1 && !cs.slice(i + 1).some((c) => c.author === "human");
     if (stands && (sc.expect.calls ?? []).includes("unattended-triage")) bad("calls unattended-triage although a prior trusted outcome still stands");
+  }
+
+  // 5. rerun: asked again, the skill must find nothing to redo (`idempotent` in the contract)
+  const rerun = sc.expect.rerun;
+  if (interrupted && rerun !== "eligible") bad("a pass that stopped partway must be safe to repeat: `rerun: eligible`");
+  if (rerun !== undefined) {
+    const skip = rerun && typeof rerun === "object" ? rerun.skip : undefined;
+    if (skip !== undefined) { if (typeof skip !== "string" || skip.trim() === "") bad("`rerun: {skip: ...}` needs the reason"); }
+    else if (rerun !== "eligible" && rerun !== "ineligible") bad("`rerun` is `eligible`, `ineligible` or `{skip: <reason>}`");
+    else if (!isItem) bad("`rerun` is about the item a skill works on, and this skill has none");
+    else {
+      const o = rerunEligibility(sc, after);
+      if (!o) bad("`rerun` needs an eligibility oracle, and this skill has none");
+      else if ((rerun === "eligible") !== o.eligible) bad(`rerun is \`${rerun}\`, but the oracle says ${sc.target} is ${o.eligible ? "eligible" : `not eligible (${o.reason})`} in the world this run leaves behind`);
+    }
+  }
+  if (sc.expect.rerun_effects !== undefined) {
+    const again = sc.expect.rerun_effects;
+    const key = (e) => JSON.stringify([e.op, e.target, e.label, e.marker, e.text]);
+    const made = new Set(work.map(key));
+    for (const e of again) {
+      if (e.marker !== "agent:lease" && made.has(key(e))) bad(`the rerun repeats ${e.op} on ${e.target}, which the interrupted run already did`);
+      try {
+        const scope = scopeOf(e, { world: after, claimed });
+        if (!allowed.includes(scope)) bad(`the rerun's ${e.op} on ${e.target} is a \`${scope}\` write, which the contract does not allow`);
+      } catch (err) { bad(err.message); }
+    }
+    try { applyEffects(after, again); } catch (err) { bad(`the rerun's effects do not apply: ${err.message}`); }
   }
   return out;
 }

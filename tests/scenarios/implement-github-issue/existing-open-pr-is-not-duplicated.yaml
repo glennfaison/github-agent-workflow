@@ -7,6 +7,7 @@ world:
   prs:
     - {number: 40, state: open, labels: [], head: h1, closes: [12], marker: "agent:implements"}
 expect:
+  rerun: ineligible
   result: "#12 existing PR #40"
   effects:
     - {op: label_remove, target: "issue#12", label: ready-for-agent}

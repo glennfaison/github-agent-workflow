@@ -6,6 +6,7 @@ world:
   prs:
     - {number: 40, state: open, labels: [agent:needs-work], head: h1, base: main, mergeState: DIRTY, checks: [], openFindings: 0, closes: [12]}
 expect:
+  rerun: ineligible
   result: "#40 fix pushed"
   effects:
     - {op: push, target: "pr#40", sha: h2}

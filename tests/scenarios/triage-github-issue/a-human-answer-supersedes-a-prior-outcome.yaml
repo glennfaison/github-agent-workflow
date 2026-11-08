@@ -10,6 +10,7 @@ world:
         - {author: agent, trusted: true, marker: "agent:outcome"}
         - {author: human}
 expect:
+  rerun: ineligible
   result: "#12 ready-for-agent"
   calls: [unattended-triage]
   effects:

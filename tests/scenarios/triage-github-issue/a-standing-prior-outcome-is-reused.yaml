@@ -10,6 +10,7 @@ world:
       comments:
         - {author: agent, trusted: true, marker: "agent:outcome"}
 expect:
+  rerun: ineligible
   result: "#12 ready-for-agent"
   calls: []
   effects:

@@ -6,6 +6,7 @@ world:
   prs:
     - {number: 50, state: open, labels: [agent:ready-for-review], head: h2, readySha: h1, base: main, mergeState: CLEAN, checks: [pass], files: []}
 expect:
+  rerun: ineligible
   result: "#50 not ready: head moved after the handoff"
   effects:
     - {op: label_remove, target: "pr#50", label: agent:ready-for-review}

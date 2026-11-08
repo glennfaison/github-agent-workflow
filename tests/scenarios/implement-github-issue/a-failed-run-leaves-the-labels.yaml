@@ -5,6 +5,7 @@ world:
   issues:
     - {number: 12, state: open, labels: [ready-for-agent]}
 expect:
+  rerun: eligible
   result: "#12 failed: build did not pass"
   effects:
     - {op: comment, target: "issue#12", marker: agent:failure}
