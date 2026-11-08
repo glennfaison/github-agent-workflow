@@ -52,7 +52,6 @@ const CONTRACT_PENDING = new Set([
   "grill-via-github-comments",
   "retrospective",
   "setup-github-agent-workflow",
-  "unattended-triage",
 ]);
 
 const errors = [];

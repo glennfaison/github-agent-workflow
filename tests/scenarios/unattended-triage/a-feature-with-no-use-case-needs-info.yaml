@@ -1,0 +1,14 @@
+name: A feature that does not say what it is for needs information, not an agent
+skill: unattended-triage
+inputs: {subject: "issue#22"}
+world:
+  issues:
+    - {number: 22, state: open, labels: [needs-triage], kind: feature, useCase: missing, openQuestions: 0}
+expect:
+  document:
+    Recommended state: needs-info
+    Category: enhancement
+    Comment structure: Triage Notes
+    Outcome comment: "## Triage Notes — Established: the request is for an export button. Still needed: who uses it and for what. Question: which workflow does this unblock? Recommended answer: reporting for finance."
+    Proposed repository changes: None
+  effects: []

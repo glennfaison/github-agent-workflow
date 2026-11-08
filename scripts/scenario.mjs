@@ -336,6 +336,19 @@ export const DOCUMENT_ORACLES = {
     }
     return out;
   },
+  "unattended-triage": (world, inputs, doc) => {
+    const out = [];
+    const state = docHead(doc["Recommended state"] ?? "");
+    const structure = { "ready-for-agent": "Agent Brief", "ready-for-human": "ready-for-human structure", "needs-info": "Triage Notes" }[state];
+    if (structure && docHead(doc["Comment structure"] ?? "") !== structure) out.push(`${state} needs the ${structure}, not ${docHead(doc["Comment structure"] ?? "")}`);
+    const n = Number(String(inputs.subject ?? "").match(/\d+/)?.[0]);
+    const issue = (world.issues ?? []).find((i) => i.number === n);
+    if (!issue) return out;
+    if ((issue.openQuestions ?? 0) > 0 && state !== "needs-info") out.push(`the issue has ${issue.openQuestions} open question(s), so the state must be needs-info, not ${state}`);
+    if (issue.kind === "feature" && issue.useCase === "missing" && state === "ready-for-agent") out.push("a feature with no stated use case is never ready-for-agent");
+    if (issue.wontfix && state !== "ready-for-human") out.push(`a wontfix recommendation is ready-for-human, not ${state}`);
+    return out;
+  },
 };
 
 /** The same checks as checkScenario, for a skill that returns a document. */
