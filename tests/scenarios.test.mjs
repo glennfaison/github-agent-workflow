@@ -348,3 +348,39 @@ test("triage that posts a comment is rejected, because the caller owns every wri
   const p = tri("a-complete-bug-is-ready-for-agent", (sc) => { sc.expect.effects = [{ op: "comment", target: "issue#21", marker: "agent:outcome" }]; });
   assert.ok(p.some((m) => /pure skill must leave no effects/.test(m)), p.join("\n"));
 });
+
+// ---- grill-via-github-comments: a round of questions checked against the subject's decision tree --
+const grill = contractOf("grill-via-github-comments");
+const gr = (name, edit) => { const sc = find(`grill-via-github-comments/${name}.yaml`); edit(sc); return problems(grill, sc); };
+
+test("asking a decision whose prerequisite is still open is rejected", () => {
+  const p = gr("two-independent-decisions-are-one-round", (sc) => { sc.decisions[1].needs = ["A"]; });
+  assert.ok(p.some((m) => /asks about B while A, which it depends on, is still open/.test(m)), p.join("\n"));
+});
+
+test("leaving a frontier decision out of the round is rejected", () => {
+  const p = gr("two-independent-decisions-are-one-round", (sc) => { sc.expect.asks = ["A"]; sc.expect.document.Questions.pop(); });
+  assert.ok(p.some((m) => /B is on the frontier but is not asked/.test(m)), p.join("\n"));
+});
+
+test("a question without a recommended answer is rejected", () => {
+  const p = gr("two-independent-decisions-are-one-round", (sc) => { sc.expect.document.Questions[0] = "❓ **Q1** - **Which columns?**: All of them?"; });
+  assert.ok(p.some((m) => /question 1 has no recommended answer/.test(m)), p.join("\n"));
+});
+
+test("asking something the code answers is rejected, and so is leaving out the finding", () => {
+  const asked = gr("two-independent-decisions-are-one-round", (sc) => { sc.decisions[0].lookup = true; });
+  assert.ok(asked.some((m) => /asks about A, which could be looked up/.test(m)), asked.join("\n"));
+  const silent = gr("a-question-the-code-answers-is-a-finding", (sc) => { sc.expect.document.Findings = "None"; });
+  assert.ok(silent.some((m) => /can be looked up, so the answer must be a finding/.test(m)), silent.join("\n"));
+});
+
+test("hiding the decisions that wait for a later round is rejected", () => {
+  const p = gr("a-dependent-decision-waits-for-a-later-round", (sc) => { sc.expect.document["Waiting on those answers"] = "None"; });
+  assert.ok(p.some((m) => /B wait for these answers, but `Waiting on those answers` is None/.test(m)), p.join("\n"));
+});
+
+test("an outcome that disagrees with the questions is rejected", () => {
+  const p = gr("a-question-the-code-answers-is-a-finding", (sc) => { sc.expect.document.Outcome = "asked"; });
+  assert.ok(p.some((m) => /`asked` exactly when there are questions/.test(m)), p.join("\n"));
+});

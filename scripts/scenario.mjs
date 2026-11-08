@@ -303,9 +303,9 @@ export function parseDocLine(line) {
 /** The part of a value or alternative that names it: "Unknown — no plan" -> "Unknown" */
 export const docHead = (s) => String(s).split(" — ")[0].trim();
 
-/** A value matches an alternative when it starts with the same word, or the alternative is a `<placeholder>` and the value is not empty. */
+/** A value matches an alternative when it starts with the same word, or the alternative is a `<placeholder>` and the value is not empty. A list is a value, and matches only a placeholder. */
 export function matchesAlt(value, alt) {
-  const v = String(value ?? "").trim();
+  const v = Array.isArray(value) ? (value.length ? "<list>" : "") : String(value ?? "").trim(); // a list is a value that has items
   if (!v) return false;
   const h = docHead(alt);
   return h.includes("<") ? true : docHead(v) === h;
@@ -349,6 +349,33 @@ export const DOCUMENT_ORACLES = {
     if (issue.wontfix && state !== "ready-for-human") out.push(`a wontfix recommendation is ready-for-human, not ${state}`);
     return out;
   },
+  // The scenario lists the subject's `decisions` ({id, open, needs, lookup}) and the ids the questions are about in `expect.asks`.
+  "grill-via-github-comments": (world, inputs, doc, sc) => {
+    const out = [];
+    const ds = sc.decisions ?? [];
+    const asks = sc.expect?.asks ?? [];
+    const qs = Array.isArray(doc.Questions) ? doc.Questions : [];
+    const byId = new Map(ds.map((d) => [d.id, d]));
+    const settled = (id) => byId.get(id)?.open === false;
+    const frontier = ds.filter((d) => d.open && !d.lookup && (d.needs ?? []).every(settled));
+    if (qs.length !== asks.length) out.push(`${qs.length} question(s), but \`asks\` names ${asks.length} decision(s)`);
+    for (const id of asks) {
+      const d = byId.get(id);
+      if (!d) { out.push(`asks about ${id}, which is not a decision of the subject`); continue; }
+      if (!d.open) out.push(`asks about ${id}, which is already settled`);
+      if (d.lookup) out.push(`asks about ${id}, which could be looked up`);
+      for (const n of d.needs ?? []) if (!settled(n)) out.push(`asks about ${id} while ${n}, which it depends on, is still open`);
+    }
+    for (const d of frontier) if (!asks.includes(d.id)) out.push(`${d.id} is on the frontier but is not asked, so the round is not the whole frontier`);
+    for (const [i, q] of qs.entries()) if (!/➡️\s*\S/.test(String(q))) out.push(`question ${i + 1} has no recommended answer`);
+    const waiting = ds.filter((d) => d.open && !d.lookup && !asks.includes(d.id));
+    if (waiting.length && docHead(doc["Waiting on those answers"] ?? "") === "None") out.push(`${waiting.map((d) => d.id).join(", ")} wait for these answers, but \`Waiting on those answers\` is None`);
+    if (!waiting.length && docHead(doc["Waiting on those answers"] ?? "") !== "None") out.push("nothing waits, so `Waiting on those answers` must be None");
+    const looked = ds.filter((d) => d.lookup);
+    if (looked.length && docHead(doc.Findings ?? "") === "None") out.push(`${looked.map((d) => d.id).join(", ")} can be looked up, so the answer must be a finding`);
+    if ((docHead(doc.Outcome ?? "") === "asked") !== (qs.length > 0)) out.push("the outcome is `asked` exactly when there are questions");
+    return out;
+  },
 };
 
 /** The same checks as checkScenario, for a skill that returns a document. */
@@ -376,7 +403,7 @@ export function checkPureScenario(contract, sc) {
     } catch (err) { bad(err.message); }
   }
   const oracle = DOCUMENT_ORACLES[sc.skill];
-  if (oracle) out.push(...oracle(sc.world ?? { issues: [], prs: [] }, sc.inputs ?? {}, doc));
+  if (oracle) out.push(...oracle(sc.world ?? { issues: [], prs: [] }, sc.inputs ?? {}, doc, sc));
   return out;
 }
 
