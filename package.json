@@ -8,7 +8,7 @@
     "validate": "node scripts/validate-skills.mjs",
     "lint": "node scripts/lint-files.mjs --all",
     "pretest": "node scripts/check-hooks.mjs",
-    "test": "bash tests/lib.test.sh && node --test tests/helpers.test.mjs tests/lint.test.mjs tests/contracts.test.mjs tests/scenarios.test.mjs tests/diff-worlds.test.mjs",
+    "test": "bash tests/lib.test.sh && node --test tests/helpers.test.mjs tests/lint.test.mjs tests/contracts.test.mjs tests/scenarios.test.mjs tests/diff-worlds.test.mjs tests/gh-sim.test.mjs",
     "check-plugin-version": "node scripts/sync-plugin-version.mjs --check",
     "check": "npm run lint && npm run validate && npm run check-plugin-version && npm test",
     "hooks:check": "node scripts/check-hooks.mjs",
