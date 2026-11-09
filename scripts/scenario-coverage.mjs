@@ -3,25 +3,14 @@
 // The same numbers are enforced by tests/scenarios.test.mjs: a skill cannot declare a result line
 // that no scenario exercises.
 import { readFileSync, readdirSync, existsSync } from "node:fs";
-import { join, dirname } from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { join } from "node:path";
+import { pathToFileURL } from "node:url";
 import { parse } from "yaml";
-import { extractContract } from "./contracts.mjs";
+import { PKG, skillDirs, contractOf } from "./skill-contracts.mjs";
 import { matchesReturn, parseDocLine, docHead, ORACLES } from "./scenario.mjs";
 
-const PKG = join(dirname(fileURLToPath(import.meta.url)), "..");
-const SKILLS = join(PKG, "skills");
-/** Every skill directory in the package, by name: `skills/<bucket>/<skill>`. */
-const skillDirs = () => readdirSync(SKILLS, { withFileTypes: true }).filter((b) => b.isDirectory()).flatMap((b) =>
-  readdirSync(join(SKILLS, b.name), { withFileTypes: true })
-    .filter((d) => d.isDirectory() && existsSync(join(SKILLS, b.name, d.name, "SKILL.md")))
-    .map((d) => ({ name: d.name, dir: join(SKILLS, b.name, d.name) })));
-/** The parsed contract of a skill, or null when it has none (yet) or is not a skill of this package. */
-export function contractOf(name) {
-  const found = skillDirs().find((s) => s.name === name);
-  const block = found && extractContract(readFileSync(join(found.dir, "SKILL.md"), "utf8"));
-  return block ? parse(block.yaml) : null;
-}
+export { contractOf };
+
 /**
  * @returns {string[]} the scenarios of a skill with an eligibility oracle that completed a run (not `skipped`) and
  * have no `rerun`: what a second run would find is not said, and so not checked. An interrupted scenario has one.
@@ -49,7 +38,16 @@ export function coverage() {
   const rows = [];
   for (const { name } of skillDirs().sort((a, b) => a.name.localeCompare(b.name))) {
     const c = contractOf(name);
-    if (!c || c.kind === "group" || c.kind === "reference") continue; // a group's results are its items' results; reference material is never run
+    if (!c || c.kind === "reference") continue; // reference material is never run
+    if (c.kind === "group") { // what a group promises is its selection: a round that dispatches, and one with nothing to do
+      const list = scenariosOf(name);
+      const missing = [];
+      if (list.length < 3) missing.push(`at least 3 scenarios (has ${list.length})`);
+      if (!list.some((sc) => (sc.expect?.dispatches ?? []).length > 0)) missing.push("a scenario that dispatches");
+      if (!list.some((sc) => (sc.expect?.dispatches ?? []).length === 0)) missing.push("a scenario with nothing eligible (no dispatch)");
+      rows.push({ name, total: 3, missing });
+      continue;
+    }
     if (c.kind === "utility") {
       const first = parseDocLine(c.returns[0]);
       const verdicts = first.alts.filter((a) => !a.includes("<")).map(docHead);

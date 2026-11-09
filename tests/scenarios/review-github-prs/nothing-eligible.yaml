@@ -1,0 +1,12 @@
+name: Only a draft and a PR that needs work gives nothing eligible
+skill: review-github-prs
+inputs: {review_batch: 2, runner: nightly}
+world:
+  prs:
+    - {number: 40, state: open, draft: true, labels: ["agent:ready-for-review"], head: h1, base: main, mergeState: CLEAN, checks: [pass], createdAt: "2026-10-01T09:00:00Z"}
+    - {number: 41, state: open, labels: ["agent:needs-work"], head: h2, base: main, mergeState: CLEAN, checks: [fail], createdAt: "2026-10-02T09:00:00Z"}
+expect:
+  dispatches: []
+  results: ["nothing eligible"]
+  log:
+    results: ["nothing eligible"]

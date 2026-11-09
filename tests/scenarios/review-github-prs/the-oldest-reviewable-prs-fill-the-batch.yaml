@@ -1,0 +1,22 @@
+name: Drafts, human-merge PRs and PRs not ready for review are not candidates, and the two oldest are reviewed
+skill: review-github-prs
+inputs: {review_batch: 2, runner: nightly, unattended: true, trusted_authors: release-bot}
+world:
+  prs:
+    - {number: 40, state: open, labels: ["agent:ready-for-review"], head: h1, base: main, mergeState: CLEAN, checks: [pass], createdAt: "2026-10-03T09:00:00Z"}
+    - {number: 41, state: open, labels: ["agent:ready-for-review"], head: h2, base: main, mergeState: CLEAN, checks: [pass], createdAt: "2026-10-01T09:00:00Z"}
+    - {number: 42, state: open, draft: true, labels: ["agent:ready-for-review"], head: h3, base: main, mergeState: CLEAN, checks: [pass], createdAt: "2026-09-30T09:00:00Z"}
+    - {number: 43, state: open, labels: ["agent:ready-for-review", "agent:human-merge"], head: h4, base: main, mergeState: CLEAN, checks: [pass], createdAt: "2026-09-29T09:00:00Z"}
+    - {number: 44, state: open, labels: ["agent:ready-for-review"], head: h5, base: main, mergeState: CLEAN, checks: [pass], createdAt: "2026-10-02T09:00:00Z"}
+    - {number: 45, state: open, labels: ["agent:needs-work"], head: h6, base: main, mergeState: CLEAN, checks: [fail], createdAt: "2026-09-28T09:00:00Z"}
+expect:
+  dispatches:
+    - target: "pr#41"
+      inputs: {write_log: false, runner: nightly, unattended: true, trusted_authors: release-bot}
+      result: "#41 merged"
+    - target: "pr#44"
+      inputs: {write_log: false, runner: nightly, unattended: true, trusted_authors: release-bot}
+      result: "#44 sent back: 2 open findings"
+  results: ["#41 merged", "#44 sent back: 2 open findings"]
+  log:
+    results: ["#41 merged", "#44 sent back: 2 open findings"]

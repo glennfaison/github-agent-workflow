@@ -1,0 +1,16 @@
+name: With dry_run=true the call is a dry run, nothing is filed and the rest are deferred
+skill: explore-github-repo
+inputs: {explore_batch: 2, dry_run: true, unattended: true, runner: nightly}
+world: {}
+findings:
+  - {title: "Export drops the header row", score: 9}
+  - {title: "Template picker is slow", score: 8}
+  - {title: "Footer link is dead", score: 3}
+expect:
+  dispatches:
+    - inputs: {limit: 2, dry_run: true, unattended: true, run_id: "20261109-nightly"}
+      candidates: ["Export drops the header row", "Template picker is slow", "Footer link is dead"]
+      results: ["would-file: Export drops the header row", "would-file: Template picker is slow", "deferred: over limit"]
+  result: "0 filed, 0 commented, 0 dropped"
+  log:
+    deferred: ["Footer link is dead"]

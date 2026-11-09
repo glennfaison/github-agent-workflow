@@ -1,0 +1,15 @@
+name: With a batch of one only the oldest PR is reviewed, though newer ones are eligible
+skill: review-github-prs
+inputs: {review_batch: 1, runner: nightly}
+world:
+  prs:
+    - {number: 40, state: open, labels: ["agent:ready-for-review"], head: h1, base: main, mergeState: CLEAN, checks: [pass], createdAt: "2026-10-02T09:00:00Z"}
+    - {number: 41, state: open, labels: ["agent:ready-for-review"], head: h2, base: main, mergeState: CLEAN, checks: [pass], createdAt: "2026-10-01T09:00:00Z"}
+expect:
+  dispatches:
+    - target: "pr#41"
+      inputs: {write_log: false, runner: nightly}
+      result: "#41 merged"
+  results: ["#41 merged"]
+  log:
+    results: ["#41 merged"]

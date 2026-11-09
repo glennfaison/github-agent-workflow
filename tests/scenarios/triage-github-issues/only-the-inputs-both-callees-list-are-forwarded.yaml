@@ -1,0 +1,18 @@
+name: Each callee gets only the run's inputs that it lists
+skill: triage-github-issues
+inputs: {triage_batch: 1, runner: nightly, unattended: true}
+world:
+  issues:
+    - {number: 8, state: open, labels: [needs-triage], createdAt: "2026-10-01T09:00:00Z"}
+    - {number: 9, state: open, labels: [needs-triage], createdAt: "2026-10-02T09:00:00Z"}
+expect:
+  reconcile:
+    inputs: {write_log: false, runner: nightly, unattended: true}
+    results: ["#40 stale lease cleared"]
+  dispatches:
+    - target: "issue#8"
+      inputs: {write_log: false, runner: nightly, unattended: true}
+      result: "#8 needs-info"
+  results: ["#8 needs-info"]
+  log:
+    results: ["#40 stale lease cleared", "#8 needs-info"]

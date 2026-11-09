@@ -1,0 +1,16 @@
+name: With the merge lane held, a green PR is not a candidate and a failing one still is
+skill: shepherd-github-prs
+inputs: {shepherd_batch: 3, runner: nightly}
+world:
+  prs:
+    - {number: 40, state: open, labels: ["agent:needs-work"], head: h1, base: main, mergeState: CLEAN, checks: [pass], openFindings: 0, createdAt: "2026-10-01T09:00:00Z"}
+    - {number: 44, state: open, labels: ["agent:needs-work"], head: h5, base: main, mergeState: CLEAN, checks: [fail], openFindings: 0, createdAt: "2026-10-02T09:00:00Z"}
+    - {number: 50, state: open, labels: ["agent:ready-for-review"], head: h9, base: main, mergeState: CLEAN, checks: [pass], createdAt: "2026-09-25T09:00:00Z"}
+expect:
+  dispatches:
+    - target: "pr#44"
+      inputs: {write_log: false, runner: nightly}
+      result: "#44 fix pushed"
+  results: ["#44 fix pushed"]
+  log:
+    results: ["#44 fix pushed"]

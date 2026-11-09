@@ -531,3 +531,121 @@ test("an interrupted pass must be eligible again, return nothing, and not repeat
   const wrong = rr(path, (sc) => { sc.expect.rerun_effects.push({ op: "label_add", target: "issue#15", label: "agent:triage" }); });
   assert.ok(wrong.some((m) => /repeats label_add on issue#15/.test(m)), wrong.join("\n"));
 });
+
+// ---- group skills: selection, order, forwarding, the log ----------------------------------------------
+const gp = (path, edit) => { const sc = find(path); edit(sc); return problems(contractOf(sc.skill), sc); };
+const IMPL = "implement-github-issues/the-oldest-eligible-issues-fill-the-batch.yaml";
+const TRIAGE = "triage-github-issues/the-oldest-untriaged-issues-fill-the-batch.yaml";
+
+test("a dispatch that drops trusted_authors fails", () => {
+  const p = gp(IMPL, (sc) => { delete sc.expect.dispatches[0].inputs.trusted_authors; });
+  assert.ok(p.some((m) => /the dispatch of issue#9 drops `trusted_authors`/.test(m)), p.join("\n"));
+});
+
+test("a dispatch must carry write_log=false and nothing the item does not list", () => {
+  const logged = gp(IMPL, (sc) => { sc.expect.dispatches[0].inputs.write_log = true; });
+  assert.ok(logged.some((m) => /gives write_log=true, not false/.test(m)), logged.join("\n"));
+  const extra = gp(IMPL, (sc) => { sc.expect.dispatches[0].inputs.implement_batch = 2; });
+  assert.ok(extra.some((m) => /gives `implement_batch`, which implement-github-issue does not list/.test(m)), extra.join("\n"));
+  const unset = gp("implement-github-issues/only-the-inputs-this-run-set-are-forwarded.yaml", (sc) => { sc.expect.dispatches[0].inputs.unattended = true; });
+  assert.ok(unset.some((m) => /gives `unattended`, which .* did not set/.test(m)), unset.join("\n"));
+});
+
+test("a stuck, leased or unready issue that is dispatched, or one past the batch, is rejected", () => {
+  const stuck = gp(IMPL, (sc) => { sc.expect.dispatches[1] = { ...sc.expect.dispatches[1], target: "issue#14", result: "#14 needs-info" }; sc.expect.results[1] = "#14 needs-info"; sc.expect.log.results[1] = "#14 needs-info"; });
+  assert.ok(stuck.some((m) => /dispatches issue#14, which is not eligible/.test(m)), stuck.join("\n"));
+  const past = gp(IMPL, (sc) => { sc.expect.dispatches[1] = { ...sc.expect.dispatches[1], target: "issue#5", result: "#5 needs-info" }; sc.expect.results[1] = "#5 needs-info"; sc.expect.log.results[1] = "#5 needs-info"; });
+  assert.ok(past.some((m) => /dispatches issue#5, which is past the batch of 2/.test(m)), past.join("\n"));
+});
+
+test("leaving out an eligible issue, or dispatching newest first, is rejected", () => {
+  const short = gp(IMPL, (sc) => { sc.expect.dispatches.pop(); sc.expect.results.pop(); sc.expect.log.results.pop(); });
+  assert.ok(short.some((m) => /does not dispatch issue#12, which is eligible and within the batch of 2/.test(m)), short.join("\n"));
+  const wrong = gp(IMPL, (sc) => { sc.expect.dispatches.reverse(); sc.expect.results.reverse(); sc.expect.log.results.reverse(); });
+  assert.ok(wrong.some((m) => /wrong order: oldest first is issue#9, issue#12/.test(m)), wrong.join("\n"));
+});
+
+test("the batch comes from the run's inputs, and one is required", () => {
+  const p = gp(IMPL, (sc) => { delete sc.inputs.implement_batch; });
+  assert.ok(p.some((m) => /must set `implement_batch`/.test(m)), p.join("\n"));
+});
+
+test("the returned lines and the log entry must match what was dispatched", () => {
+  const ret = gp(IMPL, (sc) => { sc.expect.results = ["nothing eligible"]; });
+  assert.ok(ret.some((m) => /returns \["nothing eligible"\], but the dispatched items gave/.test(m)), ret.join("\n"));
+  const log = gp(IMPL, (sc) => { sc.expect.log.results.pop(); });
+  assert.ok(log.some((m) => /the log entry lists/.test(m)), log.join("\n"));
+  const bad = gp(IMPL, (sc) => { sc.expect.dispatches[0].result = "#9 merged"; sc.expect.results[0] = "#9 merged"; sc.expect.log.results[0] = "#9 merged"; });
+  assert.ok(bad.some((m) => /result `#9 merged` is not one of implement-github-issue's returns/.test(m)), bad.join("\n"));
+  const idle = gp("implement-github-issues/nothing-eligible.yaml", (sc) => { sc.expect.log.results = []; });
+  assert.ok(idle.some((m) => /the log entry lists \[\], but \["nothing eligible"\] happened/.test(m)), idle.join("\n"));
+});
+
+test("a group skill that does item work itself is rejected", () => {
+  const p = gp(IMPL, (sc) => { sc.expect.effects = [{ op: "label_add", target: "issue#9", label: "agent:pr-open" }]; });
+  assert.ok(p.some((m) => /does no item work/.test(m)), p.join("\n"));
+});
+
+test("triage-github-issues reconciles first, with the inputs reconcile lists", () => {
+  const none = gp(TRIAGE, (sc) => { delete sc.expect.reconcile; });
+  assert.ok(none.some((m) => /must call reconcile-github-issues first/.test(m)), none.join("\n"));
+  const drops = gp(TRIAGE, (sc) => { delete sc.expect.reconcile.inputs.runner; });
+  assert.ok(drops.some((m) => /the call to reconcile-github-issues drops `runner`/.test(m)), drops.join("\n"));
+  const batch = gp(TRIAGE, (sc) => { sc.expect.reconcile.inputs.triage_batch = 2; });
+  assert.ok(batch.some((m) => /gives `triage_batch`, which reconcile-github-issues does not list/.test(m)), batch.join("\n"));
+  const line = gp(TRIAGE, (sc) => { sc.expect.reconcile.results = ["#30 tidied"]; });
+  assert.ok(line.some((m) => /`#30 tidied` is not one of reconcile-github-issues's returns/.test(m)), line.join("\n"));
+  const extra = gp(IMPL, (sc) => { sc.expect.reconcile = { inputs: {}, results: [] }; });
+  assert.ok(extra.some((m) => /calls no other skill/.test(m)), extra.join("\n"));
+});
+
+test("a review round leaves out drafts, and a shepherd round does not wait for checks", () => {
+  const draft = gp("review-github-prs/the-oldest-reviewable-prs-fill-the-batch.yaml", (sc) => { sc.expect.dispatches[0] = { ...sc.expect.dispatches[0], target: "pr#42" }; });
+  assert.ok(draft.some((m) => /dispatches pr#42, which is not eligible/.test(m)), draft.join("\n"));
+  const wait = gp("shepherd-github-prs/the-oldest-shepherdable-prs-fill-the-batch.yaml", (sc) => { sc.expect.dispatches[0] = { ...sc.expect.dispatches[0], target: "pr#42" }; });
+  assert.ok(wait.some((m) => /dispatches pr#42, which is not eligible \(checks pending\)/.test(m)), wait.join("\n"));
+});
+
+test("a group skill needs three scenarios, one that dispatches and one that does not", () => {
+  const row = coverage().find((r) => r.name === "triage-github-issues");
+  assert.equal(row.total, 3);
+  assert.deepEqual(row.missing, []);
+});
+
+// explore-github-repo: findings are ranked, then filed through one call with a limit
+const EXPLORE = "explore-github-repo/findings-are-ranked-and-the-cap-counts-only-filed.yaml";
+
+test("explore passes every finding best first, with the limit and the inputs file-github-issues lists", () => {
+  const unranked = gp(EXPLORE, (sc) => { sc.expect.dispatches[0].candidates.reverse(); });
+  assert.ok(unranked.some((m) => /but best first is/.test(m)), unranked.join("\n"));
+  const limit = gp(EXPLORE, (sc) => { sc.expect.dispatches[0].inputs.limit = 3; });
+  assert.ok(limit.some((m) => /gives limit=3, not 2/.test(m)), limit.join("\n"));
+  const unattended = gp(EXPLORE, (sc) => { delete sc.expect.dispatches[0].inputs.unattended; });
+  assert.ok(unattended.some((m) => /drops `unattended`/.test(m)), unattended.join("\n"));
+  const runId = gp(EXPLORE, (sc) => { delete sc.expect.dispatches[0].inputs.run_id; });
+  assert.ok(runId.some((m) => /drops `run_id`/.test(m)), runId.join("\n"));
+  const twice = gp(EXPLORE, (sc) => { sc.expect.dispatches.push(sc.expect.dispatches[0]); });
+  assert.ok(twice.some((m) => /2 times, and the contract has it called once/.test(m)), twice.join("\n"));
+});
+
+test("explore's cap counts filed issues only, and everything after it is deferred", () => {
+  const over = gp(EXPLORE, (sc) => { sc.expect.dispatches[0].results[3] = "filed #103"; sc.expect.result = "3 filed, 1 commented, 0 dropped"; sc.expect.log.deferred = []; });
+  assert.ok(over.some((m) => /3 candidates filed \(or would-file\) with a limit of 2/.test(m)), over.join("\n"));
+  const early = gp(EXPLORE, (sc) => { sc.expect.dispatches[0].results[1] = "deferred: over limit"; sc.expect.result = "2 filed, 0 commented, 0 dropped"; });
+  assert.ok(early.some((m) => /defers `Template picker is slow` before the limit of 2 is reached/.test(m)), early.join("\n"));
+  const after = gp(EXPLORE, (sc) => { sc.expect.dispatches[0].results[2] = "deferred: over limit"; sc.expect.dispatches[0].results[3] = "filed #104"; });
+  assert.ok(after.some((m) => /after deferring a candidate/.test(m)), after.join("\n"));
+});
+
+test("explore's count line, its log, a dry run and an empty round are checked", () => {
+  const count = gp(EXPLORE, (sc) => { sc.expect.result = "2 filed, 0 commented, 0 dropped"; });
+  assert.ok(count.some((m) => /returns `2 filed, 0 commented, 0 dropped`, but the results count/.test(m)), count.join("\n"));
+  const log = gp(EXPLORE, (sc) => { sc.expect.log.deferred = []; });
+  assert.ok(log.some((m) => /the log defers \[\]/.test(m)), log.join("\n"));
+  const dry = gp("explore-github-repo/a-dry-run-files-nothing.yaml", (sc) => { sc.expect.dispatches[0].results[0] = "filed #101"; });
+  assert.ok(dry.some((m) => /files an issue with dry_run=true/.test(m)), dry.join("\n"));
+  const wf = gp(EXPLORE, (sc) => { sc.expect.dispatches[0].results[0] = "would-file: Export drops the header row"; });
+  assert.ok(wf.some((m) => /`would-file` without dry_run=true/.test(m)), wf.join("\n"));
+  const invent = gp("explore-github-repo/nothing-found-calls-nothing.yaml", (sc) => { sc.expect.dispatches = [{ inputs: { limit: 2, unattended: true, run_id: "r" }, candidates: [], results: [] }]; });
+  assert.ok(invent.some((m) => /with nothing found, so it invents work/.test(m)), invent.join("\n"));
+});

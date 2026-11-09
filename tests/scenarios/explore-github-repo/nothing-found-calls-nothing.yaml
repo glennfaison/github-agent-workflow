@@ -1,0 +1,10 @@
+name: With nothing found, file-github-issues is not called and the count line is zero
+skill: explore-github-repo
+inputs: {explore_batch: 2, unattended: true, runner: nightly}
+world: {}
+findings: []
+expect:
+  dispatches: []
+  result: "0 filed, 0 commented, 0 dropped"
+  log:
+    deferred: []

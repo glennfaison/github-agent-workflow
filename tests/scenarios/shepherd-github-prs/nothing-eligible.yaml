@@ -1,0 +1,12 @@
+name: PRs that can only wait for CI give nothing eligible
+skill: shepherd-github-prs
+inputs: {shepherd_batch: 3, runner: nightly}
+world:
+  prs:
+    - {number: 40, state: open, labels: ["agent:needs-work"], head: h1, base: main, mergeState: CLEAN, checks: [pending], openFindings: 0, createdAt: "2026-10-01T09:00:00Z"}
+    - {number: 41, state: open, labels: ["agent:ready-for-review"], head: h2, base: main, mergeState: CLEAN, checks: [pass], createdAt: "2026-10-02T09:00:00Z"}
+expect:
+  dispatches: []
+  results: ["nothing eligible"]
+  log:
+    results: ["nothing eligible"]
