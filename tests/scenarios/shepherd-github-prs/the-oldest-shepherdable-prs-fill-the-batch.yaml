@@ -1,0 +1,21 @@
+name: A PR whose checks are running is skipped, not waited for, and stuck PRs are not candidates
+skill: shepherd-github-prs
+inputs: {shepherd_batch: 2, runner: nightly, unattended: true, trusted_authors: release-bot}
+world:
+  prs:
+    - {number: 40, state: open, labels: ["agent:needs-work"], head: h1, base: main, mergeState: CLEAN, checks: [fail], openFindings: 0, createdAt: "2026-10-03T09:00:00Z"}
+    - {number: 41, state: open, labels: ["agent:needs-work"], head: h2, base: main, mergeState: CLEAN, checks: [pass], openFindings: 0, createdAt: "2026-10-01T09:00:00Z"}
+    - {number: 42, state: open, labels: ["agent:needs-work"], head: h3, base: main, mergeState: CLEAN, checks: [pending], openFindings: 0, createdAt: "2026-09-30T09:00:00Z"}
+    - {number: 43, state: open, labels: ["agent:needs-work", "agent:stuck"], head: h4, base: main, mergeState: CLEAN, checks: [fail], openFindings: 0, createdAt: "2026-09-29T09:00:00Z"}
+    - {number: 44, state: open, labels: ["agent:needs-work"], head: h5, base: main, mergeState: CLEAN, checks: [fail], openFindings: 0, createdAt: "2026-10-02T09:00:00Z"}
+expect:
+  dispatches:
+    - target: "pr#41"
+      inputs: {write_log: false, runner: nightly, unattended: true, trusted_authors: release-bot}
+      result: "#41 ready-for-review"
+    - target: "pr#44"
+      inputs: {write_log: false, runner: nightly, unattended: true, trusted_authors: release-bot}
+      result: "#44 fix pushed"
+  results: ["#41 ready-for-review", "#44 fix pushed"]
+  log:
+    results: ["#41 ready-for-review", "#44 fix pushed"]

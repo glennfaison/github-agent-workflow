@@ -1,0 +1,17 @@
+name: Findings go best first, a duplicate does not use up the cap, and the rest are deferred
+skill: explore-github-repo
+inputs: {explore_batch: 2, unattended: true, runner: nightly, log_window_days: 7}
+world: {}
+findings:
+  - {title: "Footer link is dead", score: 3}
+  - {title: "Export drops the header row", score: 9}
+  - {title: "Undo clears the clipboard", score: 7}
+  - {title: "Template picker is slow", score: 8}
+expect:
+  dispatches:
+    - inputs: {limit: 2, unattended: true, run_id: "20261109-nightly"}
+      candidates: ["Export drops the header row", "Template picker is slow", "Undo clears the clipboard", "Footer link is dead"]
+      results: ["filed #101", "duplicate of #12 (commented)", "filed #102", "deferred: over limit"]
+  result: "2 filed, 1 commented, 0 dropped"
+  log:
+    deferred: ["Footer link is dead"]

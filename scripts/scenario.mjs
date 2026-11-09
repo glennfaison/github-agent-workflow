@@ -13,6 +13,7 @@
 
 import { isDeepStrictEqual } from "node:util";
 import { readFileSync } from "node:fs";
+import { contractOf } from "./skill-contracts.mjs";
 
 export const MUTEX_ISSUE = ["needs-info", "ready-for-agent", "ready-for-human", "agent:pr-open"];
 export const MUTEX_PR = ["agent:needs-work", "agent:ready-for-review", "agent:human-merge"];
@@ -561,6 +562,149 @@ export function checkPureScenario(contract, sc) {
   return out;
 }
 
+// ---- group skills: which items are dispatched, in what order, and with which inputs ---------------------
+// A group scenario has `inputs` (the run's), a `world`, and `expect`: `dispatches` ([{target, inputs, result}], in order),
+// `results` (what the group returns), `log` ({results}, the one run-log entry) and, for a group that calls another skill
+// first, `reconcile` ({inputs, results}). The batch is picked here, from the real item skill's oracle, and what must be
+// forwarded is read from the real item skill's contract. Running the dispatched items is not checked: they have their own scenarios.
+
+/** The inputs a dispatch must carry: `write_log=false`, and every input of this run that the callee lists in `params`. */
+export function forwardedInputs(callee, runInputs = {}) {
+  return { write_log: false, ...Object.fromEntries(Object.entries(runInputs).filter(([k]) => (callee.params ?? []).includes(k))) };
+}
+
+/**
+ * `explore-github-repo` is a group skill whose candidates are findings, not items of the world: it ranks them
+ * (`findings: [{title, score}]`, score = impact x confidence), calls `file-github-issues` once with all of them,
+ * best first, and `limit` = its batch, and logs what was filed, commented, dropped and deferred.
+ * `expect.dispatches` is that one call: `{inputs, candidates, results}`.
+ */
+function checkFindingsScenario(contract, sc, callee, calleeName) {
+  const out = [];
+  const bad = (m) => out.push(m);
+  const E = sc.expect ?? {};
+  const inputs = sc.inputs ?? {};
+  const findings = sc.findings ?? [];
+  const ranked = [...findings].sort((a, b) => b.score - a.score).map((f) => f.title);
+  const batch = Number(inputs.explore_batch);
+  if (!Number.isInteger(batch) || batch < 1) bad("the scenario must set `explore_batch` to a whole number of at least 1");
+  const calls = E.dispatches ?? [];
+  if (calls.length > 1) bad(`calls ${calleeName} ${calls.length} times, and the contract has it called once`);
+  if (findings.length === 0 && calls.length) bad(`calls ${calleeName} with nothing found, so it invents work`);
+  if (findings.length && calls.length === 0) bad(`found ${findings.length} candidate(s) and never calls ${calleeName}`);
+  let counts = { filed: 0, commented: 0, dropped: 0 }, deferred = [];
+  const [call] = calls;
+  if (call) {
+    if (!isDeepStrictEqual(call.candidates, ranked)) bad(`passes the candidates ${JSON.stringify(call.candidates)}, but best first is ${JSON.stringify(ranked)}`);
+    const { run_id, ...given } = call.inputs ?? {};
+    if (typeof run_id !== "string" || run_id === "") bad(`the call to ${calleeName} drops \`run_id\``);
+    const want = { limit: batch, ...Object.fromEntries(Object.entries(inputs).filter(([k]) => (callee.params ?? []).includes(k))) };
+    for (const k of Object.keys(want)) {
+      if (!(k in given)) bad(`the call to ${calleeName} drops \`${k}\``);
+      else if (!isDeepStrictEqual(given[k], want[k])) bad(`the call to ${calleeName} gives ${k}=${JSON.stringify(given[k])}, not ${JSON.stringify(want[k])}`);
+    }
+    for (const k of Object.keys(given)) if (!(k in want)) bad(`the call to ${calleeName} gives \`${k}\`, which it does not list or this run did not set`);
+    const results = call.results ?? [];
+    if (results.length !== ranked.length) bad(`${results.length} result line(s) for ${ranked.length} candidate(s): one each, in input order`);
+    let used = 0;
+    for (const [i, r] of results.entries()) {
+      if (!matchesReturn(r, callee.returns)) { bad(`\`${r}\` is not one of ${calleeName}'s returns`); continue; }
+      const title = ranked[i];
+      if (/^filed #/.test(r)) { counts.filed++; used++; if (inputs.dry_run === true) bad("files an issue with dry_run=true"); }
+      else if (/^would-file:/.test(r)) { used++; if (inputs.dry_run !== true) bad("`would-file` without dry_run=true"); }
+      else if (/^duplicate of #\d+ \(commented\)$/.test(r)) counts.commented++;
+      else if (/^dropped:/.test(r)) counts.dropped++;
+      else if (r === "deferred: over limit") { deferred.push(title); if (used < batch) bad(`defers \`${title}\` before the limit of ${batch} is reached`); }
+      if (r !== "deferred: over limit" && deferred.length) bad(`gives \`${r}\` after deferring a candidate: everything after the limit is deferred`);
+    }
+    if (used > batch) bad(`${used} candidates filed (or would-file) with a limit of ${batch}`);
+  }
+  const line = `${counts.filed} filed, ${counts.commented} commented, ${counts.dropped} dropped`;
+  if (E.result !== line) bad(`returns \`${E.result}\`, but the results count \`${line}\``);
+  const logged = E.log?.deferred;
+  if (!Array.isArray(logged)) bad("no expected run-log entry (`log: {deferred: [...]}`)");
+  else if (!isDeepStrictEqual(logged, deferred.slice(0, 20))) bad(`the log defers ${JSON.stringify(logged)}, but ${JSON.stringify(deferred.slice(0, 20))} were deferred (at most 20)`);
+  if ((E.effects ?? []).length) bad("a group skill does no item work, so it has no effects of its own besides its log entry");
+  return out;
+}
+
+export function checkGroupScenario(contract, sc) {
+  const out = [];
+  const bad = (m) => out.push(m);
+  const E = sc.expect ?? {};
+  const world = sc.world ?? { issues: [], prs: [] };
+  const inputs = sc.inputs ?? {};
+  const itemName = contract.dispatches;
+  const item_ = contractOf(itemName);
+  if (!item_) { bad(`dispatches ${itemName}, which has no contract`); return out; }
+  const compare = (what, given, want, callee) => {
+    for (const k of Object.keys(want)) {
+      if (!(k in given)) bad(`${what} drops \`${k}\``);
+      else if (!isDeepStrictEqual(given[k], want[k])) bad(`${what} gives ${k}=${JSON.stringify(given[k])}, not ${JSON.stringify(want[k])}`);
+    }
+    for (const k of Object.keys(given)) if (!(k in want)) bad(`${what} gives \`${k}\`, which ${callee} does not list or this run did not set`);
+  };
+
+  // selection: the item skill's `requires`, oldest first, the first `batch` that pass
+  const kind = (item_.params ?? []).includes("pr") ? "pr" : "issue";
+  const batchKey = (contract.params ?? []).find((k) => k.endsWith("_batch"));
+  const batch = Number(inputs[batchKey]);
+  if (!Number.isInteger(batch) || batch < 1) bad(`the scenario must set \`${batchKey}\` to a whole number of at least 1`);
+  const list = (kind === "pr" ? world.prs : world.issues) ?? [];
+  const dated = list.every((i) => i.createdAt !== undefined);
+  const oldestFirst = [...list].sort((a, b) => (dated ? Date.parse(a.createdAt) - Date.parse(b.createdAt) : a.number - b.number));
+  const oracle = ORACLES[itemName];
+  if (!oracle) return checkFindingsScenario(contract, sc, item_, itemName); // candidates are findings, not items of the world
+  const fwd = forwardedInputs(item_, inputs);
+  const eligible = oldestFirst.map((i) => `${kind}#${i.number}`).filter((t) => oracle(world, t, fwd).eligible);
+  const want = Number.isInteger(batch) && batch >= 1 ? eligible.slice(0, batch) : [];
+  const dispatches = E.dispatches ?? [];
+  const got = dispatches.map((d) => d.target);
+  for (const t of got) {
+    if (!item(world, t)) bad(`dispatches ${t}, which is not in the world`);
+    else if (!eligible.includes(t)) bad(`dispatches ${t}, which is not eligible (${oracle(world, t, fwd).reason})`);
+    else if (!want.includes(t)) bad(`dispatches ${t}, which is past the batch of ${batch}`);
+  }
+  for (const t of want) if (!got.includes(t)) bad(`does not dispatch ${t}, which is eligible and within the batch of ${batch}`);
+  if (got.length === want.length && got.every((t) => want.includes(t)) && got.some((t, i) => t !== want[i])) bad(`dispatches in the wrong order: oldest first is ${want.join(", ")}`);
+
+  // forwarding and results
+  for (const d of dispatches) {
+    compare(`the dispatch of ${d.target}`, d.inputs ?? {}, fwd, itemName);
+    const n = String(d.target).match(/#(\d+)$/)?.[1];
+    if (typeof d.result !== "string" || !d.result.startsWith(`#${n} `) || !matchesReturn(d.result, item_.returns)) bad(`${d.target}'s result \`${d.result}\` is not one of ${itemName}'s returns`);
+  }
+  const itemResults = dispatches.map((d) => d.result);
+  const expectResults = itemResults.length ? itemResults : ["nothing eligible"];
+  if (!isDeepStrictEqual(E.results, expectResults)) bad(`returns ${JSON.stringify(E.results)}, but the dispatched items gave ${JSON.stringify(expectResults)}`);
+
+  // the skill the group calls first
+  const called = (contract.calls ?? [])[0];
+  let reconciled = [];
+  if (called) {
+    const callee = contractOf(called);
+    const r = E.reconcile;
+    if (!r) bad(`must call ${called} first, and the scenario has no \`reconcile\``);
+    else {
+      compare(`the call to ${called}`, r.inputs ?? {}, forwardedInputs(callee, inputs), called);
+      reconciled = r.results ?? [];
+      for (const l of reconciled) if (!matchesReturn(l, callee.returns)) bad(`\`${l}\` is not one of ${called}'s returns`);
+    }
+  } else if (E.reconcile) bad("this group skill calls no other skill, so it has no `reconcile`");
+
+  // the one run-log entry
+  const entry = E.log?.results;
+  if (!Array.isArray(entry)) bad("no expected run-log entry (`log: {results: [...]}`)");
+  else {
+    const all = [...reconciled, ...itemResults];
+    const wantLog = all.length ? all : ["nothing eligible"];
+    if (!isDeepStrictEqual([...entry].sort(), [...wantLog].sort())) bad(`the log entry lists ${JSON.stringify(entry)}, but ${JSON.stringify(wantLog)} happened`);
+    else if (!isDeepStrictEqual(entry.filter((l) => itemResults.includes(l)), itemResults)) bad("the log entry lists the dispatched results out of order");
+  }
+  if ((E.effects ?? []).length) bad("a group skill does no item work, so it has no effects of its own besides its log entry");
+  return out;
+}
+
 /**
  * The same skill's eligibility oracle, asked about the same item in the world a run leaves behind: could a
  * scheduler pick the item up again? A run that completes released its lease. A run that was `interrupted`
@@ -587,6 +731,7 @@ export function rerunEligibility(sc, after) {
  */
 export function checkScenario(contract, sc) {
   sc = expandScenario(sc);
+  if (contract.kind === "group") return checkGroupScenario(contract, sc);
   if (contract.kind === "utility") return checkPureScenario(contract, sc);
   const out = [];
   const bad = (m) => out.push(m);

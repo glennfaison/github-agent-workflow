@@ -1,0 +1,15 @@
+name: Nothing to reconcile and nothing to triage gives one idle entry
+skill: triage-github-issues
+inputs: {triage_batch: 2, runner: nightly}
+world:
+  issues:
+    - {number: 5, state: open, labels: [ready-for-agent], createdAt: "2026-10-01T09:00:00Z"}
+    - {number: 6, state: open, labels: [needs-info], createdAt: "2026-10-02T09:00:00Z"}
+expect:
+  reconcile:
+    inputs: {write_log: false, runner: nightly}
+    results: []
+  dispatches: []
+  results: ["nothing eligible"]
+  log:
+    results: ["nothing eligible"]

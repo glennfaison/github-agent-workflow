@@ -1,0 +1,26 @@
+name: Reconciling comes first, and the two oldest issues that still need triage are dispatched
+skill: triage-github-issues
+inputs: {triage_batch: 2, repo_guidance: CLAUDE.md, runner: nightly, log_window_days: 7, unattended: true, trusted_authors: release-bot}
+world:
+  issues:
+    - {number: 5, state: open, labels: [needs-triage], createdAt: "2026-10-03T09:00:00Z"}
+    - {number: 9, state: open, labels: [], createdAt: "2026-10-01T09:00:00Z"}
+    - {number: 12, state: open, labels: [needs-triage], createdAt: "2026-10-02T09:00:00Z"}
+    - {number: 14, state: open, labels: [needs-info], createdAt: "2026-09-30T09:00:00Z"}
+    - {number: 15, state: open, labels: ["agent:stuck"], createdAt: "2026-09-29T09:00:00Z"}
+    - {number: 16, state: open, labels: [needs-triage, "agent:triage"], lease: live, createdAt: "2026-09-28T09:00:00Z"}
+    - {number: 17, state: open, labels: ["agent:log"], createdAt: "2026-09-27T09:00:00Z"}
+expect:
+  reconcile:
+    inputs: {write_log: false, repo_guidance: CLAUDE.md, runner: nightly, log_window_days: 7, unattended: true, trusted_authors: release-bot}
+    results: ["#30 closed: implemented in #44"]
+  dispatches:
+    - target: "issue#9"
+      inputs: {write_log: false, repo_guidance: CLAUDE.md, runner: nightly, log_window_days: 7, unattended: true, trusted_authors: release-bot}
+      result: "#9 ready-for-agent"
+    - target: "issue#12"
+      inputs: {write_log: false, repo_guidance: CLAUDE.md, runner: nightly, log_window_days: 7, unattended: true, trusted_authors: release-bot}
+      result: "#12 needs-info"
+  results: ["#9 ready-for-agent", "#12 needs-info"]
+  log:
+    results: ["#30 closed: implemented in #44", "#9 ready-for-agent", "#12 needs-info"]

@@ -1,0 +1,14 @@
+name: An input the run did not set is not forwarded, so the item falls back to its own default
+skill: implement-github-issues
+inputs: {implement_batch: 3, runner: nightly}
+world:
+  issues:
+    - {number: 3, state: open, labels: [ready-for-agent], createdAt: "2026-10-01T09:00:00Z"}
+expect:
+  dispatches:
+    - target: "issue#3"
+      inputs: {write_log: false, runner: nightly}
+      result: "#3 PR #20 opened"
+  results: ["#3 PR #20 opened"]
+  log:
+    results: ["#3 PR #20 opened"]

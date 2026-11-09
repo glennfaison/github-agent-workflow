@@ -1,0 +1,22 @@
+name: Two of three eligible issues are dispatched, oldest first, and stuck, leased and unready ones do not count
+skill: implement-github-issues
+inputs: {implement_batch: 2, runner: nightly, log_window_days: 7, unattended: true, trusted_authors: release-bot}
+world:
+  issues:
+    - {number: 5, state: open, labels: [ready-for-agent], createdAt: "2026-10-03T09:00:00Z"}
+    - {number: 7, state: open, labels: [ready-for-agent, "agent:in-progress"], lease: live, createdAt: "2026-09-28T09:00:00Z"}
+    - {number: 9, state: open, labels: [ready-for-agent], createdAt: "2026-10-01T09:00:00Z"}
+    - {number: 12, state: open, labels: [ready-for-agent], createdAt: "2026-10-02T09:00:00Z"}
+    - {number: 14, state: open, labels: [ready-for-agent, "agent:stuck"], createdAt: "2026-09-30T09:00:00Z"}
+    - {number: 15, state: open, labels: [needs-info], createdAt: "2026-09-29T09:00:00Z"}
+expect:
+  dispatches:
+    - target: "issue#9"
+      inputs: {write_log: false, runner: nightly, log_window_days: 7, unattended: true, trusted_authors: release-bot}
+      result: "#9 PR #31 opened"
+    - target: "issue#12"
+      inputs: {write_log: false, runner: nightly, log_window_days: 7, unattended: true, trusted_authors: release-bot}
+      result: "#12 needs-info"
+  results: ["#9 PR #31 opened", "#12 needs-info"]
+  log:
+    results: ["#9 PR #31 opened", "#12 needs-info"]

@@ -1,0 +1,12 @@
+name: With nothing ready, nothing is dispatched and one idle entry is logged
+skill: implement-github-issues
+inputs: {implement_batch: 3, runner: nightly}
+world:
+  issues:
+    - {number: 5, state: open, labels: [ready-for-human], createdAt: "2026-10-01T09:00:00Z"}
+    - {number: 6, state: open, labels: [ready-for-agent, "agent:stuck"], createdAt: "2026-10-02T09:00:00Z"}
+expect:
+  dispatches: []
+  results: ["nothing eligible"]
+  log:
+    results: ["nothing eligible"]
