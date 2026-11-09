@@ -9,7 +9,7 @@
 # export them first. Whatever the run does not set falls back to the default below, exactly as
 # ../SKILL.md's Defaults table describes.
 #
-# Helpers: has_label lease_live claim renew release clear_stale_lease   leases
+# Helpers: has_label lease_live claim renew release clear_stale_lease   leases (one comment per step)
 #          lane_holder ready_at                                  the merge lane
 #          changed_files protected_files codeowners_for          paths and owners
 #          markers review_rounds shepherd_attempts failures    reading markers
@@ -134,13 +134,32 @@ _trusted_json_jq() {
 
 has_label() { gh "$2" view "$1" --json labels --jq '.labels[].name' | grep -qx -- "$3"; }
 
+# The newest trusted lease is the one written last (updated_at, else created_at; see leaseState in
+# helpers.mjs), because claim and renew edit a step's lease comment in place. `sort -s` keeps thread
+# order for equal times. The expiry is the one in the marker, never the comment's own timestamp.
 lease_live() {
   local exp now
   exp=$(gh api "repos/{owner}/{repo}/issues/$1/comments" --paginate \
-        --jq ".[] | select($(trusted_jq)) | .body | capture(\"<!-- agent:lease [^>]*expires=(?<e>[0-9TZ:-]+)\") | .e" \
-        | tail -n1)
+        --jq ".[] | select($(trusted_jq)) | (.updated_at // .created_at // \"0\") as \$t | .body | capture(\"<!-- agent:lease [^>]*expires=(?<e>[0-9TZ:-]+)\") | \"\\(\$t) \\(.e)\"" \
+        | sort -s -k1,1 | tail -n1 | cut -d' ' -f2)
   now=$(date -u +%s)
   [ -n "$exp" ] && [ "$now" -lt "$(utc_epoch "$exp")" ]
+}
+
+# Write the lease comment for STEP on item N: edit this account's own lease comment for the step if
+# the item has one, otherwise post one. An item that goes through several claims and renewals keeps
+# one lease comment per step instead of one per claim. If the edit fails, post: lease_live reads the
+# newest lease either way, so the fallback is only noisier.
+_write_lease() {
+  local n=$1 kind=$2 step=$3 exp=$4 how=$5 body id
+  body="$(node "$AGENT_HELPERS" lease-body "$step" "$RUN_ID" "$exp" "$how")"
+  id=$(gh api "repos/{owner}/{repo}/issues/$n/comments" --paginate \
+         --jq '.[] | {id, body, login: .user.login} | @json' 2>/dev/null \
+       | node "$AGENT_HELPERS" own-lease "$step" "$(_agent_self)") || id=
+  if [ -n "$id" ] && gh api -X PATCH "repos/{owner}/{repo}/issues/comments/$id" -f body="$body" >/dev/null 2>&1; then
+    return 0
+  fi
+  gh "$kind" comment "$n" --body "$body" >/dev/null
 }
 
 # claim and release do nothing when $lease_held is true: the caller holds the lease (a nested call).
@@ -149,13 +168,13 @@ claim() {
   local n=$1 kind=$2 label=$3 step=$4 ttl=$5 exp
   exp=$(utc_plus "$ttl")
   gh "$kind" edit "$n" --add-label "$label" >/dev/null
-  gh "$kind" comment "$n" --body "$(node "$AGENT_HELPERS" lease-body "$step" "$RUN_ID" "$exp")" >/dev/null
+  _write_lease "$n" "$kind" "$step" "$exp" claim
 }
 
 renew() {
   local n=$1 kind=$2 step=$3 ttl=$4 exp
   exp=$(utc_plus "$ttl")
-  gh "$kind" comment "$n" --body "$(node "$AGENT_HELPERS" lease-body "$step" "$RUN_ID" "$exp" renew)" >/dev/null
+  _write_lease "$n" "$kind" "$step" "$exp" renew
 }
 
 release() {
