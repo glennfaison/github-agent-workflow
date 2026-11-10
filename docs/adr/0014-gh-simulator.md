@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted. The read paths are built (#86). The write paths (#87), `api`, fault injection and the replacement of the stub in `tests/lib.test.sh` (#88) follow, and this record is updated with each.
+Accepted. The read paths (#86) and the write paths (#87) are built. `api`, fault injection and the replacement of the stub in `tests/lib.test.sh` (#88) follow, and this record is updated with each.
 
 ## Context
 
@@ -24,9 +24,22 @@ ADR 0012 checks a scenario against a skill's contract, and `diffWorlds` turns th
 
 `issue list|view`, `pr list|view|checks`, `label list`, `repo view`, `auth status` and `run view --log|--log-failed`, with `--json`, `--jq`, `--label`, `--state`, `--limit`, `--search` and `-R`. `--search` matches every word in the title or body, and `closed:>=DATE`. It is not GitHub's search.
 
+### Write paths (#87)
+
+`issue edit|close|create|comment|reopen`, `pr edit|create|comment|merge` and `label create`, with the flags the skills use: `--add-label`, `--remove-label`, `--add-reviewer`, `--title`, `--body`, `--body-file` (a path, or `-` for stdin), `--reason`, `--comment`, `--label`, `--base`, `--head`, `--draft`, `--match-head-commit`, `--squash|--merge|--rebase`, `--delete-branch`, `--color`, `--description` and `--force`.
+
+- **A write is an effect.** Each call is applied with `applyEffects`, the function the checker uses, so a run made of these calls is read back by `diffWorlds` as the effects it had, and `applyEffects(before, diffWorlds(before, after))` gives the world the run left (tested, and tested on the effects of every golden scenario made as `gh` calls). Two things the checker's effect model could not carry were added to it: a created item's title, body, creation time, author and branch travel in the `create_*` effect as `data`, and a `close` carries its `reason`.
+- **A call is checked before it changes anything.** A failing call exits non-zero and never writes. The file is written whole, in its own format, through a temporary file and a rename, so it is never half written. A call that succeeds is the only one that saves.
+- **It is refused like `gh` refuses it.** A label outside the catalog (`'x' not found`, only in a world that has a `labels` catalog), an empty comment, a missing `--title` or `--body`, a second open PR for the same branch, a merge without a method or with two, a merge pinned to a head that is not the head, a merge of a draft, of a PR that is `DIRTY`, `BEHIND` or `BLOCKED`, and an invalid `--reason`.
+- **It never writes to a scenario file.** A write against one exits 2 and says how to make a world file (`seed.mjs`).
+- **Written comments are the agent's own.** The author is the world's agent login (`user`, default `agent-bot`), the time is the call's clock, and the comment's marker is the first `<!-- agent:... -->` in its body. A comment the run just posted is therefore fresh: a ready handoff holds the merge lane.
+- **A merge does not close the issue.** The skills settle an issue after its PR merges (`issue-after-pr.md`), with a keep-open rule that GitHub's own closing would hide, so the simulator leaves it open.
+- **`issue reopen` is `unmodelled`.** No effect op reopens an item, so a run that reopens one needs a contract that allows it. Editing a title or body of an existing item is `unmodelled` as well.
+- **A PR is created from the checkout.** Its branch is `--head` or the current git branch, and its commit is that branch's, so `gh pr create` runs in a git repository. The issues it closes are the existing ones its body names with a closing keyword.
+
 ## What it does not do
 
-- **It is not GitHub.** Rate limits, pagination, webhooks and merge queues are not modelled.
+- **It is not GitHub.** Rate limits, pagination, webhooks, merge queues, branch protection and reviews are not modelled. A merge is blocked by the merge state a world gives, nothing else. Some error messages are what `gh` prints and some are close to it (a merge of a closed PR, an unreadable body file).
 - **Some world fields cannot be shown.** `entries`, `kind`, `openQuestions`, `useCase` and `wontfix` stand for facts a model would read from prose (a log entry, a body), not for GitHub state. `seed.mjs` says which ones a world has. A scenario that depends on them needs a runner to write the prose (#61).
 - **A world has no branch names, check names or logs.** A PR is on `feat/<closed issue>-pr-<N>`, which matches the pattern `prs_for_issue` reads, unless it names a `branch`. A check is `check-<i>`. The log of a failing run is one fixed line.
 - **Its field lists are a copy.** They come from one `gh` version and can fall behind.
