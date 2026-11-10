@@ -125,11 +125,6 @@ trusted_jq() {
   printf '((.author_association | IN("OWNER","MEMBER","COLLABORATOR")) or (.user.login | IN(%s)))' "$(_trusted_logins)"
 }
 
-# Same predicate over one `gh ... --json author,authorAssociation` object.
-_trusted_json_jq() {
-  printf '((.authorAssociation | IN("OWNER","MEMBER","COLLABORATOR")) or (.author.login | IN(%s)))' "$(_trusted_logins)"
-}
-
 # ---- Leases ----------------------------------------------------------------------
 
 has_label() { gh "$2" view "$1" --json labels --jq '.labels[].name' | grep -qx -- "$3"; }
@@ -299,22 +294,33 @@ ready_sha() {
 # Implementing must not push a branch that fails this pattern.
 
 prs_for_issue() {
-  gh pr list --state all --limit 200 --json number,state,title,body,headRefName,author,authorAssociation \
-  | jq -r --arg n "$1" "
-      .[] | $(_trusted_json_jq) as \$ok
+  local prs page
+  # The REST pull request has `author_association` and `user.login`, which `trusted_jq` reads. `gh pr list --json` has no
+  # author association, and asking it for one is an error. The 200 newest PRs, as before.
+  prs=$(for page in 1 2; do gh api "repos/{owner}/{repo}/pulls?state=all&per_page=100&page=$page" || exit 1; done) || return 1
+  printf '%s\n' "$prs" | jq -r --arg n "$1" "
+      .[] | $(trusted_jq) as \$ok
       | select( ((\$ok) and ((.body // \"\") | contains(\"<!-- agent:implements issue=\" + \$n + \" -->\")))
-             or (.headRefName | test(\"^[a-z]+/\" + \$n + \"-\"))
+             or ((.head.ref // \"\") | test(\"^[a-z]+/\" + \$n + \"-\"))
              or ((.body // \"\") | test(\"(?i)(closes|fixes|resolves)\\\\s+#\" + \$n + \"\\\\b\"))
              or ((.title // \"\") | test(\"(?i)(closes|fixes|resolves|implements)\\\\s+(?:[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)?#\" + \$n + \"\\\\b\")) )
-      | \"\\(.number) \\(.state)\""
+      | \"\\(.number) \\(if .merged_at then \"MERGED\" elif .state == \"open\" then \"OPEN\" else \"CLOSED\" end)\""
 }
 
 issue_for_pr() {
-  gh pr view "$1" --json body,closingIssuesReferences,author,authorAssociation --jq "
-    $(_trusted_json_jq) as \$ok
-    | ([ (.body // \"\") | scan(\"agent:implements issue=([0-9]+)\") | .[0] | select(\$ok) ]
-       + [ (.body // \"\") | scan(\"(?i)(?:closes|fixes|resolves)\\\\s+#([0-9]+)\") | .[0] ]
-       + [ .closingIssuesReferences[].number | tostring ]) | unique | .[]"
+  local n=$1 pr refs
+  pr=$(gh api "repos/{owner}/{repo}/pulls/$n") || return 1
+  # GitHub's own links (closing keywords, the Development sidebar). `gh` has this field from 2.72. With an older `gh` it is
+  # skipped, and the body is still read for `Closes #N` and for a trusted marker.
+  if ! refs=$(gh pr view "$n" --json closingIssuesReferences --jq '.closingIssuesReferences[].number' 2>&1); then
+    case $refs in *"Unknown JSON field"*) refs="" ;; *) printf '%s\n' "$refs" >&2; return 1 ;; esac
+  fi
+  { printf '%s\n' "$pr" | jq -r "
+      $(trusted_jq) as \$ok
+      | ([ (.body // \"\") | scan(\"agent:implements issue=([0-9]+)\") | .[0] | select(\$ok) ]
+         + [ (.body // \"\") | scan(\"(?i)(?:closes|fixes|resolves)\\\\s+#([0-9]+)\") | .[0] ]) | .[]"
+    printf '%s\n' "$refs"
+  } | sed '/^$/d' | sort -un
 }
 
 # ---- Client guidance -----------------------------------------------------------------

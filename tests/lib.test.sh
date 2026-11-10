@@ -21,7 +21,11 @@ echo '[]' > "$STATE/prs.json"; echo '[]' > "$STATE/issues.json"
 cat > "$WORK/bin/gh" <<'STUB'
 #!/usr/bin/env bash
 cmd=$1; shift
+# gh has no author association on a pull request: `--json authorAssociation` is an error for pr list and pr view.
+if [ "$cmd" = pr ] && [[ "$*" == *authorAssociation* ]]; then echo 'Unknown JSON field: "authorAssociation"' >&2; exit 1; fi
 if [ "$cmd" = pr ] && [ "${1:-}" = list ]; then cat "$STATE/prs.json"; exit 0; fi
+# prs.json holds [{number,state:OPEN|MERGED|CLOSED,title,body,headRefName,author:{login},authorAssociation,closing:[numbers]}]. A REST pull request has other names.
+restpr='{number,title,body,state:(if .state=="OPEN" then "open" else "closed" end),merged_at:(if .state=="MERGED" then "2026-01-01T00:00:00Z" else null end),head:{ref:.headRefName},user:{login:.author.login},author_association:.authorAssociation}'
 jqf() { local f=""; while [ $# -gt 0 ]; do [ "$1" = --jq ] && f=$2; shift; done; jq -r "${f:-.}"; }
 # Issues live in $STATE/issues.json: [{number,title,state,labels:[names],createdAt,updatedAt,body}].
 # Unlike a stub that returns a fixed list, this one makes a lookup that finds nothing actually find
@@ -67,6 +71,11 @@ case "$cmd" in
            */contents/*) f="$STATE/contents/${path#*/contents/}"; f="${f%%\?*}"; [ -f "$f" ] && { cat "$f"; exit 0; }; exit 1 ;;
            */pulls/*/files) n=$(echo "$path" | sed -n 's#.*/pulls/\([0-9]*\)/files#\1#p')
                             [ -f "$STATE/files_$n.json" ] || exit 1; jqf "$@" < "$STATE/files_$n.json"; exit 0 ;;
+           */pulls\?*) page=${path##*page=}   # 100 to a page, as the REST API pages
+                       jq -c --argjson p "$page" ".[($page-1)*100:$page*100] | map($restpr)" "$STATE/prs.json" | jqf "$@"; exit 0 ;;
+           */pulls/[0-9]*) n=${path##*/pulls/}; out=$(jq -c --argjson n "$n" ".[]|select(.number==\$n)|$restpr" "$STATE/prs.json")
+                           [ -n "$out" ] || { echo "HTTP 404: Not Found" >&2; exit 1; }
+                           printf '%s\n' "$out" | jqf "$@"; exit 0 ;;
          esac
          n=$(echo "$1" | sed -n 's#.*/issues/\([0-9]*\)/comments#\1#p')
          { cat "$STATE/comments_$n.json" 2>/dev/null || echo '[]'; } | jqf "$@" ;;
@@ -81,7 +90,8 @@ case "$cmd" in
             elif [ "$cmd" = pr ] && [[ "$*" == *baseRefName* ]]; then
               echo '{"baseRefName":"main"}' | jqf "$@"
             elif [ "$cmd" = pr ] && [[ " $* " == *closingIssuesReferences* ]]; then
-              jq --argjson n "$n" '.[]|select(.number==$n)|{body,authorAssociation,author,closingIssuesReferences:(.closing//[])|map({number:.})}' "$STATE/prs.json" | jqf "$@"
+              [ -n "${STUB_OLD_GH:-}" ] && { echo 'Unknown JSON field: "closingIssuesReferences"' >&2; exit 1; }   # gh before 2.72
+              jq --argjson n "$n" '.[]|select(.number==$n)|{closingIssuesReferences:(.closing//[])|map({number:.})}' "$STATE/prs.json" | jqf "$@"
             else jq -Rn '{labels:[inputs|select(length>0)|{name:.}]}' "$lf" | jqf "$@"; fi ;;
       close) while [ $# -gt 0 ]; do case $1 in --reason) set_issue "$n" closeReason "$2"; shift ;; esac; shift; done
              set_issue "$n" state closed ;;
@@ -356,7 +366,10 @@ cat > "$STATE/prs.json" <<'J'
  {"number":52,"state":"CLOSED","body":"nothing","headRefName":"feature/9-bar","closing":[],"authorAssociation":"OWNER","author":{"login":"maintainer"}},
  {"number":53,"state":"OPEN","body":"Closes #70.","headRefName":"feature/x","closing":[],"authorAssociation":"OWNER","author":{"login":"maintainer"}},
  {"number":54,"state":"OPEN","title":"Fixes some/repo#80: thing","body":"nothing","headRefName":"x","closing":[],"authorAssociation":"OWNER","author":{"login":"maintainer"}},
- {"number":55,"state":"OPEN","title":"Implements #81","body":"nothing","headRefName":"x","closing":[],"authorAssociation":"OWNER","author":{"login":"maintainer"}}]
+ {"number":55,"state":"OPEN","title":"Implements #81","body":"nothing","headRefName":"x","closing":[],"authorAssociation":"OWNER","author":{"login":"maintainer"}},
+ {"number":56,"state":"OPEN","body":"<!-- agent:implements issue=13 -->","headRefName":"x","closing":[],"authorAssociation":"MEMBER","author":{"login":"dev"}},
+ {"number":57,"state":"OPEN","body":"nothing","headRefName":"y","closing":[14],"authorAssociation":"COLLABORATOR","author":{"login":"dev"}},
+ {"number":58,"state":"MERGED","body":"Closes #15\n<!-- agent:implements issue=16 -->","headRefName":"z","closing":[15,3],"authorAssociation":"OWNER","author":{"login":"maintainer"}}]
 J
 check "link by marker+branch"  "50 OPEN"   "$(prs_for_issue 7)"
 check "link by Closes text"    "51 MERGED" "$(prs_for_issue 8)"
@@ -366,6 +379,18 @@ check "link by title (owner/repo#N)" "54 OPEN" "$(prs_for_issue 80)"
 check "link by title (Implements #N)" "55 OPEN" "$(prs_for_issue 81)"
 check "issue_for_pr (marker)"  7 "$(issue_for_pr 50)"
 check "issue_for_pr (Closes)"  8 "$(issue_for_pr 51)"
+check "a MEMBER's marker is a link"                "56 OPEN" "$(prs_for_issue 13)"
+check "issue_for_pr reads GitHub's own links"      14        "$(issue_for_pr 57)"
+check "issue_for_pr joins the body and GitHub's links, once each, in numeric order" "3 15 16" "$(issue_for_pr 58 | tr '\n' ' ' | sed 's/ $//')"
+check "an old gh without closingIssuesReferences still reads the body" "8" "$(STUB_OLD_GH=1 issue_for_pr 51)"
+issue_for_pr 999 >/dev/null 2>&1;  check "issue_for_pr fails for a PR that is not there" 1 $?
+gh pr list --json number,authorAssociation >/dev/null 2>&1;  check "gh has no authorAssociation on pr list (the stub refuses it as gh does)" 1 $?
+gh pr view 50 --json body,authorAssociation >/dev/null 2>&1; check "gh has no authorAssociation on pr view either" 1 $?
+jq -n '[range(1;231) | {number:(1000+.),state:"CLOSED",body:"",headRefName:"x",closing:[],authorAssociation:"NONE",author:{login:"z"}}]
+       | .[119] |= (.body="<!-- agent:implements issue=20 -->" | .authorAssociation="OWNER")
+       | .[219] |= (.body="<!-- agent:implements issue=21 -->" | .authorAssociation="OWNER")' > "$STATE/prs.json"
+check "a PR on the second page of PRs is found"          "1120 CLOSED" "$(prs_for_issue 20)"
+check "a PR past the 200 newest is not (the cap is as it was)" ""     "$(prs_for_issue 21)"
 
 echo "Trust"
 cat > "$STATE/prs.json" <<'J'
