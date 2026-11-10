@@ -16,7 +16,7 @@ See **Contracts** in the protocol for what each key means.
 ```yaml
 kind: group
 step: Implementing
-params: [implement_batch, runner, log_window_days, unattended, trusted_authors]
+params: [implement_batch, max_depth, runner, log_window_days, unattended, trusted_authors]
 dispatches: implement-github-issue
 requires:
   - "None: always runnable."
@@ -49,6 +49,7 @@ terminates: "One pass, bounded by implement_batch."
 | Input | Default | What it does |
 |---|---|---|
 | `implement_batch` | `1` | The most issues this run dispatches before it stops |
+| `max_depth` | `1` | How deep a chain of splits may go. Passed to `implement-github-issue`, which splits an issue that is too large into sub-issues only while it has fewer ancestors than this. `0` turns splitting off |
 | `runner` | `unknown` | Name recorded in the run id and the run log |
 | `log_window_days` | `14` | Days one run-log issue is appended to before a new one starts |
 | `unattended` | `true` | `true`: no human is present, so never ask (see **Unattended runs** in the protocol). `false`: a human may be asked |

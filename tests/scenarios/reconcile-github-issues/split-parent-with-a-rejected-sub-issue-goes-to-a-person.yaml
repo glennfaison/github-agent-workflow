@@ -1,0 +1,14 @@
+name: A split issue with a sub-issue closed as not planned goes to a person
+why: "Issue #68. Closing it would hide that part of the work was dropped, and an agent must not retry it."
+skill: reconcile-github-issues
+world:
+  issues:
+    - {number: 12, state: open, labels: [ready-for-agent], comments: [{marker: "agent:split", trusted: true, text: "children=13,14"}]}
+    - {number: 13, state: closed, labels: [], parent: 12}
+    - {number: 14, state: closed, labels: [], parent: 12, closeReason: "not planned"}
+expect:
+  results: ["#12 ready-for-human: a sub-issue was closed as not planned"]
+  effects:
+    - {op: label_remove, target: "issue#12", label: ready-for-agent}
+    - {op: comment, target: "issue#12"}
+    - {op: label_add, target: "issue#12", label: ready-for-human}

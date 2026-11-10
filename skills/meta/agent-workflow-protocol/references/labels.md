@@ -62,6 +62,8 @@ Each row happens inside a lease held by the step named (except `reconcile-github
 | Issue | `needs-info` | a human removes the label after answering | untouched, so Triaging picks it up again |
 | Issue | `ready-for-agent` | Implementing | `agent:pr-open`, and the new PR gets `agent:needs-work`. If a PR for the issue already exists, no new PR is made |
 | Issue | `ready-for-agent` | Implementing (bail-out) | `needs-info` or `ready-for-human` |
+| Issue | `ready-for-agent`, too large for one PR | Implementing (split) | unchanged, with a trusted `agent:split` marker comment and linked sub-issues that Triaging picks up. No `agent:pr-open`, because no PR is open. Implementing does not take it again (`references/split.md`) |
+| Issue | `ready-for-agent`, split, every sub-issue closed | `reconcile-github-issues` | closed, or `ready-for-human` when a sub-issue was closed as not planned or the issue is keep-open (`references/split.md`) |
 | Issue | `agent:pr-open`, every PR closed unmerged | `reconcile-github-issues` | `ready-for-human` |
 | Issue | two or more mutex state labels, or clear label/comment drift | `reconcile-github-issues` (label repair) | single consistent state per the priority order above |
 | Issue | `ready-for-agent` or `agent:pr-open`, a PR already merged | Implementing, Reviewing or `reconcile-github-issues` | closed, and it loses `agent:pr-open`. A **keep-open** issue (`client-guidance.md`) stays open: it loses `agent:pr-open` and becomes `ready-for-human` |

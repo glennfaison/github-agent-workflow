@@ -717,7 +717,7 @@ test("the effects of every golden scenario, made as gh calls, leave the world th
   // Not replayed: a scenario that opens a PR (its commit is a `git` fact) or syncs the label catalog (a repository op).
   // A new scenario with an effect that no `gh` call makes has to be added here on purpose.
   const NOT_REPLAYED = [
-    "implement-github-issue/an-interrupted-pass-does-not-open-a-second-pr.yaml", "implement-github-issue/merged-pr-on-a-keep-open-issue-is-ignored.yaml",
+    "implement-github-issue/a-split-marker-from-a-stranger-does-not-count.yaml", "implement-github-issue/an-interrupted-pass-does-not-open-a-second-pr.yaml", "implement-github-issue/merged-pr-on-a-keep-open-issue-is-ignored.yaml",
     "setup-github-agent-workflow/an-agent-label-is-reset-and-a-triage-label-is-kept.yaml", "setup-github-agent-workflow/an-empty-repository-gets-every-label.yaml",
   ];
   assert.deepEqual(skipped.filter((f) => !NOT_REPLAYED.includes(f)), [], "a scenario has an effect that no gh call makes");

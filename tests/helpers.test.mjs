@@ -290,3 +290,52 @@ test('isGuidancePath recognises agent-facing files and nothing else', () => {
 test('guidanceFiles filters, de-duplicates and sorts', () => {
   assert.deepEqual(h.guidanceFiles(['b.txt', 'CLAUDE.md', 'AGENTS.md', 'AGENTS.md']), ['AGENTS.md', 'CLAUDE.md']);
 });
+
+// ---- splitting an issue that is too large (references/split.md) ----------------------------------
+
+test('splitComment ends with the marker that names every child', () => {
+  const { body, marker } = h.splitComment([70, 71, 72]);
+  assert.equal(marker, '<!-- agent:split children=70,71,72 -->');
+  assert.ok(body.startsWith('Split into #70, #71, #72 because'));
+  assert.equal(body.split('\n').at(-1), marker);
+});
+
+test('splitChildren reads the newest trusted marker, and is null for an issue that is not split', () => {
+  const trust = { selfLogin: 'agent-bot', trustedAuthors: [] };
+  const mk = (body, login = 'maintainer', assoc = 'OWNER') => ({ body, author_association: assoc, user: { login } });
+  assert.equal(h.splitChildren(h.markersOf([mk('hello')], trust)), null);
+  assert.deepEqual(h.splitChildren(h.markersOf([mk(h.splitComment([4, 5]).body)], trust)), [4, 5]);
+  assert.deepEqual(h.splitChildren(h.markersOf([mk(h.splitComment([4, 5]).body), mk(h.splitComment([4, 5, 6]).body)], trust)), [4, 5, 6]);
+  // a stranger's marker is not a marker (see Trust in the protocol)
+  assert.equal(h.splitChildren(h.markersOf([mk(h.splitComment([9]).body, 'stranger', 'NONE')], trust)), null);
+  assert.deepEqual(h.splitChildren(h.markersOf([mk(h.splitComment([9]).body, 'agent-bot', 'NONE')], trust)), [9]);
+});
+
+test('depthOf counts ancestors, and refuses what it did not read', () => {
+  assert.equal(h.depthOf(5, { 5: null }), 0);
+  assert.equal(h.depthOf(9, { 9: 7, 7: 5, 5: null }), 2);
+  assert.throws(() => h.depthOf(9, { 9: 7 }), /parent of #7 was not read/, 'an unread parent must not look like the top of the tree');
+  assert.throws(() => h.depthOf(1, { 1: 2, 2: 1 }), /own ancestor/);
+  const long = Object.fromEntries(Array.from({ length: 30 }, (_, i) => [i + 1, i + 2]));
+  assert.throws(() => h.depthOf(1, long), /ancestors/);
+});
+
+test('canSplit: an issue splits only below max_depth, and never when the depth is unknown', () => {
+  assert.equal(h.canSplit(0, 1), true);
+  assert.equal(h.canSplit(1, 1), false, 'a sub-issue is not split again with the default');
+  assert.equal(h.canSplit(0, 0), false, 'max_depth=0 turns splitting off');
+  assert.equal(h.canSplit(1, 2), true);
+  assert.equal(h.canSplit('0', '1'), true, 'inputs arrive as text');
+  for (const bad of [undefined, null, '', 'x', -1, 1.5, NaN]) assert.equal(h.canSplit(bad, 1), false, `depth ${String(bad)}`);
+  for (const bad of [undefined, '', 'x', -1]) assert.equal(h.canSplit(0, bad), false, `max_depth ${String(bad)}`);
+});
+
+test('the cli agrees with the functions', () => {
+  const run = (args, input = '') => execFileSync('node', [helpersPath, ...args], { input, encoding: 'utf8' }).trim();
+  assert.equal(run(['can-split', '0', '1']), 'yes');
+  assert.equal(run(['can-split', '1', '1']), 'no');
+  assert.equal(run(['depth', '9'], '9 7\n7 5\n5 -\n'), '2');
+  assert.equal(run(['split-children'], '<!-- agent:split children=3,4 -->\n'), '3\n4');
+  assert.equal(run(['split-children'], '<!-- agent:lease step=Implementing run=a expires=2099-01-01T00:00:00Z -->\n'), '');
+  assert.equal(run(['split-body', '3,4']), h.splitComment([3, 4]).body);
+});

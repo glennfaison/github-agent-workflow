@@ -1,0 +1,16 @@
+name: A sub-issue that is too large at max_depth is sent to a person and not split
+why: "Issue #68. Depth 1 is not below the default max_depth of 1, so the recursion ends here."
+skill: implement-github-issue
+target: issue#13
+world:
+  issues:
+    - {number: 12, state: open, labels: [ready-for-agent], comments: [{marker: "agent:split", trusted: true, text: "children=13,14"}]}
+    - {number: 13, state: open, labels: [ready-for-agent], parent: 12}
+    - {number: 14, state: open, labels: [], parent: 12}
+expect:
+  rerun: ineligible
+  result: "#13 ready-for-human"
+  effects:
+    - {op: comment, target: "issue#13"}
+    - {op: label_remove, target: "issue#13", label: ready-for-agent}
+    - {op: label_add, target: "issue#13", label: ready-for-human}

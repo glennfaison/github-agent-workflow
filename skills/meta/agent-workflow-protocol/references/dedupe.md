@@ -12,6 +12,8 @@ Search all of these using two or three distinctive keywords from the title and b
 
 Ignore issues labelled `agent:log` or `agent:difficulty`.
 
+A sub-issue and its parent are never duplicates of each other, and neither are two sub-issues of one parent (`parent_of`, `children_of`; see `references/split.md`). Link them as **Related but different**. Otherwise Triaging would close a slice as a duplicate of the issue it was cut from.
+
 ## Decide
 
 | Finding | Exploring does | Triaging does |

@@ -62,6 +62,25 @@ case "$cmd" in
          fi
          if [ "$1" = user ]; then echo '{"login":"agent-bot"}' | jqf "$@"; exit 0; fi
          path=""; for a in "$@"; do case $a in repos/*) path=$a ;; esac; done
+         # Sub-issue links: $STATE/parent_N holds N's parent. STUB_API_FAIL=N makes reading N's parent fail with a 500.
+         #   gh api repos/{owner}/{repo}/issues/N/parent --jq F         gh api .../issues/N/sub_issues --paginate --jq F
+         #   gh api repos/{owner}/{repo}/issues/N --jq .id (id is N+5000)   gh api -X POST .../issues/P/sub_issues -F sub_issue_id=ID
+         if [ "$1" = -X ] && [ "${2:-}" = POST ]; then
+           p=$(echo "$3" | sed -n 's#.*/issues/\([0-9]*\)/sub_issues$#\1#p'); sid=""
+           while [ $# -gt 0 ]; do case $1 in -F) sid=${2#sub_issue_id=}; shift ;; esac; shift; done
+           [ -n "$p" ] && [ -n "$sid" ] || exit 1
+           echo "$p" > "$STATE/parent_$((sid - 5000))"; exit 0
+         fi
+         case $path in
+           */issues/*/parent) n=$(echo "$path" | sed -n 's#.*/issues/\([0-9]*\)/parent#\1#p')
+                              [ "${STUB_API_FAIL:-}" = "$n" ] && { echo 'gh: Server Error (HTTP 500)' >&2; exit 1; }
+                              [ -f "$STATE/parent_$n" ] || { echo 'gh: Not Found (HTTP 404)' >&2; exit 1; }
+                              jq -n --argjson n "$(cat "$STATE/parent_$n")" '{number:$n}' | jqf "$@"; exit 0 ;;
+           */issues/*/sub_issues) n=$(echo "$path" | sed -n 's#.*/issues/\([0-9]*\)/sub_issues#\1#p')
+                                  for pf in "$STATE"/parent_*; do [ -f "$pf" ] || continue; [ "$(cat "$pf")" = "$n" ] && basename "$pf" | sed 's/parent_//'; done | sort -n | jq -Rn '[inputs|{number:tonumber}]' | jqf "$@"; exit 0 ;;
+         esac
+         n=$(echo "$path" | sed -n 's#.*/issues/\([0-9]*\)$#\1#p')
+         if [ -n "$n" ]; then jq -n --argjson i "$((n + 5000))" '{id:$i}' | jqf "$@"; exit 0; fi
          case $path in
            */git/trees/*) [ -f "$STATE/tree.json" ] || exit 1; jqf "$@" < "$STATE/tree.json"; exit 0 ;;
            */contents/*) f="$STATE/contents/${path#*/contents/}"; f="${f%%\?*}"; [ -f "$f" ] && { cat "$f"; exit 0; }; exit 1 ;;
@@ -439,5 +458,29 @@ printf 'evergreen\n' > "$STATE/labels_issue_90"
 check "item_labels prints the label description" "evergreen: Recurring enhancement that stays open indefinitely" "$(item_labels 90 issue)"
 printf 'evergreen\nno-description\n' > "$STATE/labels_issue_91"
 check "item_labels keeps a label with no description" "evergreen: Recurring enhancement that stays open indefinitely|no-description: " "$(item_labels 91 issue | paste -sd'|' -)"
+
+echo "Splitting an issue: sub-issue links"
+check "max_depth default" "1:1" "$(bash -c 'source "$1"; echo "$max_depth:$MAX_DEPTH"' _ "$LIB")"
+check "max_depth can be set" "0" "$(max_depth=0 bash -c 'source "$1"; echo "$max_depth"' _ "$LIB")"
+check "an issue with no parent has none" "" "$(parent_of 200)"
+parent_of 200 >/dev/null; check "no parent is not an error" 0 $?
+check "an issue with no parent has depth 0" "0" "$(depth_of 200)"
+check "a split is only allowed below the limit (depth 0, max 1)" "yes" "$(node "$PKG/skills/meta/agent-workflow-protocol/scripts/helpers.mjs" can-split "$(depth_of 200)" "$max_depth")"
+link_sub_issue 200 201; check "link_sub_issue links a child" 0 $?
+link_sub_issue 200 202
+check "parent_of reads the link" "200" "$(parent_of 201)"
+check "children_of lists the sub-issues in order" "201,202" "$(children_of 200 | paste -sd, -)"
+check "a sub-issue has depth 1" "1" "$(depth_of 201)"
+check "a sub-issue is not split again (depth 1, max 1)" "no" "$(node "$PKG/skills/meta/agent-workflow-protocol/scripts/helpers.mjs" can-split "$(depth_of 201)" "$max_depth")"
+link_sub_issue 200 201; check "linking twice succeeds" 0 $?
+check "linking twice adds nothing" "201,202" "$(children_of 200 | paste -sd, -)"
+link_sub_issue 201 203
+check "a grandchild has depth 2" "2" "$(depth_of 203)"
+check "an issue with no sub-issues has no children" "" "$(children_of 203)"
+STUB_API_FAIL=200 parent_of 200 >/dev/null 2>&1; check "an unreadable parent is an error, not 'none'" 1 $?
+STUB_API_FAIL=200 depth_of 201 >/dev/null 2>&1;  check "an unreadable ancestor fails depth_of" 1 $?
+echo 200 > "$STATE/parent_204"; echo 204 > "$STATE/parent_200"
+depth_of 200 >/dev/null 2>&1; check "a cycle fails depth_of" 1 $?
+rm -f "$STATE/parent_204" "$STATE/parent_200"
 
 echo; echo "passed=$pass failed=$fail"; [ "$fail" -eq 0 ]

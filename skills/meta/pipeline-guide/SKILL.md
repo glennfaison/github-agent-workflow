@@ -23,7 +23,7 @@ Call a skill by its name through the Skill tool (or `/name` where your runner ha
 | `triage-github-issue` | item, Triaging | One specific issue needs to become `ready-for-agent`, `ready-for-human` or `needs-info` |
 | `reconcile-github-issues` | sweep, Triaging | Issue state has drifted from the PRs: close shipped issues, send abandoned ones to a human, repair labels, clear stale leases |
 | `implement-github-issues` | group, Implementing | Starting work on the `ready-for-agent` issues |
-| `implement-github-issue` | item, Implementing | One specific ready issue should be implemented and opened as a PR |
+| `implement-github-issue` | item, Implementing | One specific ready issue should be implemented and opened as a PR, or split into sub-issues when it is too large for one |
 | `shepherd-github-prs` | group, Shepherding | Getting open agent PRs through CI |
 | `shepherd-github-pr` | item, Shepherding | One specific PR has failing checks or open review findings, or is ready for its handoff |
 | `review-github-prs` | group, Reviewing | Reviewing and merging the PRs that are ready |
@@ -53,7 +53,7 @@ The steps never call each other. They coordinate through labels, hidden marker c
 |---|---|
 | Exploring | New **unlabelled** issues, or evidence comments. Never touches labels |
 | Triaging | Exactly one of `ready-for-agent`, `ready-for-human`, `needs-info`. Lease: `agent:triage` |
-| Implementing | Opens a PR and sets `agent:pr-open` on the issue and `agent:needs-work` on the PR. Lease: `agent:in-progress` |
+| Implementing | Opens a PR and sets `agent:pr-open` on the issue and `agent:needs-work` on the PR. An issue that is too large is split instead: linked sub-issues and an `agent:split` marker, the issue left as it is. Lease: `agent:in-progress` |
 | Shepherding | Fixes failures, then the ready handoff and `agent:ready-for-review`. Lease: `agent:in-progress` |
 | Reviewing | Merges pinned to the reviewed commit, or the review handoff and back to `agent:needs-work`. Lease: `agent:in-progress` |
 

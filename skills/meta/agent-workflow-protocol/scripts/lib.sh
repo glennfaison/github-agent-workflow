@@ -15,6 +15,7 @@
 #          markers review_rounds shepherd_attempts failures    reading markers
 #          open_findings ready_sha fail_item                   handoffs and failures
 #          prs_for_issue issue_for_pr                          issue <-> PR links
+#          parent_of children_of depth_of link_sub_issue       sub-issue links (splitting an issue)
 #          client_guidance_files item_labels                   the repository's own agent rules
 #          log_issue log_run log_status read_logs              run log
 # Every marker is read through trusted_jq / _trusted_logins: a marker written by an account that is
@@ -47,6 +48,7 @@ AGENT_ROOT="$(git rev-parse --show-toplevel)"
 : "${max_shepherd_attempts:=3}"
 : "${max_review_rounds:=3}"
 : "${max_item_failures:=3}"
+: "${max_depth:=1}"
 : "${runner:=unknown}"
 : "${unattended:=true}"
 : "${trusted_authors:=}"
@@ -81,6 +83,7 @@ review_batch:REVIEW_BATCH
 max_shepherd_attempts:MAX_SHEPHERD_ATTEMPTS
 max_review_rounds:MAX_REVIEW_ROUNDS
 max_item_failures:MAX_ITEM_FAILURES
+max_depth:MAX_DEPTH
 runner:RUNNER
 unattended:UNATTENDED
 trusted_authors:TRUSTED_AUTHORS
@@ -315,6 +318,49 @@ issue_for_pr() {
     | ([ (.body // \"\") | scan(\"agent:implements issue=([0-9]+)\") | .[0] | select(\$ok) ]
        + [ (.body // \"\") | scan(\"(?i)(?:closes|fixes|resolves)\\\\s+#([0-9]+)\") | .[0] ]
        + [ .closingIssuesReferences[].number | tostring ]) | unique | .[]"
+}
+
+# ---- Sub-issue links ---------------------------------------------------------------------
+# A split (../references/split.md) uses GitHub's own sub-issue links and nothing else: text in an issue body
+# is not a link, because anyone can write it. These read and write the links. A status other than success
+# means the answer could not be read, which is not the same as "none": parent_of prints nothing and succeeds
+# for an issue with no parent (a 404), and fails for any other error. So depth_of never mistakes an
+# unreadable parent for the top of the tree. Whether an issue may split is decided by helpers.mjs (canSplit).
+
+# The issue that N is a sub-issue of, or nothing when it has none.
+parent_of() {
+  local out
+  if out="$(gh api "repos/{owner}/{repo}/issues/$1/parent" --jq .number 2>&1)"; then
+    printf '%s\n' "$out"
+  elif printf '%s' "$out" | grep -q 'HTTP 404'; then
+    return 0
+  else
+    return 1
+  fi
+}
+
+# The sub-issues of N, one number per line.
+children_of() { gh api "repos/{owner}/{repo}/issues/$1/sub_issues" --paginate --jq '.[].number'; }
+
+# How many ancestors N has: 0 with no parent. Fails when a parent cannot be read, or on a cycle.
+depth_of() {
+  local start=$1 n=$1 p map="" i=0
+  while :; do
+    p="$(parent_of "$n")" || return 1
+    if [ -z "$p" ]; then map+="$n -"$'\n'; break; fi
+    map+="$n $p"$'\n'
+    n=$p; i=$((i+1))
+    [ "$i" -le 20 ] || return 1
+  done
+  printf '%s' "$map" | node "$AGENT_HELPERS" depth "$start"
+}
+
+# Make X a sub-issue of N. Succeeds when it already is one. Use it only for an issue this run filed.
+link_sub_issue() {
+  local id
+  [ "$(parent_of "$2")" = "$1" ] && return 0
+  id="$(gh api "repos/{owner}/{repo}/issues/$2" --jq .id)" || return 1
+  gh api -X POST "repos/{owner}/{repo}/issues/$1/sub_issues" -F "sub_issue_id=$id" >/dev/null
 }
 
 # ---- Client guidance -----------------------------------------------------------------

@@ -649,3 +649,136 @@ test("explore's count line, its log, a dry run and an empty round are checked", 
   const invent = gp("explore-github-repo/nothing-found-calls-nothing.yaml", (sc) => { sc.expect.dispatches = [{ inputs: { limit: 2, unattended: true, run_id: "r" }, candidates: [], results: [] }]; });
   assert.ok(invent.some((m) => /with nothing found, so it invents work/.test(m)), invent.join("\n"));
 });
+
+// ---- splitting an issue that is too large (references/split.md, docs/adr/0015) ----------------------
+
+{
+  const impl = contractOf("implement-github-issue");
+  const split = () => find("implement-github-issue/splits-an-issue-that-is-too-large.yaml");
+  const p = (sc) => problems(impl, sc);
+
+  test("a split below the limit is accepted, and max_depth=0 turns it off", () => {
+    assert.deepEqual(p(split()), []);
+    const sc = split(); sc.inputs = { max_depth: 0 };
+    assert.ok(p(sc).some((x) => /only an issue with fewer ancestors than max_depth splits/.test(x)));
+  });
+
+  test("a sub-issue at the limit may not split, and neither may an issue whose depth cannot be read", () => {
+    const sc = split();
+    sc.target = "issue#13"; sc.world.issues = [{ number: 12, state: "open", labels: [], comments: [] }, { number: 13, state: "open", labels: ["ready-for-agent"], parent: 12 }];
+    sc.expect.result = "#13 split into #14, #15";
+    sc.expect.effects = sc.expect.effects.map((e) => (e.op === "create_issue" ? { ...e, number: e.number + 1, data: { ...e.data, parent: 13 } } : { ...e, target: "issue#13" }));
+    sc.expect.effects[2].text = "children=14,15";
+    assert.ok(p(sc).some((x) => /1 deep with max_depth=1/.test(x)));
+    assert.ok(p(sc).some((x) => /is 2 deep, past max_depth=1/.test(x)), "the recursion must end at the limit");
+    sc.world.issues[1].parent = 99; // a link to an issue the world does not hold: unread
+    assert.ok(p(sc).some((x) => /depth that cannot be read/.test(x)));
+  });
+
+  test("a split needs two or more linked, unlabelled sub-issues, the marker, and no PR", () => {
+    let sc = split(); sc.expect.effects = sc.expect.effects.filter((e) => e.number !== 14); sc.expect.result = "#12 split into #13";
+    assert.ok(p(sc).some((x) => /two or more sub-issues/.test(x)));
+    sc = split(); delete sc.expect.effects[0].data.parent;
+    assert.ok(p(sc).some((x) => /not linked to issue#12/.test(x)));
+    sc = split(); sc.expect.effects[0].labels = ["ready-for-agent"];
+    assert.ok(p(sc).some((x) => /filed with labels/.test(x)));
+    sc = split(); sc.expect.effects = sc.expect.effects.filter((e) => e.op !== "comment");
+    assert.ok(p(sc).some((x) => /without an `agent:split` comment/.test(x)));
+    sc = split(); sc.expect.effects[2].text = "children=13";
+    assert.ok(p(sc).some((x) => /names 13, not 13,14/.test(x)));
+    sc = split(); sc.expect.effects.push({ op: "label_remove", target: "issue#12", label: "ready-for-agent" }, { op: "label_add", target: "issue#12", label: "agent:pr-open" });
+    assert.ok(p(sc).some((x) => /does not gain agent:pr-open/.test(x)));
+    assert.ok(p(sc).some((x) => /keeps ready-for-agent/.test(x)));
+    sc = split(); sc.expect.effects.push({ op: "create_pr", number: 40, labels: ["agent:needs-work"], closes: [12] });
+    assert.ok(p(sc).some((x) => /opens no PR/.test(x)));
+  });
+
+  test("issues are created only by a split, and only under the issue being split", () => {
+    const sc = find("implement-github-issue/missing-information-bails-out.yaml");
+    sc.expect.effects.push({ op: "create_issue", number: 13, labels: [] });
+    assert.ok(p(sc).some((x) => /creates issues but the result is/.test(x)));
+    const other = split(); other.expect.effects[0].data.parent = 7;
+    assert.ok(p(other).some((x) => /not to issue#12, the issue this run split/.test(x)));
+  });
+
+  test("an issue with a trusted split marker is not eligible, and one with a stranger's marker is", () => {
+    const sc = find("implement-github-issue/an-already-split-issue-is-skipped.yaml");
+    sc.expect.result = "#12 PR #40 opened";
+    sc.expect.effects = [{ op: "create_pr", number: 40, labels: ["agent:needs-work"], closes: [12] }];
+    assert.ok(p(sc).some((x) => /not eligible \(already split\)/.test(x)));
+    sc.world.issues[0].comments[0].trusted = false;
+    assert.ok(!p(sc).some((x) => /already split/.test(x)));
+  });
+
+  test("a split parent is closed only when every sub-issue is closed as completed", () => {
+    const rec = (n) => find(`reconcile-github-issues/${n}`);
+    const open = rec("split-parent-with-an-open-sub-issue-is-left-alone.yaml");
+    open.expect.results = ["#12 closed: all sub-issues closed"]; open.expect.effects = [{ op: "close", target: "issue#12" }];
+    assert.ok(problems(reconcile, open).some((x) => /while sub-issue #14 is open/.test(x)));
+    const dropped = rec("split-parent-with-a-rejected-sub-issue-goes-to-a-person.yaml");
+    dropped.expect.results = ["#12 closed: all sub-issues closed"]; dropped.expect.effects = [{ op: "close", target: "issue#12" }];
+    assert.ok(problems(reconcile, dropped).some((x) => /closed as not planned/.test(x)));
+    const unread = rec("split-parent-closes-when-all-sub-issues-close.yaml");
+    unread.world.issues = unread.world.issues.filter((i) => i.number === 12);
+    assert.ok(problems(reconcile, unread).some((x) => /sub-issues cannot be read/.test(x)));
+  });
+
+  test("file-github-issues with a parent never calls the parent a duplicate, and says it is a part of it", () => {
+    const file = contractOf("file-github-issues");
+    const sc = { name: "x", skill: "file-github-issues", inputs: { parent: 12 }, world: { issues: [{ number: 12, state: "open", labels: [] }], prs: [] },
+      expect: { results: ["duplicate of #12 (commented)"], effects: [{ op: "comment", target: "issue#12" }] } };
+    assert.ok(problems(file, sc).some((x) => /duplicate of #12, the parent/.test(x)));
+    const made = { name: "x", skill: "file-github-issues", inputs: { parent: 12 }, world: { issues: [{ number: 12, state: "open", labels: [] }], prs: [] },
+      expect: { results: ["filed #13"], effects: [{ op: "create_issue", number: 13, labels: [], data: { title: "t", body: "Add it." } }] } };
+    assert.ok(problems(file, made).some((x) => /does not start with `Part of #12.`/.test(x)));
+    made.expect.effects[0].data.body = "Part of #12.\n\nAdd it.";
+    assert.deepEqual(problems(file, made).filter((x) => /Part of/.test(x)), []);
+  });
+
+  // lease_held=true: only the holder of the lease, for its own item, to an item skill that lists lease_held
+  const nested = (call, over = {}) => {
+    const sc = find("implement-github-issue/missing-information-bails-out.yaml");
+    sc.expect.calls = [call];
+    Object.assign(sc, over);
+    return problems(contractOf("implement-github-issue"), sc);
+  };
+  const lend = { skill: "tdd", target: "issue#12", inputs: { lease_held: true } };
+
+  test("lease_held=true is rejected unless the caller holds the lease on that item and the callee takes it", () => {
+    // tdd is not in this package's item skills, so it cannot take a lease; the other checks need a callee that can
+    assert.ok(nested(lend).some((x) => /not an item skill that lists `lease_held`/.test(x)));
+    assert.ok(nested({ ...lend, target: "issue#13" }).some((x) => /for issue#13, but holds the lease on issue#12 only/.test(x)));
+    assert.ok(nested({ skill: "tdd", inputs: { lease_held: true } }).some((x) => /without saying which item/.test(x)));
+    assert.ok(nested({ skill: "tdd", inputs: { lease_held: "true" } }).some((x) => /without saying which item/.test(x)), "text counts too");
+    assert.deepEqual(nested({ skill: "tdd", target: "issue#12", inputs: { lease_held: false } }), []);
+    assert.deepEqual(nested({ skill: "tdd" }), []);
+  });
+
+  test("a skipped run holds no lease to lend, and a skill with no item holds none either", () => {
+    const sc = find("implement-github-issue/live-lease-held-by-another-run-is-skipped.yaml");
+    sc.expect.calls = [lend];
+    assert.ok(problems(contractOf("implement-github-issue"), sc).some((x) => /a skipped run claimed nothing/.test(x)));
+    const rec = find("reconcile-github-issues/stale-lease-is-cleared.yaml");
+    rec.expect.calls = [{ skill: "triage-github-issue", target: "issue#1", inputs: { lease_held: true } }];
+    assert.ok(problems(reconcile, rec).some((x) => /this skill holds no lease/.test(x)));
+  });
+
+  test("a group skill never passes lease_held", () => {
+    const grp = contractOf("implement-github-issues");
+    const sc = find("implement-github-issues/the-oldest-eligible-issues-fill-the-batch.yaml");
+    sc.expect.dispatches[0].inputs.lease_held = true;
+    assert.ok(problems(grp, sc).some((x) => /passes lease_held: a group skill holds no lease/.test(x)));
+    const run = find("implement-github-issues/the-oldest-eligible-issues-fill-the-batch.yaml");
+    run.inputs.lease_held = true;
+    assert.ok(problems(grp, run).some((x) => /cannot be given lease_held/.test(x)));
+  });
+
+  test("a group forwards max_depth to the item, and only when the run set it", () => {
+    const grp = contractOf("implement-github-issues");
+    const sc = find("implement-github-issues/the-oldest-eligible-issues-fill-the-batch.yaml");
+    sc.inputs.max_depth = 2;
+    assert.ok(problems(grp, sc).some((x) => /drops `max_depth`/.test(x)));
+    for (const d of sc.expect.dispatches) d.inputs.max_depth = 2;
+    assert.deepEqual(problems(grp, sc), []);
+  });
+}

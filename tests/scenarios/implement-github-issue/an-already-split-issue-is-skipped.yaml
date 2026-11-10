@@ -1,0 +1,13 @@
+name: An issue that already carries a trusted split marker is not taken again
+why: "Issue #68. The parent keeps ready-for-agent, so without this requirement every run would split it again and use up the batch."
+skill: implement-github-issue
+target: issue#12
+world:
+  issues:
+    - {number: 12, state: open, labels: [ready-for-agent], comments: [{marker: "agent:split", trusted: true, text: "children=13,14"}]}
+    - {number: 13, state: open, labels: [], parent: 12}
+    - {number: 14, state: open, labels: [], parent: 12}
+expect:
+  rerun: ineligible
+  result: "#12 skipped: already split"
+  effects: []

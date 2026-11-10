@@ -1,0 +1,15 @@
+name: An issue that is too large is split into linked sub-issues
+why: "Issue #68. The parent stays open and ready-for-agent, gets the split marker and no agent:pr-open. Each slice is filed with no labels and linked to it."
+skill: implement-github-issue
+target: issue#12
+world:
+  issues:
+    - {number: 12, state: open, labels: [ready-for-agent]}
+expect:
+  rerun: ineligible
+  result: "#12 split into #13, #14"
+  calls: [file-github-issues]
+  effects:
+    - {op: create_issue, number: 13, labels: [], data: {title: "Add the parser", body: "Part of #12. ...", parent: 12}}
+    - {op: create_issue, number: 14, labels: [], data: {title: "Wire the parser into the CLI", body: "Part of #12. ...", parent: 12}}
+    - {op: comment, target: "issue#12", marker: "agent:split", text: "children=13,14", trusted: true}

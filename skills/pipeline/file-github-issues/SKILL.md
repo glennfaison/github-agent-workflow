@@ -29,7 +29,7 @@ types:
     evidence: "what the category's Required sections need"
     related: "optional issue numbers"
     screenshots: "optional"
-params: [candidates, dry_run, limit, repo_guidance, dedupe_closed_days, run_id, title, category, area, impact, confidence, evidence, related, screenshots, unattended]
+params: [candidates, dry_run, limit, parent, repo_guidance, dedupe_closed_days, run_id, title, category, area, impact, confidence, evidence, related, screenshots, unattended]
 requires:
   - "None: always eligible. It works on candidates, not on an item that could be leased."
 returns:
@@ -45,6 +45,7 @@ ensures:
   - "A filed issue has no labels and no assignee, follows its category's title pattern, and has every Required section of its category."
   - "A candidate that is a possible security vulnerability is never filed publicly."
   - "A candidate that matches a closed-as-not-planned issue or `.out-of-scope/` is dropped. One closed as completed is filed as a possible regression of it."
+  - "With `parent` set, the parent is never the issue a candidate is a duplicate of, and each filed body says `Part of #<parent>.`. The sibling slices already filed are searched like any open issue, so a repeat is a duplicate of its own earlier slice. No sub-issue link is made here: the caller links."
 effects:
   reads: [open issues, recently closed issues (dedupe_closed_days), ".out-of-scope/", the repository's own guidance and issue templates]
   writes:
@@ -70,6 +71,7 @@ terminates: "One pass over the candidates."
 |---|---|---|
 | `candidates` | *(from free text)* | Optional structured list; free text is also accepted |
 | `dry_run` | `false` | When `true`, do not create issues or comments; only return the decisions |
+| `parent` | *(none)* | The issue these candidates are slices of, as a number. It is never reported as a duplicate of a slice, and each filed body says `Part of #<parent>.`. Set by `implement-github-issue` when it splits an issue that is too large. The caller makes the sub-issue links |
 | `limit` | *(none)* | Most issues to file in this call. Once that many are filed, each remaining candidate returns `deferred: over limit` without being checked. Without it, every candidate is processed |
 | `repo_guidance` | `AGENTS.md` | Extra files holding the repository's own agent rules, read in addition to the standard locations (see `references/client-guidance.md`) |
 | `dedupe_closed_days` | `30` | The "recently closed" window the duplicate search runs over |
@@ -95,14 +97,14 @@ terminates: "One pass over the candidates."
 
 For **each** candidate, in order. If `limit` is set and `limit` candidates have already been `filed` (or `would-file`) in this call, return `deferred: over limit` for this candidate and every later one, and do not check them. A duplicate or a drop does not count toward the limit.
 
-1. **Dedupe.** Follow the Exploring column of the dedupe table (see `agent-workflow-protocol/references/dedupe.md` or the summary below). Search open issues, recently closed issues and `.out-of-scope/`.
+1. **Dedupe.** Follow the Exploring column of the dedupe table (see `agent-workflow-protocol/references/dedupe.md` or the summary below). Search open issues, recently closed issues and `.out-of-scope/`. With `parent` set, leave the parent out of the results: a slice of an issue is not a duplicate of it.
 2. **Decide**:
    - Same problem as an open issue → do not file. Add a comment with any **new** evidence (unless dry_run). Result: `duplicate of #N (commented)`.
    - Closed as not planned, or matches `.out-of-scope/` → do not file. Result: `dropped: rejected before in #N` (or the file).
    - Closed as completed → file it, and say "possible regression of #N" in the body.
    - Related but different → file it and mention `#N` in the body.
 3. **Check required sections.** Each category marks sections **Required** (see issue-format). If you cannot fill one from the evidence, do not file. Result: `dropped: missing <section>` (or `dropped: no use case` for a feature). Never file a possible security vulnerability as a public issue.
-4. **Write the body** following the category's title pattern and sections, plus common fields and a last line `Filed by Exploring run <RUN_ID>` when applicable. Prefer attaching screenshots only when the runner can put them on GitHub; otherwise note under **Visuals**.
+4. **Write the body** following the category's title pattern and sections, plus common fields and a last line `Filed by Exploring run <RUN_ID>` when applicable. With `parent` set, start the body with `Part of #<parent>.`. Prefer attaching screenshots only when the runner can put them on GitHub; otherwise note under **Visuals**.
 5. **File it** (skip when `dry_run=true`). Create the issue with **no labels** and no assignee. Result: `filed #N`.
 
 ### Dedupe summary (Exploring)
