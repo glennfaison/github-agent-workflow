@@ -28,7 +28,7 @@ export const SURFACE = {
   "pr comment": "supported",
   "pr merge": "supported",
   "label create": "supported",
-  api: "planned",
+  api: "supported",
 
   // log.md tells agents never to look an issue up with search, so a skill calls it only to forbid it.
   search: "out-of-scope",

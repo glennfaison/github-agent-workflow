@@ -10,7 +10,7 @@ import { appendFileSync, readFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { SURFACE } from "./surface.mjs";
 import { applyEffects } from "../../scripts/scenario.mjs";
-import { SimError, unsupported, loadWorld, saveWorld, contextOf, view, commentsOf, checksOf, runId, branchOf, createdAt, iso, GH_FIELDS, MODELLED } from "./world.mjs";
+import { SimError, unsupported, loadWorld, saveWorld, contextOf, view, commentsOf, derivedCount, checksOf, runId, branchOf, createdAt, iso, mergeStateOf, restComment, restPr, GH_FIELDS, MODELLED } from "./world.mjs";
 
 // ---- arguments ---------------------------------------------------------------------------------------------
 
@@ -33,7 +33,8 @@ function parseArgs(command, argv, flags) {
     if (!spec.takes) { out.flags[key] = true; continue; }
     const value = inline ?? argv[++i];
     if (value === undefined) throw new SimError(`flag needs an argument: ${name}`);
-    if (spec.multi) (out.flags[key] ??= []).push(...value.split(","));
+    if (spec.repeat) (out.flags[key] ??= []).push(value);
+    else if (spec.multi) (out.flags[key] ??= []).push(...value.split(","));
     else out.flags[key] = value;
   }
   return out;
@@ -379,7 +380,7 @@ const prMerge = { ...WRITE, flags: { ...REPO_FLAG, "--squash": { short: "-s" }, 
     if (a.flags["delete-branch"] && !pr.branchDeleted) ctx.world = applyEffects(ctx.world, [{ op: "delete_branch", target: t }]);
     return { text: "", err: a.flags["delete-branch"] ? `! Pull request ${full} was already merged\n` : "", code: 0 };
   }
-  const merge = pr.mergeState ?? (pr.draft ? "DRAFT" : "CLEAN");
+  const merge = mergeStateOf(pr);
   const blocked = { DIRTY: "the merge commit cannot be cleanly created", BLOCKED: "the base branch policy prohibits the merge", BEHIND: "the head branch is not up to date with the base branch" }[merge];
   if (blocked) throw new SimError(`X Pull request ${full} is not mergeable: ${blocked}.\nTo have the pull request merged after all the requirements have been met, add the \`--auto\` flag.`);
   if (pr.draft || merge === "DRAFT") throw new SimError("GraphQL: Pull request Pull request is still a draft (mergePullRequest)");
@@ -404,6 +405,133 @@ const labelCreate = { ...WRITE, flags: { ...REPO_FLAG, "--color": { short: "-c",
   return `✓ Label "${name}" ${exists ? "updated" : "created"} in ${ctx.nameWithOwner}\n`;
 } };
 
+// ---- api -----------------------------------------------------------------------------------------------------
+//
+// The REST calls `lib.sh` and the skills make. Anything else is `unsupported`. Pagination is not modelled: a list is
+// one page unless `per_page` and `page` are in the query, and `--paginate` returns it whole.
+
+const apiError = (code, message) => new SimError(`gh: ${message} (HTTP ${code})`);
+const notFound = () => apiError(404, "Not Found");
+
+const textOf = (v) => (typeof v === "string" ? v : JSON.stringify(v));
+
+/** A list as the API pages it: `per_page` and `page` in the query, unless `--paginate` asks for all of it. */
+function page(list, q, a) {
+  if (a.flags.paginate) return list;
+  const per = Number(q.get("per_page") ?? 30), n = Number(q.get("page") ?? 1);
+  return list.slice((n - 1) * per, n * per);
+}
+
+function requireWritable(ctx, what) {
+  if (ctx.scenario) throw new SimError(`GH_SIM_WORLD is a scenario file, and the gh simulator does not write to one (${what})`, { code: 2 });
+}
+
+function updateBranch(ctx, n, fields) {
+  const pr = findItem(ctx.world, "pr", n);
+  if (!pr) throw notFound();
+  const expected = fields.expected_head_sha;
+  if (expected !== undefined && expected !== String(pr.head)) throw apiError(422, "expected head sha didn't match current head ref.");
+  if ((pr.state ?? "open") !== "open") throw apiError(422, "Pull request is not open");
+  const merge = mergeStateOf(pr);
+  if (merge === "DIRTY") throw apiError(422, "merge conflict between base and head");
+  if (merge !== "BEHIND") throw apiError(422, "There are no new commits on the base branch.");
+  requireWritable(ctx, "update-branch");
+  // The branch gets a new head, and a PR that was `BEHIND` is up to date (`mergeStateOf` knows a run pushed it).
+  ctx.world = applyEffects(ctx.world, [{ op: "push", target: `pr#${n}` }]);
+  return { message: "Updating pull request branch.", url: `https://api.github.com/repos/${ctx.nameWithOwner}/pulls/${n}` };
+}
+
+function patchComment(ctx, id, fields) {
+  if (fields.body === undefined) throw apiError(422, "Validation Failed");
+  const n = Math.floor((id - 1) / 1000), i = (id - 1) % 1000;
+  const kind = findItem(ctx.world, "issue", n) ? "issue" : findItem(ctx.world, "pr", n) ? "pr" : null;
+  const it = kind && findItem(ctx.world, kind, n);
+  if (!it || i >= commentsOf(ctx, kind, it).length) throw notFound();
+  const stored = i - derivedCount(ctx, kind, it);
+  if (stored < 0) throw unsupported("api PATCH of a comment the simulator derives from a world field (a lease, a handoff, an attempt)");
+  requireWritable(ctx, "PATCH");
+  const marker = /<!-- (agent:[A-Za-z0-9_-]+)/.exec(fields.body)?.[1];
+  ctx.world = applyEffects(ctx.world, [{ op: "comment_edit", target: `${kind}#${n}`, index: stored, text: fields.body }]);
+  const c = findItem(ctx.world, kind, n).comments[stored];
+  Object.assign(c, { updatedAt: iso(ctx.now), ...(marker ? { marker } : {}) });
+  return restComment(ctx, kind, findItem(ctx.world, kind, n), commentsOf(ctx, kind, findItem(ctx.world, kind, n))[i]);
+}
+
+function contents(ctx, path, raw) {
+  const files = ctx.world.files ?? {};
+  if (!(path in files)) throw notFound();
+  if (raw) return { text: files[path] };
+  const text = files[path];
+  return { json: { type: "file", name: path.split("/").pop(), path, size: Buffer.byteLength(text), encoding: "base64", content: Buffer.from(text).toString("base64"), sha: "sim" } };
+}
+
+function tree(ctx) {
+  const paths = Object.keys(ctx.world.files ?? {}).sort();
+  const dirs = [...new Set(paths.flatMap((p) => p.split("/").slice(0, -1).map((_, i, parts) => parts.slice(0, i + 1).join("/"))))].sort();
+  return { sha: "sim", url: `https://api.github.com/repos/${ctx.nameWithOwner}/git/trees/sim`, truncated: false,
+    tree: [...dirs.map((path) => ({ path, mode: "040000", type: "tree", sha: "sim" })), ...paths.map((path) => ({ path, mode: "100644", type: "blob", sha: "sim", size: Buffer.byteLength(ctx.world.files[path]) }))].sort((x, y) => x.path.localeCompare(y.path)) };
+}
+
+const KV = (list) => Object.fromEntries((list ?? []).map((kv) => { const i = kv.indexOf("="); if (i < 1) throw new SimError(`field ${kv} requires a value separated by an '=' sign`); const v = kv.slice(i + 1); if (v.startsWith("@")) throw unsupported("api -F @file"); return [kv.slice(0, i), v]; }));
+
+const api = {
+  flags: { "--method": { short: "-X", takes: true }, "--header": { short: "-H", takes: true, repeat: true }, "--raw-field": { short: "-f", takes: true, repeat: true }, "--field": { short: "-F", takes: true, repeat: true }, "--jq": { short: "-q", takes: true }, "--paginate": {} },
+  // Only a call that is not a GET changes the world.
+  write: (a) => methodOf(a) !== "GET",
+  run(ctx, a) {
+    if (a.pos.length !== 1) throw unsupported("api without exactly one endpoint");
+    const method = methodOf(a), fields = KV([...(a.flags["raw-field"] ?? []), ...(a.flags.field ?? [])]);
+    const raw = (a.flags.header ?? []).some((h) => /^accept:\s*application\/vnd\.github\.(raw|v3\.raw)/i.test(h));
+    if (method === "GET" && Object.keys(fields).length) throw unsupported("api GET with -f or -F (they make a query)");
+    const [path, query = ""] = a.pos[0].replace(/^\//, "").replace("{owner}", ctx.owner).replace("{repo}", ctx.name).split("?");
+    const q = new URLSearchParams(query), what = `api ${method} ${path}`;
+    const out = (v) => (a.flags.jq !== undefined ? printJson(v, a) : `${typeof v === "string" ? v : JSON.stringify(v)}\n`);
+    if (path === "user" && method === "GET") return out({ login: ctx.user, id: 1, type: "User" });
+    const m = /^repos\/([^/]+)\/([^/]+)\/(.*)$/.exec(path);
+    if (!m) throw unsupported(what);
+    if (`${m[1]}/${m[2]}` !== ctx.nameWithOwner) throw notFound();
+    const rest = m[3];
+    let g;
+    if (method === "GET" && (g = /^issues\/(\d+)\/comments$/.exec(rest))) {
+      const n = Number(g[1]), kind = findItem(ctx.world, "issue", n) ? "issue" : findItem(ctx.world, "pr", n) ? "pr" : null;
+      if (!kind) throw notFound();
+      const it = findItem(ctx.world, kind, n);
+      return out(page(commentsOf(ctx, kind, it).map((c) => restComment(ctx, kind, it, c)), q, a));
+    }
+    if (method === "PATCH" && (g = /^issues\/comments\/(\d+)$/.exec(rest))) return out(patchComment(ctx, Number(g[1]), fields));
+    if (method === "GET" && (g = /^pulls\/(\d+)\/files$/.exec(rest))) {
+      const pr = findItem(ctx.world, "pr", Number(g[1]));
+      if (!pr) throw notFound();
+      return out(page((pr.files ?? []).map((filename) => ({ sha: "sim", filename, status: "modified", additions: 0, deletions: 0, changes: 0 })), q, a));
+    }
+    if (method === "PUT" && (g = /^pulls\/(\d+)\/update-branch$/.exec(rest))) return out(updateBranch(ctx, Number(g[1]), fields));
+    if (method === "GET" && (g = /^pulls\/(\d+)$/.exec(rest))) {
+      const pr = findItem(ctx.world, "pr", Number(g[1]));
+      if (!pr) throw notFound();
+      return out(restPr(ctx, pr));
+    }
+    if (method === "GET" && rest === "pulls") {
+      const state = q.get("state") ?? "open";
+      if (!["open", "closed", "all"].includes(state)) throw apiError(422, "Validation Failed");
+      const rows = ctx.world.prs.filter((p) => state === "all" || ((p.state ?? "open") === "open") === (state === "open")).sort(newestFirst(ctx, "pr"));
+      return out(page(rows.map((p) => restPr(ctx, p)), q, a));
+    }
+    if (method === "GET" && (g = /^contents\/(.+)$/.exec(rest))) {
+      const c = contents(ctx, decodeURIComponent(g[1]), raw);
+      return c.text !== undefined ? c.text : out(c.json);
+    }
+    if (method === "GET" && (g = /^git\/trees\/(.+)$/.exec(rest))) {
+      if (!["HEAD", ctx.defaultBranch].includes(g[1]) || q.get("recursive") !== "1") throw unsupported(`${what} (only HEAD with recursive=1)`);
+      return out(tree(ctx));
+    }
+    throw unsupported(what);
+  },
+};
+function methodOf(a) {
+  const given = a.flags.method?.toUpperCase();
+  return given ?? ((a.flags["raw-field"] ?? a.flags.field ?? []).length ? "POST" : "GET");
+}
+
 // ---- dispatch ----------------------------------------------------------------------------------------------
 
 export const HANDLERS = {
@@ -412,29 +540,65 @@ export const HANDLERS = {
   "label list": labelList, "repo view": repoView, "auth status": authStatus, "run view": runView,
   "issue edit": edit("issue"), "issue close": issueClose, "issue create": issueCreate, "issue comment": comment("issue"), "issue reopen": issueReopen,
   "pr edit": edit("pr"), "pr create": prCreate, "pr comment": comment("pr"), "pr merge": prMerge,
-  "label create": labelCreate,
+  "label create": labelCreate, api,
 };
 
-/** Runs one call. Returns { stdout, code, kind }. Never throws. */
+/**
+ * The fault, if any, that this call meets. A world's `faults` are `{match, fail, exit?, before?, times?}`: a call that
+ * starts with `match` (whole words: `pr merge`, `api -X PATCH`) fails with `fail` and exits `exit` (default 1) without
+ * changing anything. `before` is a list of effects applied to the world first, which is how another run gets in ahead of
+ * this call. `times` limits how often a fault fires. It counts the log, so it needs GH_SIM_LOG.
+ */
+function faultFor(world, argv, env) {
+  const call = argv.join(" ");
+  const fired = (i) => {
+    if (!env.GH_SIM_LOG) throw new SimError("GH_SIM_WORLD: a fault with `times` needs GH_SIM_LOG, which is where firing is counted", { code: 2 });
+    let text = ""; try { text = readFileSync(env.GH_SIM_LOG, "utf8"); } catch { /* no call has been logged yet */ }
+    return text.split("\n").filter((l) => l && JSON.parse(l).fault === i).length;
+  };
+  for (const [i, f] of (world.faults ?? []).entries()) {
+    if (call !== f.match && !call.startsWith(`${f.match} `)) continue;
+    if (f.times !== undefined && fired(i) >= f.times) continue;
+    return { i, f };
+  }
+  return null;
+}
+
+/** Runs one call. Returns { stdout, stderr, code, kind, fault }. Never throws. */
 export function run(argv, env = process.env) {
   const words = [];
   for (const w of argv) { if (w.startsWith("-") || words.length === 2) break; words.push(w); }
-  const command = words.slice(0, 2).join(" ");
+  const command = words.slice(0, 2).join(" ") || words[0];
+  let fault;
   try {
     if (!env.GH_SIM_WORLD) throw new SimError("GH_SIM_WORLD is not set: the gh simulator needs a world file", { code: 2 });
-    const handler = HANDLERS[command];
+    const handler = HANDLERS[command] ?? HANDLERS[words[0]];
     if (!handler) throw unsupported(SURFACE[words[0]] === "out-of-scope" ? `${words[0]} (out of scope)` : command || argv.join(" "));
-    const { world, scenario } = loadWorld(env.GH_SIM_WORLD);
-    if (handler.write && scenario) throw new SimError(`GH_SIM_WORLD is a scenario file, and the gh simulator does not write to one: make a world file with \`node tests/sim/seed.mjs ${env.GH_SIM_WORLD} <world.yaml>\``, { code: 2 });
+    const { world: seeded, scenario } = loadWorld(env.GH_SIM_WORLD);
+    const refuse = (what) => new SimError(`GH_SIM_WORLD is a scenario file, and the gh simulator does not write to one${what}: make a world file with \`node tests/sim/seed.mjs ${env.GH_SIM_WORLD} <world.yaml>\``, { code: 2 });
+    let world = seeded;
+    const hit = faultFor(world, argv, env);
+    if (hit) {
+      fault = hit.i;
+      if (hit.f.before) {
+        if (scenario) throw refuse(" (a fault's `before` effects write)");
+        world = applyEffects(world, hit.f.before);
+        saveWorld(env.GH_SIM_WORLD, world);
+      }
+      if (hit.f.fail !== undefined) throw Object.assign(new SimError(hit.f.fail, { code: hit.f.exit ?? 1, kind: "fault" }), { fault });
+    }
     const ctx = contextOf(world, env);
-    const a = parseArgs(command, argv.slice(words.length), handler.flags);
+    ctx.scenario = scenario;
+    const a = parseArgs(handler === HANDLERS.api ? "api" : command, argv.slice(handler === HANDLERS.api ? 1 : words.length), handler.flags);
+    const writes = typeof handler.write === "function" ? handler.write(a) : Boolean(handler.write);
+    if (writes && scenario) throw refuse("");
     const result = handler.run(ctx, a);
     // Only a call that got this far changes the file.
-    if (handler.write) saveWorld(env.GH_SIM_WORLD, ctx.world);
-    return typeof result === "string" ? { stdout: result, code: 0, kind: "ok" } : { stdout: result.text, stderr: result.err, code: result.code, kind: "ok" };
+    if (writes) saveWorld(env.GH_SIM_WORLD, ctx.world);
+    return typeof result === "string" ? { stdout: result, code: 0, kind: "ok", fault } : { stdout: result.text, stderr: result.err, code: result.code, kind: "ok", fault };
   } catch (e) {
     if (!(e instanceof SimError)) throw e;
-    return { stdout: "", stderr: e.message + "\n", code: e.code, kind: e.kind };
+    return { stdout: "", stderr: e.message + "\n", code: e.code, kind: e.kind, fault: e.fault ?? fault };
   }
 }
 
@@ -443,7 +607,7 @@ if (import.meta.url === `file://${process.argv[1]}` || process.argv[1]?.endsWith
   const r = run(argv);
   if (process.env.GH_SIM_LOG) {
     const ts = new Date(process.env.GH_SIM_NOW ? Date.parse(process.env.GH_SIM_NOW) : Date.now()).toISOString();
-    appendFileSync(process.env.GH_SIM_LOG, JSON.stringify({ ts, argv, exit: r.code, kind: r.kind }) + "\n");
+    appendFileSync(process.env.GH_SIM_LOG, JSON.stringify({ ts, argv, exit: r.code, kind: r.kind, ...(r.fault !== undefined ? { fault: r.fault } : {}) }) + "\n");
   }
   if (r.stdout) process.stdout.write(r.stdout);
   if (r.stderr) process.stderr.write(r.stderr);

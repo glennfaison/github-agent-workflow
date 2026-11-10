@@ -118,6 +118,23 @@ test("a title or body edited after the item exists is still unmodelled, and a cr
   assert.deepEqual(unmodelled(W(), edit((w) => { w.issues.push({ number: 3, state: "open", labels: [], comments: [], title: "T", assignee: "x" }); })), ["issue#3 assignee"]);
 });
 
+test("a comment edited in place is a comment_edit, and it round-trips", () => {
+  const before = edit((w) => { w.issues[0].comments = [{ marker: "agent:lease", text: "Claimed <!-- agent:lease step=A -->" }, { author: "human" }]; });
+  const after = edit((w) => { w.issues[0].comments = [{ marker: "agent:lease", text: "Claimed again <!-- agent:lease step=A -->" }, { author: "human" }]; });
+  const diff = diffWorlds(before, after);
+  assert.deepEqual(diff, [{ op: "comment_edit", target: "issue#1", index: 0, text: "Claimed again <!-- agent:lease step=A -->" }]);
+  assert.ok(sameWorld(applyEffects(before, diff), after));
+  // an edit and a new comment in one run
+  const both = edit((w) => { w.issues[0].comments = [{ marker: "agent:lease", text: "x" }, { author: "human" }, { marker: "agent:outcome", text: "done" }]; });
+  assert.deepEqual(diffWorlds(before, both).map((e) => [e.op, e.index ?? e.marker]), [["comment_edit", 0], ["comment", "agent:outcome"]]);
+  assert.ok(sameWorld(applyEffects(before, diffWorlds(before, both)), both));
+  // a comment whose marker changed, or that lost its text, is still not an edit
+  assert.deepEqual(unmodelled(before, edit((w) => { w.issues[0].comments = [{ marker: "agent:outcome", text: "x" }, { author: "human" }]; })), ["issue#1 comments"]);
+  assert.deepEqual(unmodelled(before, edit((w) => { w.issues[0].comments = [{ marker: "agent:lease" }, { author: "human" }]; })), ["issue#1 comments"]);
+  assert.deepEqual(unmodelled(before, edit((w) => { w.issues[0].comments = [{ marker: "agent:lease", text: "Claimed <!-- agent:lease step=A -->" }]; })), ["issue#1 comments"], "a removed comment is not an edit");
+  assert.throws(() => applyEffects(before, [{ op: "comment_edit", target: "issue#1", index: 5, text: "x" }]), /has no comment 5/);
+});
+
 test("a close carries its reason, and the reason is not a change of its own", () => {
   const after = edit((w) => { w.issues[0].state = "closed"; w.issues[0].closeReason = "not planned"; });
   const diff = diffWorlds(W(), after);
@@ -131,7 +148,8 @@ test("unmodelled: fields, comments, state, branches, removals, new items and the
   assert.deepEqual(unmodelled(W(), edit((w) => { w.prs[0].checks = ["fail"]; })), ["pr#10 checks"]);
   assert.deepEqual(unmodelled(W(), edit((w) => { w.prs[0].draft = true; })), ["pr#10 draft"]);
   assert.deepEqual(unmodelled(W(), edit((w) => { w.prs[0].base = "develop"; })), ["pr#10 base"]);
-  assert.deepEqual(unmodelled(W(), edit((w) => { w.issues[0].comments[0].text = "edited"; })), ["issue#1 comments"]);
+  assert.deepEqual(unmodelled(W(), edit((w) => { w.issues[0].comments[0].text = "edited"; })), [], "an edited comment is a comment_edit now");
+  assert.deepEqual(diffWorlds(W(), edit((w) => { w.issues[0].comments[0].text = "edited"; })).map((e) => e.op), ["comment_edit"]);
   assert.deepEqual(unmodelled(W(), edit((w) => { w.issues[0].comments = []; })), ["issue#1 comments"]);
   assert.deepEqual(unmodelled(edit((w) => { w.issues[0].state = "closed"; }), W()), ["issue#1 state"]);
   assert.deepEqual(unmodelled(W(), edit((w) => { w.issues[0].state = "merged"; })), ["issue#1 state"]);
