@@ -101,6 +101,32 @@ test("a change no op can express is reported as unmodelled, with both values", (
   ]);
 });
 
+test("what a new item is made with (title, body, when, by whom, branch) belongs to its create effect, not to unmodelled", () => {
+  const issue = { number: 3, state: "open", labels: ["agent:log"], comments: [], title: "Log", body: "b", createdAt: "2026-11-09T12:00:00Z", author: "bot" };
+  const pr = { number: 11, state: "open", labels: [], draft: false, head: "n", base: "main", checks: [], openFindings: 0, closes: [1], comments: [], title: "T", body: "Closes #1", createdAt: "2026-11-09T12:00:00Z", author: "bot", branch: "feat/1-x" };
+  const after = edit((w) => { w.issues.push(issue); w.prs.push(pr); });
+  const diff = diffWorlds(W(), after);
+  assert.deepEqual(diff.filter((e) => e.op === "unmodelled"), []);
+  assert.deepEqual(diff.find((e) => e.op === "create_issue").data, { title: "Log", body: "b", createdAt: "2026-11-09T12:00:00Z", author: "bot" });
+  assert.deepEqual(diff.find((e) => e.op === "create_pr").data, { title: "T", body: "Closes #1", createdAt: "2026-11-09T12:00:00Z", author: "bot", branch: "feat/1-x" });
+  assert.ok(sameWorld(applyEffects(W(), diff), after), "the item is made as it was");
+  assert.deepEqual(diffWorlds(W(), edit((w) => { w.issues.push({ number: 3, state: "open", labels: [], comments: [] }); })), [{ op: "create_issue", number: 3, labels: [] }], "no data, no `data` key");
+});
+
+test("a title or body edited after the item exists is still unmodelled, and a created item's other fields are too", () => {
+  assert.deepEqual(unmodelled(W(), edit((w) => { w.issues[0].body = "new"; })), ["issue#1 body"]);
+  assert.deepEqual(unmodelled(W(), edit((w) => { w.issues.push({ number: 3, state: "open", labels: [], comments: [], title: "T", assignee: "x" }); })), ["issue#3 assignee"]);
+});
+
+test("a close carries its reason, and the reason is not a change of its own", () => {
+  const after = edit((w) => { w.issues[0].state = "closed"; w.issues[0].closeReason = "not planned"; });
+  const diff = diffWorlds(W(), after);
+  assert.deepEqual(diff, [{ op: "close", target: "issue#1", reason: "not planned" }]);
+  assert.ok(sameWorld(applyEffects(W(), diff), after));
+  assert.deepEqual(diffWorlds(W(), edit((w) => { w.issues[0].state = "closed"; })), [{ op: "close", target: "issue#1" }], "no reason, no `reason` key");
+  assert.equal(applyEffects(W(), [{ op: "close", target: "issue#1" }]).issues[0].closeReason, undefined);
+});
+
 test("unmodelled: fields, comments, state, branches, removals, new items and the world itself", () => {
   assert.deepEqual(unmodelled(W(), edit((w) => { w.prs[0].checks = ["fail"]; })), ["pr#10 checks"]);
   assert.deepEqual(unmodelled(W(), edit((w) => { w.prs[0].draft = true; })), ["pr#10 draft"]);

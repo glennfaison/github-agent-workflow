@@ -195,9 +195,15 @@ export function scopeOf(effect, ctx) {
 
 /** The item that a `create_pr` or `create_issue` effect adds to the world `w`. */
 export function createdItem(w, e) {
-  if (e.op === "create_pr") return { number: e.number, state: "open", labels: e.labels ?? [], draft: false, head: e.sha ?? "new", base: e.base ?? w.default_branch ?? "main", checks: [], openFindings: 0, closes: e.closes ?? [], comments: [] };
-  return { number: e.number, state: "open", labels: e.labels ?? [], comments: [] };
+  if (e.op === "create_pr") return { ...e.data, number: e.number, state: "open", labels: e.labels ?? [], draft: false, head: e.sha ?? "new", base: e.base ?? w.default_branch ?? "main", checks: [], openFindings: 0, closes: e.closes ?? [], comments: [] };
+  return { ...e.data, number: e.number, state: "open", labels: e.labels ?? [], comments: [] };
 }
+
+/**
+ * What a new item is made with, besides what a `create_*` effect names: its title, its body, when it was created, who
+ * opened it and (for a PR) its branch. A `create_*` effect carries these as `data`. Editing one later is still `unmodelled`.
+ */
+export const CREATION_DATA = ["title", "body", "createdAt", "author", "branch"];
 
 /** Apply effects to a copy of the world. Throws when an effect is impossible. */
 export function applyEffects(world, effects) {
@@ -230,7 +236,7 @@ export function applyEffects(world, effects) {
         if (!t.labels.includes(e.label)) throw new Error(`removes \`${e.label}\` from ${e.target}, which does not carry it`);
         t.labels = t.labels.filter((l) => l !== e.label); break;
       case "comment": t.comments.push({ marker: e.marker, text: e.text }); break;
-      case "close": t.state = "closed"; break;
+      case "close": t.state = "closed"; if (e.reason) t.closeReason = e.reason; break;
       case "push": t.head = e.sha ?? `${t.head}+`; t.pushed = true; break;
       case "merge": t.state = "merged"; break;
       case "delete_branch": t.branchDeleted = true; break;
@@ -266,7 +272,7 @@ export function canonicalWorld(world) {
 /** True when two worlds are the same world by `canonicalWorld`. */
 export const sameWorld = (a, b) => isDeepStrictEqual(canonicalWorld(a), canonicalWorld(b));
 
-const MODELLED = { issue: ["number", "labels", "comments", "state"], pr: ["number", "labels", "comments", "state", "head", "pushed", "branchDeleted"] };
+const MODELLED = { issue: ["number", "labels", "comments", "state", "closeReason"], pr: ["number", "labels", "comments", "state", "head", "pushed", "branchDeleted"] };
 const defined = (o) => Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined));
 
 /**
@@ -276,7 +282,7 @@ const defined = (o) => Object.fromEntries(Object.entries(o).filter(([, v]) => v 
  * `agent:lease` comment are ordinary effects here: the checker adds a claim's marker to a scenario's
  * effects itself, so a caller that passes a diff to `checkScenario` leaves that comment out of it.
  *
- * Anything that no op can express (a changed title, body, checks or base; an edited or removed comment;
+ * Anything that no op can express (a changed title, body, checks or base of an item that already existed; an edited or removed comment;
  * a reopened item; a removed item) becomes `{ op: "unmodelled", target, field, before, after }`.
  * `checkScenario` rejects it unless the contract lists an `unmodelled` write scope. `review_request`
  * changes nothing in a world, so a diff never contains one.
@@ -307,7 +313,7 @@ export function diffWorlds(before, after) {
 
     if (a.state !== b.state) {
       const open = b.state === "open" || b.state === undefined;
-      if (open && a.state === "closed") out.push({ op: "close", target });
+      if (open && a.state === "closed") out.push({ op: "close", target, ...defined({ reason: a.closeReason }) });
       else if (open && kind === "pr" && a.state === "merged") out.push({ op: "merge", target, ...defined({ sha: typeof a.head === "string" ? a.head : undefined }) });
       else odd(target, "state", b.state, a.state);
     }
@@ -332,9 +338,11 @@ export function diffWorlds(before, after) {
       const a = now.get(n);
       if (was.has(n)) { diffItem(kind, was.get(n), a); continue; }
       // a new item: create it, then diff what is left against what the creation gives
+      const data = defined(Object.fromEntries(CREATION_DATA.map((k) => [k, a[k]])));
       const e = kind === "pr"
         ? { op: "create_pr", number: n, labels: [...new Set(a.labels ?? [])], ...defined({ sha: typeof a.head === "string" ? a.head : undefined, base: a.base }), closes: a.closes ?? [] }
         : { op: "create_issue", number: n, labels: [...new Set(a.labels ?? [])] };
+      if (Object.keys(data).length > 0) e.data = data;
       created.push(e);
       const stub = applyEffects({ issues: [], prs: [], default_branch: before.default_branch }, [e]);
       diffItem(kind, (kind === "pr" ? stub.prs : stub.issues)[0], a);

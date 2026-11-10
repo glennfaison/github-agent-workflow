@@ -6,10 +6,11 @@
 //
 // A command, flag or --json field the simulator does not cover exits 1 with `unsupported: <what>`.
 
-import { appendFileSync } from "node:fs";
+import { appendFileSync, readFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { SURFACE } from "./surface.mjs";
-import { SimError, unsupported, loadWorld, contextOf, view, commentsOf, checksOf, runId, branchOf, createdAt, GH_FIELDS, MODELLED } from "./world.mjs";
+import { applyEffects } from "../../scripts/scenario.mjs";
+import { SimError, unsupported, loadWorld, saveWorld, contextOf, view, commentsOf, checksOf, runId, branchOf, createdAt, iso, GH_FIELDS, MODELLED } from "./world.mjs";
 
 // ---- arguments ---------------------------------------------------------------------------------------------
 
@@ -212,12 +213,206 @@ const runView = { flags: { ...REPO_FLAG, "--log-failed": {}, "--log": {} }, run(
   return `${hit.c.name}\tRun\t${hit.c.startedAt} Error: simulated ${hit.c.bucket === "fail" ? "failure" : "run"} of ${hit.c.name} on pr#${hit.pr.number}\n`;
 } };
 
+// ---- writes --------------------------------------------------------------------------------------------------
+//
+// A write changes the world through `applyEffects`, the function the checker uses, so what a run leaves behind
+// is what `diffWorlds` reads back. A call is checked before it changes anything: one that fails leaves the world
+// as it was, and `run` saves the world only when a handler returns.
+
+const WRITE = { write: true };
+const itemsOf = (w, kind) => (kind === "issue" ? w.issues : w.prs);
+const findItem = (w, kind, n) => itemsOf(w, kind).find((x) => x.number === n);
+const nameOf = (kind) => (kind === "issue" ? "an Issue" : "a PullRequest");
+const urlOf = (ctx, kind, n) => `https://github.com/${ctx.nameWithOwner}/${kind === "pr" ? "pull" : "issues"}/${n}`;
+const titleOf = (kind, it) => it.title ?? (kind === "issue" ? `Issue ${it.number}` : `Pull request ${it.number}`);
+
+function target(ctx, kind, a, command) {
+  checkRepo(ctx, a);
+  const n = numberArg(command, a);
+  const it = findItem(ctx.world, kind, n);
+  if (!it) throw new SimError(`GraphQL: Could not resolve to ${nameOf(kind)} with the number of ${n}. (repository.${kind === "issue" ? "issue" : "pullRequest"})`);
+  return it;
+}
+
+/** `--body` or `--body-file` (a path, or `-` for stdin). undefined when neither is given. */
+function bodyArg(a) {
+  if (a.flags.body !== undefined && a.flags["body-file"] !== undefined) throw new SimError("specify only one of `--body` or `--body-file`");
+  if (a.flags.body !== undefined) return a.flags.body;
+  const f = a.flags["body-file"];
+  if (f === undefined) return undefined;
+  try { return readFileSync(f === "-" ? 0 : f, "utf8"); } catch (e) { throw new SimError(`open ${f}: ${e.code === "ENOENT" ? "no such file or directory" : e.message}`); }
+}
+
+/** The repository's labels are a catalog when the world has one. A label outside it cannot be put on an item. */
+function needLabels(ctx, names) {
+  if (!Array.isArray(ctx.world.labels)) return;
+  for (const l of names) if (!ctx.labels.has(l)) throw new SimError(`'${l}' not found`);
+}
+
+/** Posts a comment as the agent. A `<!-- agent:... -->` marker in the body is the comment's marker. Returns its URL. */
+function postComment(ctx, kind, n, body) {
+  const marker = /<!-- (agent:[A-Za-z0-9_-]+)/.exec(body)?.[1];
+  ctx.world = applyEffects(ctx.world, [{ op: "comment", target: `${kind}#${n}`, ...(marker ? { marker } : {}), text: body }]);
+  const it = findItem(ctx.world, kind, n);
+  Object.assign(it.comments.at(-1), { author: "agent", createdAt: iso(ctx.now) });
+  return commentsOf(ctx, kind, it).at(-1).url;
+}
+
+const nextNumber = (w) => Math.max(0, ...w.issues.map((i) => i.number), ...w.prs.map((p) => p.number)) + 1;
+
+const editFlags = (kind) => ({
+  ...REPO_FLAG, "--add-label": { takes: true, multi: true }, "--remove-label": { takes: true, multi: true },
+  "--body": { short: "-b", takes: true }, "--body-file": { short: "-F", takes: true }, "--title": { short: "-t", takes: true },
+  ...(kind === "pr" ? { "--add-reviewer": { takes: true, multi: true } } : {}),
+});
+
+function edit(kind) {
+  const command = `${kind} edit`;
+  return { ...WRITE, flags: editFlags(kind), run(ctx, a) {
+    const it = target(ctx, kind, a, command);
+    const add = a.flags["add-label"] ?? [], rm = a.flags["remove-label"] ?? [], reviewers = a.flags["add-reviewer"] ?? [];
+    const body = bodyArg(a), title = a.flags.title;
+    if (!add.length && !rm.length && !reviewers.length && body === undefined && title === undefined) throw new SimError("field to edit flag required when not running interactively");
+    needLabels(ctx, [...add, ...rm]);
+    const t = `${kind}#${it.number}`, has = (l) => (it.labels ?? []).includes(l);
+    // `gh` removes a label an item does not carry without complaint, and adds one it already has the same way.
+    const effects = [
+      ...rm.filter(has).map((label) => ({ op: "label_remove", target: t, label })),
+      ...add.filter((l) => !has(l) || rm.includes(l)).map((label) => ({ op: "label_add", target: t, label })),
+      ...reviewers.map((reviewer) => ({ op: "review_request", target: t, reviewer })),
+    ];
+    ctx.world = applyEffects(ctx.world, effects);
+    const now = findItem(ctx.world, kind, it.number);
+    if (body !== undefined) now.body = body;
+    if (title !== undefined) now.title = title;
+    return `${urlOf(ctx, kind, it.number)}\n`;
+  } };
+}
+
+function comment(kind) {
+  const command = `${kind} comment`;
+  return { ...WRITE, flags: { ...REPO_FLAG, "--body": { short: "-b", takes: true }, "--body-file": { short: "-F", takes: true } }, run(ctx, a) {
+    const it = target(ctx, kind, a, command);
+    const body = bodyArg(a);
+    if (body === undefined) throw new SimError("flag `--body` or `--body-file` required when not running interactively");
+    if (body.trim() === "") throw new SimError("aborting due to empty body");
+    return `${postComment(ctx, kind, it.number, body)}\n`;
+  } };
+}
+
+const issueClose = { ...WRITE, flags: { ...REPO_FLAG, "--comment": { short: "-c", takes: true }, "--reason": { short: "-r", takes: true } }, run(ctx, a) {
+  const it = target(ctx, "issue", a, "issue close");
+  const reason = a.flags.reason;
+  if (reason !== undefined && !["completed", "not planned"].includes(reason)) throw new SimError(`invalid argument "${reason}" for "-r, --reason" flag: valid values are {completed|not planned}`);
+  if (it.state === "closed") return { text: "", err: `! Issue ${ctx.nameWithOwner}#${it.number} (${titleOf("issue", it)}) is already closed\n`, code: 0 };
+  if (a.flags.comment !== undefined) postComment(ctx, "issue", it.number, a.flags.comment);
+  ctx.world = applyEffects(ctx.world, [{ op: "close", target: `issue#${it.number}`, ...(reason ? { reason } : {}) }]);
+  return { text: "", err: `✓ Closed issue ${ctx.nameWithOwner}#${it.number} (${titleOf("issue", it)})\n`, code: 0 };
+} };
+
+const issueReopen = { ...WRITE, flags: { ...REPO_FLAG, "--comment": { short: "-c", takes: true } }, run(ctx, a) {
+  const it = target(ctx, "issue", a, "issue reopen");
+  if ((it.state ?? "open") === "open") return { text: "", err: `! Issue ${ctx.nameWithOwner}#${it.number} (${titleOf("issue", it)}) is already open\n`, code: 0 };
+  if (a.flags.comment !== undefined) postComment(ctx, "issue", it.number, a.flags.comment);
+  // No effect op reopens an item, so `diffWorlds` reports this as `unmodelled`, which a contract has to allow.
+  const now = findItem(ctx.world, "issue", it.number);
+  now.state = "open"; delete now.closeReason;
+  return { text: "", err: `✓ Reopened issue ${ctx.nameWithOwner}#${it.number} (${titleOf("issue", it)})\n`, code: 0 };
+} };
+
+const createFlags = (kind) => ({
+  ...REPO_FLAG, "--title": { short: "-t", takes: true }, "--body": { short: "-b", takes: true }, "--body-file": { short: "-F", takes: true },
+  "--label": { short: "-l", takes: true, multi: true },
+  ...(kind === "pr" ? { "--base": { short: "-B", takes: true }, "--head": { short: "-H", takes: true }, "--draft": { short: "-d" } } : {}),
+});
+
+function createCommon(ctx, kind, a) {
+  checkRepo(ctx, a);
+  if (a.pos.length) throw unsupported(`${kind} create ${a.pos[0]}`);
+  const body = bodyArg(a), title = a.flags.title, labels = a.flags.label ?? [];
+  if (title === undefined || body === undefined) throw new SimError(`must provide \`--title\` and \`--body\`${kind === "pr" ? " (or `--fill` or `--fill-first` or `--fill-verbose`)" : ""} when not running interactively`);
+  if (title.trim() === "") throw new SimError("title can't be blank");
+  needLabels(ctx, labels);
+  return { body, title, labels: [...new Set(labels)] };
+}
+
+const issueCreate = { ...WRITE, flags: createFlags("issue"), run(ctx, a) {
+  const { body, title, labels } = createCommon(ctx, "issue", a);
+  const number = nextNumber(ctx.world);
+  ctx.world = applyEffects(ctx.world, [{ op: "create_issue", number, labels, data: { title, body, createdAt: iso(ctx.now), author: ctx.user } }]);
+  return `${urlOf(ctx, "issue", number)}\n`;
+} };
+
+/** The current branch and its commit, as `gh pr create` finds them when it is not told. */
+function git(args) {
+  const r = spawnSync("git", args, { encoding: "utf8" });
+  return r.status === 0 ? r.stdout.trim() : "";
+}
+
+const prCreate = { ...WRITE, flags: createFlags("pr"), run(ctx, a) {
+  const { body, title, labels } = createCommon(ctx, "pr", a);
+  const base = a.flags.base ?? ctx.defaultBranch;
+  const head = a.flags.head ?? git(["branch", "--show-current"]);
+  if (!head) throw new SimError("could not determine current branch: not on a branch, and no --head given");
+  if (head === base) throw new SimError(`head branch "${head}" is the same as base branch "${base}", cannot create a pull request`);
+  const dup = ctx.world.prs.find((p) => (p.state ?? "open") === "open" && branchOf(p) === head && (p.base ?? ctx.defaultBranch) === base);
+  if (dup) throw new SimError(`a pull request for branch "${head}" into branch "${base}" already exists:\n${urlOf(ctx, "pr", dup.number)}`);
+  const number = nextNumber(ctx.world);
+  const sha = git(["rev-parse", "--verify", `${head}^{commit}`]) || git(["rev-parse", "HEAD"]) || `sim-${number}`;
+  // GitHub links a PR to the issues its body closes, when they exist.
+  const closes = [...new Set([...body.matchAll(/\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s+#(\d+)/gi)].map((m) => Number(m[1])))].filter((n) => findItem(ctx.world, "issue", n));
+  ctx.world = applyEffects(ctx.world, [{ op: "create_pr", number, labels, sha, base, closes, data: { title, body, createdAt: iso(ctx.now), author: ctx.user, branch: head } }]);
+  if (a.flags.draft) findItem(ctx.world, "pr", number).draft = true;
+  return `${urlOf(ctx, "pr", number)}\n`;
+} };
+
+const prMerge = { ...WRITE, flags: { ...REPO_FLAG, "--squash": { short: "-s" }, "--merge": { short: "-m" }, "--rebase": { short: "-r" }, "--delete-branch": { short: "-d" }, "--match-head-commit": { takes: true } }, run(ctx, a) {
+  const pr = target(ctx, "pr", a, "pr merge");
+  const methods = ["squash", "merge", "rebase"].filter((m) => a.flags[m]);
+  if (methods.length > 1) throw new SimError("only one of `--merge`, `--rebase`, or `--squash` can be enabled");
+  if (methods.length === 0) throw new SimError("--merge, --rebase, or --squash required when not running interactively");
+  const t = `pr#${pr.number}`, full = `${ctx.nameWithOwner}#${pr.number}`;
+  const state = pr.state ?? "open";
+  if (state === "closed") throw new SimError(`GraphQL: Pull request is closed (mergePullRequest)`);
+  if (state === "merged") {
+    // `gh` does nothing for a PR that is already merged, except delete its branch when asked.
+    if (a.flags["delete-branch"] && !pr.branchDeleted) ctx.world = applyEffects(ctx.world, [{ op: "delete_branch", target: t }]);
+    return { text: "", err: a.flags["delete-branch"] ? `! Pull request ${full} was already merged\n` : "", code: 0 };
+  }
+  const merge = pr.mergeState ?? (pr.draft ? "DRAFT" : "CLEAN");
+  const blocked = { DIRTY: "the merge commit cannot be cleanly created", BLOCKED: "the base branch policy prohibits the merge", BEHIND: "the head branch is not up to date with the base branch" }[merge];
+  if (blocked) throw new SimError(`X Pull request ${full} is not mergeable: ${blocked}.\nTo have the pull request merged after all the requirements have been met, add the \`--auto\` flag.`);
+  if (pr.draft || merge === "DRAFT") throw new SimError("GraphQL: Pull request Pull request is still a draft (mergePullRequest)");
+  const pin = a.flags["match-head-commit"];
+  if (pin !== undefined && pin !== String(pr.head)) throw new SimError("GraphQL: Head branch was modified. Review and try the merge again. (mergePullRequest)");
+  ctx.world = applyEffects(ctx.world, [{ op: "merge", target: t, ...(typeof pr.head === "string" ? { sha: pr.head } : {}) }, ...(a.flags["delete-branch"] ? [{ op: "delete_branch", target: t }] : [])]);
+  const action = { squash: "Squashed and merged", merge: "Merged", rebase: "Rebased and merged" }[methods[0]];
+  return { text: "", err: `✓ ${action} pull request ${full} (${titleOf("pr", pr)})\n`, code: 0 };
+} };
+
+const labelCreate = { ...WRITE, flags: { ...REPO_FLAG, "--color": { short: "-c", takes: true }, "--description": { short: "-d", takes: true }, "--force": { short: "-f" } }, run(ctx, a) {
+  checkRepo(ctx, a);
+  if (a.pos.length !== 1) throw new SimError("cannot create label: name argument required");
+  const name = a.pos[0], color = a.flags.color?.replace(/^#/, "");
+  if (color !== undefined && !/^[0-9a-fA-F]{6}$/.test(color)) throw new SimError(`invalid argument "${a.flags.color}" for "-c, --color" flag: ${a.flags.color} is not a valid color (hex, 6 digits)`);
+  const exists = ctx.labels.has(name);
+  if (exists && !a.flags.force) throw new SimError(`label with name "${name}" already exists; use \`--force\` to update its color and description`);
+  const description = a.flags.description;
+  ctx.world = applyEffects(ctx.world, [exists ? { op: "label_update", name, ...(description ? { description } : {}) } : { op: "label_create", name, ...(description ? { description } : {}) }]);
+  if (color) ctx.world.labels.find((l) => l.name === name).color = color;
+  ctx.labels = new Map(ctx.world.labels.map((l) => [l.name, l]));
+  return `✓ Label "${name}" ${exists ? "updated" : "created"} in ${ctx.nameWithOwner}\n`;
+} };
+
 // ---- dispatch ----------------------------------------------------------------------------------------------
 
 export const HANDLERS = {
   "issue list": list("issue"), "issue view": viewOne("issue"),
   "pr list": list("pr"), "pr view": viewOne("pr"), "pr checks": checks,
   "label list": labelList, "repo view": repoView, "auth status": authStatus, "run view": runView,
+  "issue edit": edit("issue"), "issue close": issueClose, "issue create": issueCreate, "issue comment": comment("issue"), "issue reopen": issueReopen,
+  "pr edit": edit("pr"), "pr create": prCreate, "pr comment": comment("pr"), "pr merge": prMerge,
+  "label create": labelCreate,
 };
 
 /** Runs one call. Returns { stdout, code, kind }. Never throws. */
@@ -229,11 +424,14 @@ export function run(argv, env = process.env) {
     if (!env.GH_SIM_WORLD) throw new SimError("GH_SIM_WORLD is not set: the gh simulator needs a world file", { code: 2 });
     const handler = HANDLERS[command];
     if (!handler) throw unsupported(SURFACE[words[0]] === "out-of-scope" ? `${words[0]} (out of scope)` : command || argv.join(" "));
-    const { world } = loadWorld(env.GH_SIM_WORLD);
+    const { world, scenario } = loadWorld(env.GH_SIM_WORLD);
+    if (handler.write && scenario) throw new SimError(`GH_SIM_WORLD is a scenario file, and the gh simulator does not write to one: make a world file with \`node tests/sim/seed.mjs ${env.GH_SIM_WORLD} <world.yaml>\``, { code: 2 });
     const ctx = contextOf(world, env);
     const a = parseArgs(command, argv.slice(words.length), handler.flags);
     const result = handler.run(ctx, a);
-    return typeof result === "string" ? { stdout: result, code: 0, kind: "ok" } : { stdout: result.text, code: result.code, kind: "ok" };
+    // Only a call that got this far changes the file.
+    if (handler.write) saveWorld(env.GH_SIM_WORLD, ctx.world);
+    return typeof result === "string" ? { stdout: result, code: 0, kind: "ok" } : { stdout: result.text, stderr: result.err, code: result.code, kind: "ok" };
   } catch (e) {
     if (!(e instanceof SimError)) throw e;
     return { stdout: "", stderr: e.message + "\n", code: e.code, kind: e.kind };

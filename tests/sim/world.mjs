@@ -1,8 +1,8 @@
 // The world a simulated `gh` answers from, and how each part of it looks through `gh`.
 // The world file is the scenarios' format (tests/scenarios, scripts/scenario.mjs): issues, prs, labels, files.
 
-import { readFileSync } from "node:fs";
-import { parse } from "yaml";
+import { readFileSync, writeFileSync, renameSync } from "node:fs";
+import { parse, stringify } from "yaml";
 import { expandScenario } from "../../scripts/scenario.mjs";
 
 /** An error the simulator reports as `gh` would: a message on stderr and an exit code. */
@@ -61,6 +61,16 @@ export function loadWorld(file) {
   return { world, scenario, notShown };
 }
 
+/**
+ * Writes the world back to its file, whole and atomically (a file is written beside it and renamed), in the file's own
+ * format: JSON for `.json`, YAML otherwise. A call that fails never reaches this, so a failed write leaves the file as it was.
+ */
+export function saveWorld(file, world) {
+  const tmp = `${file}.${process.pid}.tmp`;
+  writeFileSync(tmp, /\.json$/.test(file) ? JSON.stringify(world, null, 2) + "\n" : stringify(world));
+  renameSync(tmp, file);
+}
+
 // ---- the context a call runs in --------------------------------------------------------------------------
 
 /** owner, name, the agent's login, the clock. `GH_SIM_NOW` (an ISO time) fixes the clock for a test. */
@@ -75,7 +85,7 @@ export function contextOf(world, env = process.env) {
   };
 }
 
-const iso = (ms) => new Date(ms).toISOString().replace(/\.\d{3}Z$/, "Z");
+export const iso = (ms) => new Date(ms).toISOString().replace(/\.\d{3}Z$/, "Z");
 const MINUTE = 60_000;
 
 /** An item with no `createdAt` is created at a fixed time, one minute per number, so that order is stable. */
@@ -116,6 +126,7 @@ export function commentsOf(ctx, kind, it) {
     login: c.author === "agent" ? ctx.user : c.author === "human" || c.author === undefined ? "someone" : c.author,
     association: c.trusted ? "OWNER" : "NONE",
     body: bodyOf(c),
+    at: c.createdAt,
   }));
   return [...derivedComments(ctx, kind, it), ...stored].map((c, i) => {
     const id = (it.number * 1000) + i + 1;

@@ -12,7 +12,7 @@ import { SURFACE, ghCommandsIn } from "./sim/surface.mjs";
 import { HANDLERS, run } from "./sim/gh-sim.mjs";
 import { loadWorld } from "./sim/world.mjs";
 import { seed } from "./sim/seed.mjs";
-import { checkState } from "../scripts/scenario.mjs";
+import { checkState, applyEffects, diffWorlds, sameWorld, canonicalWorld, checkScenario } from "../scripts/scenario.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const GH = join(ROOT, "tests/sim/bin/gh");
@@ -387,6 +387,342 @@ test("the shepherd skill's check-state one-liner gives what checkState in scenar
   // one-liner never says "no-checks-yet". The agent has to read the empty output and the error as that state.
   assert.equal(checkState({ checks: [] }), "no-checks-yet");
   assert.equal(gh({ prs: [{ number: 1, checks: [] }] }, ["pr", "checks", "1", "--json", "bucket", "--jq", expr]).out, "");
+});
+
+// ---- writes --------------------------------------------------------------------------------------------------
+
+/** A world file a run can write to, and a way to run `gh` against it and read the world back. */
+function run2(world, { file = `w-${++n}.yaml`, env = {} } = {}) {
+  const path = join(DIR, file);
+  writeFileSync(path, /\.json$/.test(file) ? JSON.stringify(world) : stringify(world));
+  const e = { ...process.env, GH_SIM_WORLD: path, GH_SIM_LOG: join(DIR, `log-${path.replace(/\W/g, "")}.jsonl`), GH_SIM_NOW: "2026-11-09T12:00:00Z", ...env };
+  const call = (...argv) => { const r = spawnSync(GH, argv, { encoding: "utf8", env: e }); return { out: r.stdout, err: r.stderr, code: r.status }; };
+  return { path, env: e, call, read: () => parse(readFileSync(path, "utf8")), bytes: () => readFileSync(path, "utf8") };
+}
+
+const W2 = () => ({
+  labels: [{ name: "ready-for-agent" }, { name: "agent:in-progress" }, { name: "agent:pr-open" }, { name: "agent:needs-work" }, { name: "agent:ready-for-review" }, { name: "agent:log", description: "Log" }],
+  issues: [
+    { number: 1, state: "open", title: "Thing", labels: ["ready-for-agent"], comments: [] },
+    { number: 2, state: "closed", title: "Old", labels: [] },
+  ],
+  prs: [
+    { number: 3, state: "open", labels: ["agent:ready-for-review"], head: "h3", base: "main", closes: [1], checks: ["pass"], comments: [] },
+    { number: 4, state: "open", draft: true, labels: [], head: "h4", checks: [] },
+  ],
+});
+
+test("edit adds and removes labels, one call for both, and removing a label an item lacks is fine", () => {
+  const r = run2(W2());
+  const out = r.call("issue", "edit", "1", "--remove-label", "ready-for-agent", "--add-label", "agent:pr-open", "--remove-label", "agent:in-progress");
+  assert.equal(out.code, 0, out.err);
+  assert.equal(out.out, "https://github.com/sim/repo/issues/1\n");
+  assert.deepEqual(r.read().issues[0].labels, ["agent:pr-open"]);
+  assert.equal(r.call("pr", "view", "3", "--json", "labels", "--jq", ".labels[].name").out, "agent:ready-for-review\n");
+  assert.equal(r.call("pr", "edit", "3", "--remove-label", "agent:ready-for-review", "--add-label", "agent:needs-work").code, 0);
+  assert.deepEqual(r.read().prs[0].labels, ["agent:needs-work"]);
+  assert.equal(r.call("issue", "edit", "1", "--add-label", "agent:pr-open").code, 0, "adding a label it has is fine");
+  assert.deepEqual(r.read().issues[0].labels, ["agent:pr-open"]);
+});
+
+test("edit sets a body (from a file or from stdin), a title, and asks for reviewers", () => {
+  const r = run2(W2());
+  const f = join(DIR, "body.md"); writeFileSync(f, "new body\n");
+  assert.equal(r.call("issue", "edit", "1", "--body-file", f).code, 0);
+  assert.equal(r.read().issues[0].body, "new body\n");
+  assert.equal(spawnSync(GH, ["issue", "edit", "1", "--body-file", "-"], { input: "from stdin", encoding: "utf8", env: r.env }).status, 0);
+  assert.equal(r.read().issues[0].body, "from stdin");
+  assert.equal(r.call("pr", "edit", "3", "--title", "Better title", "--add-reviewer", "alice,acme/team").code, 0);
+  assert.equal(r.read().prs[0].title, "Better title");
+  assert.equal(r.call("pr", "view", "3", "--json", "title", "--jq", ".title").out, "Better title\n");
+  assert.equal(r.call("issue", "edit", "1").err, "field to edit flag required when not running interactively\n");
+  assert.equal(r.call("issue", "edit", "1", "--add-reviewer", "x").err, "unsupported: issue edit --add-reviewer\n", "reviewers are for PRs");
+});
+
+test("comment posts as the agent, with the marker the body carries, and prints the comment's URL", () => {
+  const r = run2(W2());
+  const marker = r.call("issue", "comment", "1", "--body", "Claimed.\n<!-- agent:lease step=Working run=r1 expires=2026-11-09T13:00:00Z -->");
+  assert.match(marker.out, /^https:\/\/github\.com\/sim\/repo\/issues\/1#issuecomment-\d+\n$/);
+  r.call("pr", "comment", "3", "--body", "plain words");
+  const w = r.read();
+  assert.deepEqual(w.issues[0].comments, [{ author: "agent", marker: "agent:lease", text: "Claimed.\n<!-- agent:lease step=Working run=r1 expires=2026-11-09T13:00:00Z -->", createdAt: "2026-11-09T12:00:00Z" }]);
+  assert.deepEqual(w.prs[0].comments, [{ author: "agent", text: "plain words", createdAt: "2026-11-09T12:00:00Z" }]);
+  const seen = r.call("issue", "view", "1", "--json", "comments", "--jq", ".comments[] | [.author.login, .authorAssociation, .createdAt]").out;
+  assert.equal(seen, '["agent-bot","NONE","2026-11-09T12:00:00Z"]\n');
+  const f = join(DIR, "c.md"); writeFileSync(f, "from a file");
+  r.call("issue", "comment", "1", "--body-file", f);
+  assert.equal(r.read().issues[0].comments[1].text, "from a file");
+});
+
+test("a comment the run just wrote is fresh: a ready handoff holds the merge lane", () => {
+  const r = run2({ prs: [{ number: 7, state: "open", head: "h", labels: ["agent:ready-for-review"], comments: [{ author: "agent", text: "old <!-- agent:handoff kind=ready sha=h -->", createdAt: "2026-11-09T11:55:00Z" }] }] });
+  const at = r.call("pr", "view", "7", "--json", "comments", "--jq", ".comments[0].createdAt").out.trim();
+  assert.equal(at, "2026-11-09T11:55:00Z", "the time a comment was written is kept");
+});
+
+test("close sets the reason, can comment first, and says so when it is already closed", () => {
+  const r = run2(W2());
+  const out = r.call("issue", "close", "1", "--reason", "not planned", "--comment", "Duplicate of #2");
+  assert.equal(out.code, 0, out.err);
+  assert.equal(out.err, "✓ Closed issue sim/repo#1 (Thing)\n");
+  const i = r.read().issues[0];
+  assert.deepEqual([i.state, i.closeReason, i.comments.map((c) => c.text)], ["closed", "not planned", ["Duplicate of #2"]]);
+  assert.equal(r.call("issue", "view", "1", "--json", "state,stateReason", "--jq", ".state + \" \" + .stateReason").out, "CLOSED NOT_PLANNED\n");
+  const again = r.call("issue", "close", "1");
+  assert.deepEqual([again.code, again.err], [0, "! Issue sim/repo#1 (Thing) is already closed\n"]);
+  assert.equal(r.read().issues[0].comments.length, 1, "closing a closed issue changes nothing");
+  assert.equal(r.call("issue", "close", "2", "--reason", "whatever").err, 'invalid argument "whatever" for "-r, --reason" flag: valid values are {completed|not planned}\n');
+  assert.equal(r.read().issues[1].closeReason, undefined);
+});
+
+test("reopen opens a closed issue, and says so when it is open", () => {
+  const r = run2(W2());
+  r.call("issue", "close", "1", "--reason", "completed");
+  assert.equal(r.call("issue", "reopen", "1", "--comment", "Back.").code, 0);
+  const i = r.read().issues[0];
+  assert.deepEqual([i.state, i.closeReason, i.comments.at(-1).text], ["open", undefined, "Back."]);
+  assert.equal(r.call("issue", "reopen", "1").err, "! Issue sim/repo#1 (Thing) is already open\n");
+});
+
+test("issue create makes the next number, with its labels, and prints the URL", () => {
+  const r = run2(W2());
+  const out = r.call("issue", "create", "--title", "New log", "--body", "body text", "--label", "agent:log");
+  assert.equal(out.out, "https://github.com/sim/repo/issues/5\n", "numbers are shared with PRs: the highest is 4");
+  assert.deepEqual(r.read().issues.at(-1), { number: 5, state: "open", labels: ["agent:log"], comments: [], title: "New log", body: "body text", createdAt: "2026-11-09T12:00:00Z", author: "agent-bot" });
+  assert.deepEqual(r.call("issue", "view", "5", "--json", "title,author,labels", "--jq", "[.title, .author.login, .labels[0].name, .labels[0].description]").out, '["New log","agent-bot","agent:log","Log"]\n');
+  assert.match(r.call("issue", "create", "--title", "x").err, /must provide `--title` and `--body` when not running interactively/);
+  assert.match(r.call("issue", "create", "--body", "x").err, /must provide/);
+  assert.equal(r.call("issue", "create", "--title", " ", "--body", "x").err, "title can't be blank\n");
+});
+
+test("pr create opens a PR on the current branch at the current commit, linked to the issues its body closes", () => {
+  const repo = join(DIR, `repo-${++n}`);
+  for (const a of [["init", "-q", repo], ["-C", repo, "-c", "user.email=a@b", "-c", "user.name=n", "commit", "-q", "--allow-empty", "-m", "i"], ["-C", repo, "checkout", "-q", "-b", "feat/1-thing"]]) spawnSync("git", a);
+  const sha = spawnSync("git", ["-C", repo, "rev-parse", "HEAD"], { encoding: "utf8" }).stdout.trim();
+  const r = run2(W2());
+  const call = (...argv) => { const x = spawnSync(GH, argv, { encoding: "utf8", env: r.env, cwd: repo }); return { out: x.stdout, err: x.stderr, code: x.status }; };
+  const out = call("pr", "create", "--base", "main", "--title", "Do the thing", "--body", "Closes #1 and fixes #9.\n\nSome words.", "--label", "agent:needs-work");
+  assert.equal(out.out, "https://github.com/sim/repo/pull/5\n");
+  assert.deepEqual(r.read().prs.at(-1), { number: 5, state: "open", labels: ["agent:needs-work"], draft: false, head: sha, base: "main", checks: [], openFindings: 0, closes: [1], comments: [], title: "Do the thing", body: "Closes #1 and fixes #9.\n\nSome words.", createdAt: "2026-11-09T12:00:00Z", author: "agent-bot", branch: "feat/1-thing" });
+  assert.deepEqual(r.call("pr", "view", "5", "--json", "headRefName,headRefOid,closingIssuesReferences", "--jq", "[.headRefName, .headRefOid, (.closingIssuesReferences | map(.number))]").out, `["feat/1-thing","${sha}",[1]]\n`, "reads see the branch and the link");
+  const dup = call("pr", "create", "--base", "main", "--title", "Again", "--body", "x");
+  assert.equal(dup.code, 1);
+  assert.equal(dup.err, 'a pull request for branch "feat/1-thing" into branch "main" already exists:\nhttps://github.com/sim/repo/pull/5\n');
+  assert.equal(call("pr", "create", "--base", "main", "--head", "other", "--title", "Other", "--body", "x", "--draft").code, 0);
+  assert.equal(r.read().prs.at(-1).draft, true);
+  assert.equal(call("pr", "create", "--base", "feat/1-thing", "--title", "x", "--body", "y").err, 'head branch "feat/1-thing" is the same as base branch "feat/1-thing", cannot create a pull request\n');
+});
+
+test("pr merge merges, pinned to a head, and can delete the branch", () => {
+  const r = run2(W2());
+  const out = r.call("pr", "merge", "3", "--match-head-commit", "h3", "--squash", "--delete-branch");
+  assert.equal(out.code, 0, out.err);
+  assert.equal(out.err, "✓ Squashed and merged pull request sim/repo#3 (Pull request 3)\n");
+  const p = r.read().prs[0];
+  assert.deepEqual([p.state, p.branchDeleted], ["merged", true]);
+  assert.equal(r.read().issues[0].state, "open", "the issue it closes is not closed: the skills settle that (issue-after-pr.md)");
+  assert.equal(r.call("pr", "view", "3", "--json", "state", "--jq", ".state").out, "MERGED\n");
+  const again = r.call("pr", "merge", "3", "--squash");
+  assert.deepEqual([again.code, again.err], [0, ""], "merging a merged PR does nothing");
+  assert.match(run2(W2()).call("pr", "merge", "3", "--rebase").err, /Rebased and merged/);
+  assert.match(run2(W2()).call("pr", "merge", "3", "--merge").err, /^✓ Merged pull request/);
+});
+
+test("a merge gh would refuse is refused, and changes nothing", () => {
+  const cases = [
+    [{ mergeState: "DIRTY" }, ["--squash"], /^X Pull request sim\/repo#3 is not mergeable: the merge commit cannot be cleanly created\./],
+    [{ mergeState: "BEHIND" }, ["--squash"], /not up to date with the base branch/],
+    [{ mergeState: "BLOCKED" }, ["--squash"], /the base branch policy prohibits the merge/],
+    [{ draft: true }, ["--squash"], /^GraphQL: Pull request Pull request is still a draft/],
+    [{ state: "closed" }, ["--squash"], /^GraphQL: Pull request is closed/],
+    [{}, ["--squash", "--match-head-commit", "old"], /^GraphQL: Head branch was modified\. Review and try the merge again\./],
+    [{}, [], /^--merge, --rebase, or --squash required when not running interactively/],
+    [{}, ["--squash", "--rebase"], /^only one of `--merge`, `--rebase`, or `--squash` can be enabled/],
+  ];
+  for (const [patch, flags, want] of cases) {
+    const w = W2(); Object.assign(w.prs[0], patch);
+    const r = run2(w), before = r.bytes();
+    const out = r.call("pr", "merge", "3", ...flags);
+    assert.equal(out.code, 1, JSON.stringify([patch, flags]));
+    assert.match(out.err, want);
+    assert.equal(r.bytes(), before, `${JSON.stringify([patch, flags])} changed the world`);
+  }
+});
+
+test("label create adds a label, updates one with --force, and refuses a duplicate without it", () => {
+  const r = run2(W2());
+  assert.equal(r.call("label", "create", "agent:stuck", "--color", "B60205", "--description", "Gave up", "--force").out, '✓ Label "agent:stuck" created in sim/repo\n');
+  assert.deepEqual(r.read().labels.at(-1), { name: "agent:stuck", description: "Gave up", color: "B60205" });
+  assert.equal(r.call("label", "list", "--json", "name,color,description", "--jq", ".[] | select(.name==\"agent:stuck\") | .color + \" \" + .description").out, "B60205 Gave up\n");
+  assert.equal(r.call("label", "create", "agent:stuck", "--description", "x").err, 'label with name "agent:stuck" already exists; use `--force` to update its color and description\n');
+  assert.equal(r.call("label", "create", "agent:stuck", "--description", "Updated", "--force").out, '✓ Label "agent:stuck" updated in sim/repo\n');
+  assert.equal(r.read().labels.at(-1).description, "Updated");
+  assert.equal(r.call("label", "create", "plain").code, 0);
+  assert.equal(r.call("label", "create", "bad", "--color", "red").code, 1);
+  assert.equal(r.call("issue", "edit", "1", "--add-label", "plain").code, 0, "a label that was just created can be used");
+  assert.equal(run2({ issues: [] }).call("label", "create", "first").code, 0, "a world with no labels gets a catalog");
+});
+
+test("a label outside the catalog is refused, in a world that has a catalog and in no other", () => {
+  const r = run2(W2()), before = r.bytes();
+  for (const argv of [["issue", "edit", "1", "--add-label", "nope"], ["issue", "edit", "1", "--remove-label", "nope"], ["pr", "edit", "3", "--add-label", "ready-for-agent,nope"], ["issue", "create", "--title", "t", "--body", "b", "--label", "nope"]]) {
+    const out = r.call(...argv);
+    assert.deepEqual([out.code, out.err], [1, "'nope' not found\n"], argv.join(" "));
+  }
+  assert.equal(r.bytes(), before, "nothing was written, not even the label that was fine");
+  const free = run2({ issues: [{ number: 1, state: "open" }] });
+  assert.equal(free.call("issue", "edit", "1", "--add-label", "anything").code, 0);
+  assert.deepEqual(free.read().issues[0].labels, ["anything"]);
+});
+
+test("a call that fails leaves the world file byte for byte as it was", () => {
+  const r = run2(W2()), before = r.bytes();
+  const fails = [
+    ["issue", "edit", "99", "--add-label", "agent:pr-open"], ["issue", "comment", "1", "--body", ""], ["issue", "comment", "1"], ["pr", "comment", "99", "--body", "x"],
+    ["issue", "close", "1", "--reason", "bad", "--comment", "x"], ["issue", "create", "--title", "t"], ["pr", "merge", "99", "--squash"],
+    ["pr", "edit", "3", "--body", "a", "--body-file", "b"], ["issue", "edit", "1", "--body-file", join(DIR, "missing.md"), "--add-label", "agent:pr-open"],
+    ["issue", "close", "1", "--web"],
+  ];
+  for (const argv of fails) { assert.notEqual(r.call(...argv).code, 0, argv.join(" ")); assert.equal(r.bytes(), before, `${argv.join(" ")} wrote`); }
+});
+
+test("a scenario file is never written to", () => {
+  const sc = { name: "x", skill: "triage-github-issue", world: { issues: [{ number: 1, state: "open", labels: [] }] }, expect: {} };
+  const r = run2(sc), before = r.bytes();
+  const out = r.call("issue", "edit", "1", "--add-label", "x");
+  assert.equal(out.code, 2);
+  assert.match(out.err, /GH_SIM_WORLD is a scenario file, and the gh simulator does not write to one: make a world file with `node tests\/sim\/seed\.mjs /);
+  assert.equal(r.bytes(), before);
+  assert.equal(r.call("issue", "list").code, 0, "it can still be read");
+});
+
+test("a world file is written back in its own format, and is still a world file", () => {
+  const r = run2(W2(), { file: "w-json.json" });
+  r.call("issue", "edit", "1", "--add-label", "agent:pr-open");
+  assert.equal(JSON.parse(r.bytes()).issues[0].labels.at(-1), "agent:pr-open");
+  assert.deepEqual(readdirSync(DIR).filter((f) => f.endsWith(".tmp")), [], "no temporary file is left behind");
+});
+
+test("what a world holds that no gh call shows is kept through a write", () => {
+  const r = run2({ issues: [{ number: 1, state: "open", labels: [], entries: [{ run: "r1" }], kind: "bug" }], prs: [{ number: 2, state: "open", head: "h", labels: [], readySha: "h", shepherdAttempts: 1, lease: "live" }] });
+  r.call("issue", "edit", "1", "--add-label", "x");
+  const w = r.read();
+  assert.deepEqual([w.issues[0].entries, w.issues[0].kind, w.prs[0].readySha, w.prs[0].shepherdAttempts, w.prs[0].lease], [[{ run: "r1" }], "bug", "h", 1, "live"]);
+});
+
+test("every write is logged, and a refused one says so", () => {
+  const r = run2(W2());
+  r.call("issue", "edit", "1", "--add-label", "agent:pr-open"); r.call("issue", "edit", "1", "--add-label", "nope");
+  const calls = readFileSync(r.env.GH_SIM_LOG, "utf8").trim().split("\n").map((l) => JSON.parse(l));
+  assert.deepEqual(calls.map((c) => [c.exit, c.kind]), [[0, "ok"], [1, "error"]]);
+});
+
+// ---- what a run leaves behind, read by diffWorlds -------------------------------------------------------------
+
+test("a run made of these calls is read back by diffWorlds as the effects it had, and round-trips", () => {
+  const r = run2(W2());
+  const before = structuredClone(r.read());
+  const steps = [
+    ["issue", "edit", "1", "--add-label", "agent:in-progress"],
+    ["issue", "comment", "1", "--body", "Claimed. <!-- agent:lease step=Working run=r1 expires=2026-11-09T13:00:00Z -->"],
+    ["pr", "edit", "3", "--remove-label", "agent:ready-for-review", "--add-label", "agent:needs-work", "--add-reviewer", "alice"],
+    ["pr", "comment", "3", "--body", "Done. <!-- agent:handoff kind=ready sha=h3 -->"],
+    ["pr", "merge", "3", "--squash", "--match-head-commit", "h3", "--delete-branch"],
+    ["issue", "close", "1", "--reason", "completed", "--comment", "Implemented in #3."],
+    ["label", "create", "agent:stuck", "--description", "Gave up"],
+    ["issue", "create", "--title", "Follow-up", "--body", "b", "--label", "agent:log"],
+  ];
+  for (const s of steps) { const out = r.call(...s); assert.equal(out.code, 0, `${s.join(" ")}: ${out.err}`); }
+  const after = r.read();
+  const diff = diffWorlds(before, after);
+  assert.deepEqual(diff.filter((e) => e.op === "unmodelled"), []);
+  assert.deepEqual(diff.map((e) => [e.op, e.target ?? e.name ?? e.number, e.label ?? e.marker ?? e.reason ?? ""]), [
+    ["create_issue", 5, ""],
+    ["label_add", "issue#1", "agent:in-progress"], ["comment", "issue#1", "agent:lease"], ["comment", "issue#1", ""], ["close", "issue#1", "completed"],
+    ["label_remove", "pr#3", "agent:ready-for-review"], ["label_add", "pr#3", "agent:needs-work"], ["comment", "pr#3", "agent:handoff"], ["merge", "pr#3", ""], ["delete_branch", "pr#3", ""],
+    ["label_create", "agent:stuck", ""],
+  ]);
+  assert.deepEqual(diff[0].data, { title: "Follow-up", body: "b", createdAt: "2026-11-09T12:00:00Z", author: "agent-bot" });
+  assert.ok(sameWorld(applyEffects(before, diff), after), "applyEffects(before, diff) is not the world the run left");
+});
+
+test("claim and release through lib.sh leave the world as a lease does: a label and a lease comment, then the label gone", () => {
+  const r = run2(W2());
+  const before = structuredClone(r.read());
+  const LIB = join(ROOT, "skills/meta/agent-workflow-protocol/scripts/lib.sh");
+  const sh = (cmd) => spawnSync("bash", ["-c", `source "${LIB}"; ${cmd}`], { encoding: "utf8", env: { ...r.env, PATH: `${join(ROOT, "tests/sim/bin")}:${process.env.PATH}` } });
+  assert.equal(sh('claim 1 issue agent:in-progress Working "1 hour"').status, 0);
+  const claimed = diffWorlds(before, r.read());
+  assert.deepEqual(claimed.map((e) => [e.op, e.target, e.label ?? e.marker]), [["label_add", "issue#1", "agent:in-progress"], ["comment", "issue#1", "agent:lease"]]);
+  assert.match(claimed[1].text, /^Claimed by Working run .* until \d{4}-.*\n<!-- agent:lease step=Working run=\S+ expires=\S+ -->$/);
+  assert.equal(sh("has_label 1 issue agent:in-progress && echo held").stdout, "held\n", "lib.sh sees the label it just added");
+  assert.equal(sh('release 1 issue agent:in-progress').status, 0);
+  assert.deepEqual(diffWorlds(before, r.read()).map((e) => [e.op, e.marker]), [["comment", "agent:lease"]], "the label is gone, the lease comment stays");
+  assert.equal(sh('claim 3 pr agent:in-progress Reviewing "30 min"; release 3 pr agent:in-progress').status, 0);
+  assert.deepEqual(diffWorlds(before, r.read()).filter((e) => e.target === "pr#3").map((e) => e.marker), ["agent:lease"]);
+  assert.equal(sh("lease_held=true claim 1 issue agent:stuck Working x").status, 0);
+  assert.equal(r.read().issues[0].labels.includes("agent:stuck"), false, "a nested claim does nothing");
+});
+
+// ---- the golden scenarios, replayed ---------------------------------------------------------------------------
+
+/** The body a run posts for a comment effect: its text, ending in its marker when it has one (`gh` does not post an empty body). */
+const bodyFor = (e) => (e.marker && !(e.text ?? "").includes(`<!-- ${e.marker}`) ? `${e.text ? `${e.text} ` : ""}<!-- ${e.marker} -->` : e.text ?? "A comment.");
+
+/** The `gh` call that makes an effect, or null when the effect is not one a `gh` call makes. */
+function callFor(e) {
+  const [kind, num] = (e.target ?? "").split("#");
+  switch (e.op) {
+    case "label_add": return [kind, "edit", num, "--add-label", e.label];
+    case "label_remove": return [kind, "edit", num, "--remove-label", e.label];
+    case "comment": return [kind, "comment", num, "--body", bodyFor(e)];
+    case "close": return kind === "issue" ? ["issue", "close", num] : null;
+    case "merge": return ["pr", "merge", num, "--squash"];
+    case "delete_branch": return ["pr", "merge", num, "--squash", "--delete-branch"];
+    case "label_create": return ["label", "create", e.name, ...(e.description ? ["--description", e.description] : [])];
+    case "label_update": return ["label", "create", e.name, "--force", ...(e.description ? ["--description", e.description] : [])];
+    case "create_issue": return ["issue", "create", "--title", "Created", "--body", "Created", ...(e.labels ?? []).flatMap((l) => ["--label", l])];
+    default: return null;
+  }
+}
+
+test("the effects of every golden scenario, made as gh calls, leave the world the checker says", () => {
+  let replayed = 0, empty = 0;
+  const skipped = [];
+  for (const dir of readdirSync(join(ROOT, "tests/scenarios"))) {
+    for (const f of readdirSync(join(ROOT, "tests/scenarios", dir)).filter((x) => x.endsWith(".yaml"))) {
+      const sc = parse(readFileSync(join(ROOT, "tests/scenarios", dir, f), "utf8"));
+      // A push and a file written in the checkout are `git` and the filesystem, not `gh`, and a review request changes no world.
+      let effects = (sc.expect?.effects ?? []).filter((e) => !["review_request", "push", "write_file"].includes(e.op));
+      // `gh` numbers what it creates. A scenario names its new issues with numbers of its own, so map them to the ones `gh` gives.
+      const used = [...(sc.world?.issues ?? []), ...(sc.world?.prs ?? [])].map((i) => i.number), numbers = new Map();
+      effects = effects.map((e) => {
+        if (e.op === "create_issue") { const next = Math.max(0, ...used) + 1; used.push(next); numbers.set(`issue#${e.number}`, `issue#${next}`); return { ...e, number: next }; }
+        return e.target && numbers.has(e.target) ? { ...e, target: numbers.get(e.target) } : e;
+      });
+      const calls = effects.map(callFor);
+      if (effects.length === 0) { empty++; continue; }
+      if (calls.some((c) => c === null)) { skipped.push(`${dir}/${f}`); continue; }
+      const world = join(DIR, `golden-${replayed}.yaml`);
+      const { world: before } = seed(join(ROOT, "tests/scenarios", dir, f), world);
+      const env = { ...process.env, GH_SIM_WORLD: world, GH_SIM_NOW: "2026-11-09T12:00:00Z" };
+      for (const c of calls) { const r = run(c, env); assert.equal(r.code, 0, `${dir}/${f}: gh ${c.join(" ")}: ${r.stderr}`); }
+      // The checker's own account of the same effects. A comment's text is the body that was posted.
+      const expected = applyEffects(before, effects.map((e) => (e.op === "comment" ? { ...e, text: bodyFor(e) } : e.op === "create_issue" ? { ...e, data: { title: "Created", body: "Created", createdAt: "2026-11-09T12:00:00Z", author: "agent-bot" } } : e)));
+      const got = parse(readFileSync(world, "utf8"));
+      assert.deepEqual(canonicalWorld(got), canonicalWorld(expected), `${dir}/${f}`);
+      replayed++;
+    }
+  }
+  // Not replayed: a scenario that opens a PR (its commit is a `git` fact) or syncs the label catalog (a repository op).
+  // A new scenario with an effect that no `gh` call makes has to be added here on purpose.
+  const NOT_REPLAYED = [
+    "implement-github-issue/an-interrupted-pass-does-not-open-a-second-pr.yaml", "implement-github-issue/merged-pr-on-a-keep-open-issue-is-ignored.yaml",
+    "setup-github-agent-workflow/an-agent-label-is-reset-and-a-triage-label-is-kept.yaml", "setup-github-agent-workflow/an-empty-repository-gets-every-label.yaml",
+  ];
+  assert.deepEqual(skipped.filter((f) => !NOT_REPLAYED.includes(f)), [], "a scenario has an effect that no gh call makes");
+  assert.ok(replayed >= 37, `only ${replayed} scenarios were replayed`);
+  assert.ok(empty >= 40, `${empty} scenarios have no effects`);
 });
 
 // ---- seeding -------------------------------------------------------------------------------------------------
