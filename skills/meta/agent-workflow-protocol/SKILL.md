@@ -200,7 +200,7 @@ Hidden HTML comments make state readable without parsing prose. Append them as t
 |---|---|
 | `markers N` | every trusted agent marker on N, in order |
 | `prs_for_issue N` | every PR for issue N, one `<number> <OPEN\|MERGED\|CLOSED>` per line. Matches a trusted `agent:implements` marker, a `<type>/N-<topic>` branch, or `Closes\|Fixes\|Resolves #N` in the body |
-| `issue_for_pr N` | the issue numbers PR N implements |
+| `issue_for_pr N` | the issue numbers PR N implements, in numeric order. Reads a trusted `agent:implements` marker and `Closes\|Fixes\|Resolves #N` in the description, and, with `gh` 2.72 or newer, the issues GitHub links to the PR |
 | `review_rounds N`, `shepherd_attempts N` | the two counters |
 | `fail_item N issue\|pr STEP REASON` | comment the failure on N with the `agent:failure` marker |
 | `failures N STEP` | failed runs of STEP on N since the last escalation |

@@ -60,7 +60,7 @@ Building blocks the pipeline calls. Each is useful on its own and does no GitHub
 
 An agent that supports skills (Claude Code, Kilo Code, Codex, …), or one that can read a `SKILL.md` and follow it.
 
-- `gh` (authenticated, repository write access), `jq`, and Node.js for the shell helpers. Runners with no shell work too: the protocol tells the agent to do the same operations with the tools it has and to log what it cannot do.
+- `gh` (authenticated, repository write access), `jq`, and Node.js for the shell helpers. `gh` 2.72 or newer also reads the issues GitHub itself links to a PR (its Development sidebar). An older `gh` works and reads only the PR description. Runners with no shell work too: the protocol tells the agent to do the same operations with the tools it has and to log what it cannot do.
 - Two skills from [mattpocock/skills](https://github.com/mattpocock/skills): `tdd` and `code-review` (a repository's own code-review skill satisfies the latter). The plugin declares this dependency for Claude Code; everywhere else, install it yourself. See [external-skills.json](./external-skills.json).
 
 ## Install
