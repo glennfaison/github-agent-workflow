@@ -64,8 +64,9 @@ function jqText(v) {
 function printJson(value, a) {
   if (a.flags.jq !== undefined) {
     const r = spawnSync("jq", ["-c", a.flags.jq], { input: JSON.stringify(value), encoding: "utf8" });
-    if (r.error) throw new SimError("the gh simulator needs jq on PATH for --jq", { code: 2 });
-    if (r.status !== 0) throw new SimError(r.stderr.trim() || "jq failed");
+    if (r.error?.code === "ENOENT") throw new SimError("the gh simulator needs jq on PATH for --jq", { code: 2 });
+    // A jq that rejects its expression exits before it reads its input, which spawnSync can report as EPIPE. The exit status is what counts.
+    if (r.status !== 0) throw new SimError(r.stderr?.trim() || "jq failed");
     return r.stdout.split("\n").filter(Boolean).map((l) => jqText(JSON.parse(l))).join("\n") + (r.stdout.trim() ? "\n" : "");
   }
   return JSON.stringify(value) + "\n";

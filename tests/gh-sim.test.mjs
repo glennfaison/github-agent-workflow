@@ -221,7 +221,15 @@ test("--jq prints as gh does: strings raw, null as nothing, whole numbers plain,
   assert.equal(gh(WORLD, ["pr", "view", "10", "--json", "mergedAt", "--jq", ".mergedAt"]).out, "\n", "null is an empty line");
   assert.equal(jq(".labels[].name"), "", "no output at all when the expression has no result");
   assert.match(gh(WORLD, ["pr", "view", "12", "--jq", ".x"]).err, /cannot use `--jq` without specifying `--json`/);
-  assert.equal(gh(WORLD, ["pr", "view", "12", "--json", "number", "--jq", ".["]).code, 1, "a bad expression fails");
+  for (let i = 0; i < 10; i++) { // jq exits before it reads its input, so this used to depend on timing
+    const bad = gh(WORLD, ["pr", "view", "12", "--json", "number", "--jq", ".["]);
+    assert.equal(bad.code, 1, `a bad expression fails: ${bad.err}`);
+    assert.match(bad.err, /jq: error/);
+  }
+  const file = join(DIR, "nojq.yaml"); writeFileSync(file, stringify(WORLD));
+  const path = process.env.PATH; process.env.PATH = DIR; // a directory with no jq in it
+  let none; try { none = run(["pr", "view", "12", "--json", "number", "--jq", ".number"], { ...process.env, GH_SIM_WORLD: file }); } finally { process.env.PATH = path; }
+  assert.deepEqual([none.code, none.stderr], [2, "the gh simulator needs jq on PATH for --jq\n"], "without jq on PATH the call says so");
 });
 
 // ---- what a world keeps as state, shown as comments ----------------------------------------------------------
