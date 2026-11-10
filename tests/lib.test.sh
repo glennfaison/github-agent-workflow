@@ -49,6 +49,17 @@ if [ "$cmd" = issue ] && [ "${1:-}" = create ]; then
 fi
 case "$cmd" in
   api)   # gh api user --jq F   |   gh api repos/{owner}/{repo}/issues/N/comments --paginate --jq F
+         #        gh api -X PATCH repos/{owner}/{repo}/issues/comments/ID -f body=TEXT   (STUB_PATCH_FAIL=1 fails it)
+         if [ "$1" = -X ] && [ "${2:-}" = PATCH ]; then
+           [ -n "${STUB_PATCH_FAIL:-}" ] && exit 1
+           id=$(echo "$3" | sed -n 's#.*/issues/comments/\([0-9]*\)$#\1#p'); pb=""
+           while [ $# -gt 0 ]; do case $1 in -f) pb=${2#body=}; shift ;; esac; shift; done
+           for cf in "$STATE"/comments_*.json; do
+             jq -e --argjson i "$id" 'any(.[]; .id==$i)' "$cf" >/dev/null 2>&1 || continue
+             jq --argjson i "$id" --arg b "$pb" --arg t "$(now_iso)" 'map(if .id==$i then .body=$b | .updated_at=$t else . end)' "$cf" > "$cf.t"; mv "$cf.t" "$cf"; exit 0
+           done
+           exit 1
+         fi
          if [ "$1" = user ]; then echo '{"login":"agent-bot"}' | jqf "$@"; exit 0; fi
          path=""; for a in "$@"; do case $a in repos/*) path=$a ;; esac; done
          case $path in
@@ -80,7 +91,7 @@ case "$cmd" in
               --remove-label) grep -vx -- "$2" "$lf" > "$lf.t"; mv "$lf.t" "$lf"; shift ;; esac; shift; done ;;
       comment) body=""; while [ $# -gt 0 ]; do [ "$1" = --body ] && body=$2; [ "$1" = --body-file ] && body=$(cat "$2"); shift; done
                cf="$STATE/comments_$n.json"; [ -f "$cf" ] || echo '[]' > "$cf"
-               jq --arg b "$body" '. + [{body:$b, author_association:"NONE", user:{login:"agent-bot"}}]' "$cf" > "$cf.t"; mv "$cf.t" "$cf" ;;
+               jq --arg b "$body" --arg t "$(now_iso)" --argjson n "$n" '. + [{id:($n*1000+length), body:$b, author_association:"NONE", user:{login:"agent-bot"}, created_at:$t, updated_at:$t}]' "$cf" > "$cf.t"; mv "$cf.t" "$cf" ;;
     esac ;;
 esac
 STUB
@@ -93,9 +104,10 @@ pass=0; fail=0
 check() { # name expected actual
   if [ "$2" = "$3" ]; then pass=$((pass+1)); echo "  ok   $1"; else fail=$((fail+1)); echo "  FAIL $1  (expected '$2', got '$3')"; fi
 }
-c() { local cf="$STATE/comments_$1.json"; [ -f "$cf" ] || echo '[]' > "$cf"   # c N body [association] [login]
-      jq --arg b "$2" --arg a "${3:-OWNER}" --arg l "${4:-maintainer}" \
-         '. + [{body:$b, author_association:$a, user:{login:$l}}]' "$cf" > "$cf.t"; mv "$cf.t" "$cf"; }
+c() { local cf="$STATE/comments_$1.json"; [ -f "$cf" ] || echo '[]' > "$cf"   # c N body [association] [login] [updated_at]
+      jq --arg b "$2" --arg a "${3:-OWNER}" --arg l "${4:-maintainer}" --arg t "${5:-}" --argjson n "$1" \
+         '. + [{id:($n*1000+length), body:$b, author_association:$a, user:{login:$l}} + (if $t == "" then {} else {created_at:$t, updated_at:$t} end)]' "$cf" > "$cf.t"; mv "$cf.t" "$cf"; }
+lease_comments() { jq '[.[] | select(.body | contains("<!-- agent:lease"))] | length' "$STATE/comments_$1.json"; }   # lease comments on N
 
 echo "Defaults"
 ( set -e; source "$LIB" ); check "sourcing with set -e survives, and no config file is needed" 0 $?
@@ -133,6 +145,34 @@ c 2 "<!-- agent:lease step=Triaging run=y expires=2099-01-01T00:00:00Z -->"
 lease_live 2;                    check "newest marker wins (renewed)" 0 $?
 renew 4 issue Triaging "1 hour"
 lease_live 4;                    check "renew posts a live marker" 0 $?
+
+echo "One lease comment per step"
+claim 5 issue agent:triage Triaging "1 hour"; release 5 issue agent:triage
+claim 5 issue agent:triage Triaging "1 hour"; release 5 issue agent:triage
+claim 5 issue agent:triage Triaging "3 hours"
+check "three claims of one step leave one lease comment" 1 "$(lease_comments 5)"
+lease_live 5;                    check "and it is live" 0 $?
+check "and it carries the newest expiry" "$(utc_plus '3 hours' | cut -c1-15)" "$(jq -r '.[0].body' "$STATE/comments_5.json" | sed -n 's/.*expires=\([0-9TZ:-]*\).*/\1/p' | cut -c1-15)"
+release 5 issue agent:triage
+claim 5 issue agent:in-progress Implementing "3 hours"
+check "another step gets a lease comment of its own" 2 "$(lease_comments 5)"
+renew 5 issue Triaging "2 hours"
+check "renew edits the step's lease comment too" 2 "$(lease_comments 5)"
+check "and says it was renewed" 1 "$(jq '[.[] | select(.body | startswith("Lease renewed by Triaging"))] | length' "$STATE/comments_5.json")"
+check "claiming does not touch a comment of another step" 1 "$(jq '[.[] | select(.body | startswith("Claimed by Implementing"))] | length' "$STATE/comments_5.json")"
+c 6 "Claimed by Triaging run z until 2099-01-01T00:00:00Z.
+<!-- agent:lease step=Triaging run=z expires=2099-01-01T00:00:00Z -->" NONE mallory
+claim 6 issue agent:triage Triaging "1 hour"
+check "a lease comment from another account is never edited, ours is added" 2 "$(lease_comments 6)"
+check "and the other account's comment is unchanged" 1 "$(jq '[.[] | select(.user.login == "mallory" and (.body | startswith("Claimed by Triaging run z")))] | length' "$STATE/comments_6.json")"
+STUB_PATCH_FAIL=1 claim 8 issue agent:triage Triaging "1 hour"
+STUB_PATCH_FAIL=1 claim 8 issue agent:triage Triaging "1 hour"
+check "if the edit fails, the claim still posts a lease comment" 2 "$(lease_comments 8)"
+lease_live 8;                    check "and the item is leased" 0 $?
+# Edited in place, a lease comment can sit before a newer lease of another step: the last write wins.
+c 7 "x <!-- agent:lease step=Triaging run=a expires=2099-01-01T00:00:00Z -->" OWNER maintainer 2026-03-01T00:00:00Z
+c 7 "x <!-- agent:lease step=Implementing run=b expires=2020-01-01T00:00:00Z -->" OWNER maintainer 2026-02-01T00:00:00Z
+lease_live 7;                    check "the lease written last wins, not the one posted last" 0 $?
 
 echo "PR counters and handoffs"
 c 10 "ready <!-- agent:handoff kind=ready sha=abc123 -->"
@@ -344,7 +384,7 @@ FIX="$PKG/tests/fixtures/markers.json"
 for i in $(jq -r 'keys[]' "$FIX"); do
   name=$(jq -r ".[$i].name" "$FIX"); n=$((900 + i))
   echo '[]' > "$STATE/comments_$n.json"
-  jq --argjson i "$i" '[.[$i].comments[] | {body, author_association:(.author_association // "OWNER"), user:{login:(.login // "maintainer")}}]' "$FIX" > "$STATE/comments_$n.json"
+  jq --argjson i "$i" '[.[$i].comments[] | {body, author_association:(.author_association // "OWNER"), user:{login:(.login // "maintainer")}} + (if .updated_at then {created_at:.updated_at, updated_at:.updated_at} else {} end)]' "$FIX" > "$STATE/comments_$n.json"
   extra=$(jq -r ".[$i].trusted_authors // [] | join(\",\")" "$FIX")
   run() { trusted_authors="$extra" bash -c 'source "$1"; shift; "$@"' _ "$LIB" "$@"; }
   for k in review_rounds open_findings ready_sha shepherd_attempts; do

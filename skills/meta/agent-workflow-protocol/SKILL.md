@@ -160,17 +160,19 @@ Some runners (a chat automation with a GitHub connector, for example) cannot run
 
 ## Leases
 
-A lease is **live** only if the item carries the lease label **and** the newest trusted `agent:lease` marker has not expired. Anything else counts as unleased: a label with no marker, a label with an expired marker, a marker from an untrusted account, a missing label.
+A lease is **live** only if the item carries the lease label **and** the newest trusted `agent:lease` marker has not expired. The newest marker is the one written last (a comment's `updated_at`, else its `created_at`; thread order if neither), because a comment can be edited in place (**One lease comment per step**). The expiry is always the `expires=` inside the marker, never a timestamp of the comment. Anything else counts as unleased: a label with no marker, a label with an expired marker, a marker from an untrusted account, a missing label.
 
 | Helper | Does |
 |---|---|
 | `has_label N issue\|pr LABEL` | exit 0 if N currently carries LABEL |
 | `lease_live N` | exit 0 if the newest trusted lease marker on N is unexpired |
-| `claim N issue\|pr LABEL STEP TTL` | add the label, post a lease marker |
-| `renew N issue\|pr STEP TTL` | post a newer marker. Do this before the lease runs out, if a long task needs it |
+| `claim N issue\|pr LABEL STEP TTL` | add the label, write the lease marker (an edit of this step's own lease comment if there is one, else a new comment) |
+| `renew N issue\|pr STEP TTL` | write a newer marker the same way. Do this before the lease runs out, if a long task needs it |
 | `release N issue\|pr LABEL` | remove the label |
 
 **Checking a lease changes nothing.** Eligibility only reads: `lease_live` and `has_label`. A lease label left by a run that died is not removed by looking at it. The next `claim` re-adds it and posts a fresh marker, and `release` removes it.
+
+**One lease comment per step.** `claim` and `renew` look for this account's own earlier lease comment for the same step on the item (the author is the account the agent runs as, and the body holds `<!-- agent:lease step=STEP `). If there is one, they edit it in place; otherwise they post one. An item that goes through three claims of a step therefore has one lease comment for that step, not three, and a `noop` leaves that one comment and no more. Each step has its own comment, so triaging and implementing an issue leave two. A lease comment written by any other account is never edited, and if the edit fails the helper posts a new comment: `lease_live` reads the newest lease either way, so the fallback only adds noise. A runner whose tools cannot edit a comment may post instead, with the same result.
 
 **Nested calls.** A skill that calls an item skill (itself, or another step) on an item it already holds passes `lease_held=true`. The callee then skips its own claim and release, and requires that the lease is live. Without it the callee would see the caller's live lease and skip the item, and a nested release would drop the caller's lease. Only the caller that took a lease releases it.
 
@@ -182,7 +184,7 @@ Hidden HTML comments make state readable without parsing prose. Append them as t
 
 | Marker | Written by | Used for |
 |---|---|---|
-| `<!-- agent:lease step=… run=… expires=… -->` | `claim`, `renew` | lease expiry |
+| `<!-- agent:lease step=… run=… expires=… -->` | `claim`, `renew` (edited in place, one comment per step) | lease expiry |
 | `<!-- agent:implements issue=N -->` | Implementing, in the **PR description** | links a PR to its issue, so a second PR is never opened for it (`prs_for_issue N`) |
 | `<!-- agent:handoff kind=ready sha=… -->` | Shepherding | the PR was reviewable at this head SHA |
 | `<!-- agent:handoff kind=review sha=… open=N -->` | Reviewing, when it does not merge; `N` = findings still unfixed | counts review rounds; `open_findings N` tells Shepherding what is left |

@@ -17,6 +17,7 @@ const asComment = (c) => ({
   body: c.body,
   author_association: c.author_association ?? 'OWNER',
   user: { login: c.login ?? 'maintainer' },
+  ...(c.updated_at ? { created_at: c.updated_at, updated_at: c.updated_at } : {}),
 });
 
 for (const f of fixtures) {
@@ -33,6 +34,40 @@ for (const f of fixtures) {
     for (const [step, n] of Object.entries(e.failures ?? {})) assert.equal(h.failures(markers, step), n, step);
   });
 }
+
+test('ownLeaseComment finds this account\'s own lease comment for the step, and nothing else', () => {
+  const lease = (step, run) => `Claimed by ${step} run ${run}.\n<!-- agent:lease step=${step} run=${run} expires=2099-01-01T00:00:00Z -->`;
+  const comments = [
+    { id: 1, login: 'agent-bot', body: lease('Triaging', 'r1') },
+    { id: 2, login: 'agent-bot', body: lease('Implementing', 'r2') },
+    { id: 3, login: 'maintainer', body: lease('Triaging', 'r3') },
+    { id: 4, login: 'agent-bot', body: 'a plain comment' },
+    { id: 5, login: 'agent-bot', body: lease('Triaging', 'r4') },
+  ];
+  assert.equal(h.ownLeaseComment(comments, 'agent-bot', 'Triaging'), 5, 'the last one, if older runs left several');
+  assert.equal(h.ownLeaseComment(comments, 'agent-bot', 'Implementing'), 2);
+  assert.equal(h.ownLeaseComment(comments, 'agent-bot', 'Reviewing'), null);
+  assert.equal(h.ownLeaseComment(comments, 'maintainer', 'Implementing'), null, 'another account\'s comment is never ours');
+  assert.equal(h.ownLeaseComment(comments, '', 'Triaging'), null, 'no login, no match');
+  assert.equal(h.ownLeaseComment([{ id: 9, login: 'agent-bot', body: lease('Triaging2', 'r') }], 'agent-bot', 'Triaging'), null, 'a step name that only starts the same does not match');
+});
+
+test('own-lease CLI reads JSON lines and prints the id or nothing', () => {
+  const run = (step, self, lines) => execFileSync('node', [helpersPath, 'own-lease', step, self], { input: lines.map((l) => JSON.stringify(l)).join('\n') }).toString().trim();
+  const body = 'x\n<!-- agent:lease step=Triaging run=r expires=2099-01-01T00:00:00Z -->';
+  assert.equal(run('Triaging', 'agent-bot', [{ id: 7, login: 'agent-bot', body }]), '7');
+  assert.equal(run('Triaging', 'agent-bot', [{ id: 7, login: 'someone', body }]), '');
+  assert.equal(run('Triaging', 'agent-bot', []), '');
+});
+
+test('the edit time of a lease comment orders leases but is never its expiry', () => {
+  const trust = { selfLogin: 'agent-bot' };
+  const c = (body, at) => ({ body, user: { login: 'agent-bot' }, author_association: 'NONE', updated_at: at, created_at: at });
+  const now = new Date('2026-10-15T12:00:00Z');
+  const state = h.leaseState([c('<!-- agent:lease step=Triaging run=a expires=2026-10-15T11:00:00Z -->', '2026-10-15T11:59:00Z')], trust, now);
+  assert.equal(state.expires, '2026-10-15T11:00:00Z');
+  assert.equal(state.live, false, 'edited a minute ago, but the lease in the marker ran out an hour ago');
+});
 
 test('isTrusted reads both the REST and the gh --json shapes', () => {
   assert.equal(h.isTrusted({ authorAssociation: 'COLLABORATOR', author: { login: 'x' } }), true);
