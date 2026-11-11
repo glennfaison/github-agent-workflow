@@ -12,7 +12,8 @@ import { SURFACE, ghCommandsIn } from "./sim/surface.mjs";
 import { HANDLERS, run } from "./sim/gh-sim.mjs";
 import { loadWorld } from "./sim/world.mjs";
 import { seed } from "./sim/seed.mjs";
-import { checkState, applyEffects, diffWorlds, sameWorld, canonicalWorld, checkScenario } from "../scripts/scenario.mjs";
+import { checkState, applyEffects, diffWorlds, sameWorld, canonicalWorld, checkScenario, expandScenario } from "../scripts/scenario.mjs";
+import { contractOf } from "../scripts/scenario-coverage.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const GH = join(ROOT, "tests/sim/bin/gh");
@@ -396,7 +397,7 @@ function run2(world, { file = `w-${++n}.yaml`, env = {} } = {}) {
   const path = join(DIR, file);
   writeFileSync(path, /\.json$/.test(file) ? JSON.stringify(world) : stringify(world));
   const e = { ...process.env, GH_SIM_WORLD: path, GH_SIM_LOG: join(DIR, `log-${path.replace(/\W/g, "")}.jsonl`), GH_SIM_NOW: "2026-11-09T12:00:00Z", ...env };
-  const call = (...argv) => { const r = spawnSync(GH, argv, { encoding: "utf8", env: e }); return { out: r.stdout, err: r.stderr, code: r.status }; };
+  const call = (...argv) => { const r = spawnSync(GH, argv, { encoding: "utf8", env: e }); return { out: r.stdout, err: r.stderr, code: r.status, json: () => JSON.parse(r.stdout) }; };
   return { path, env: e, call, read: () => parse(readFileSync(path, "utf8")), bytes: () => readFileSync(path, "utf8") };
 }
 
@@ -723,6 +724,275 @@ test("the effects of every golden scenario, made as gh calls, leave the world th
   assert.deepEqual(skipped.filter((f) => !NOT_REPLAYED.includes(f)), [], "a scenario has an effect that no gh call makes");
   assert.ok(replayed >= 37, `only ${replayed} scenarios were replayed`);
   assert.ok(empty >= 40, `${empty} scenarios have no effects`);
+});
+
+// ---- api ------------------------------------------------------------------------------------------------------
+
+const W3 = () => ({
+  repo: "acme/widgets",
+  files: { "AGENTS.md": "rules\n", ".github/CODEOWNERS": "* @me\n", "src/a.js": "x" },
+  issues: [{ number: 5, state: "open", title: "Thing", labels: [], lease: "live", comments: [{ author: "agent", marker: "agent:lease", text: "Claimed <!-- agent:lease step=Working run=r expires=2030-01-01T00:00:00Z -->" }, { author: "carol", trusted: true, text: "hi" }] }],
+  prs: [
+    { number: 9, state: "open", head: "h1", base: "main", mergeState: "BEHIND", files: ["a.md", "b.md"], author: "dev", association: "MEMBER", body: "<!-- agent:implements issue=5 -->", labels: ["bug"], createdAt: "2026-11-02T00:00:00Z", comments: [] },
+    { number: 10, state: "merged", head: "h2", files: [], closes: [5], createdAt: "2026-11-03T00:00:00Z", branch: "bugfix/5-x" },
+    { number: 11, state: "closed", head: "h3", createdAt: "2026-11-01T00:00:00Z", draft: true },
+  ],
+});
+const API = (path) => `repos/{owner}/{repo}/${path}`;
+
+test("api user is the agent", () => {
+  assert.equal(run2(W3()).call("api", "user", "--jq", ".login").out, "agent-bot\n");
+  assert.equal(run2({ ...W3(), user: "bot" }).call("api", "user", "--jq", ".login").out, "bot\n");
+});
+
+test("api lists an item's comments as the REST API does, derived ones first, for an issue and for a PR", () => {
+  const r = run2(W3());
+  const rows = r.call("api", API("issues/5/comments"), "--paginate", "--jq", '.[] | [.id, .user.login, .author_association, (.body | length > 0), .created_at == .updated_at] | @tsv').out.trim().split("\n");
+  assert.deepEqual(rows, ["5001\tagent-bot\tNONE\ttrue\ttrue", "5002\tagent-bot\tNONE\ttrue\ttrue", "5003\tcarol\tOWNER\ttrue\ttrue"]);
+  const [c] = r.call("api", API("issues/5/comments")).json();
+  assert.deepEqual(Object.keys(c).sort(), ["author_association", "body", "created_at", "html_url", "id", "issue_url", "node_id", "updated_at", "url", "user"]);
+  assert.equal(c.html_url, "https://github.com/acme/widgets/issues/5#issuecomment-5001");
+  assert.equal(c.url, "https://api.github.com/repos/acme/widgets/issues/comments/5001");
+  assert.equal(r.call("api", API("issues/9/comments"), "--jq", "length").out, "0\n", "a PR's comments are issue comments");
+  assert.equal(r.call("api", API("issues/99/comments")).err, "gh: Not Found (HTTP 404)\n");
+  assert.equal(r.call("api", "repos/other/repo/issues/5/comments").err, "gh: Not Found (HTTP 404)\n");
+  assert.equal(r.call("api", API("issues/5/comments"), "--jq", ".[0].body | @json").out.startsWith('"<!-- agent:lease'), true, "the derived lease comment is first");
+});
+
+test("a REST comment's ids agree with what gh issue view shows", () => {
+  const r = run2(W3());
+  const rest = r.call("api", API("issues/5/comments"), "--jq", "[.[].html_url]").json();
+  const view = r.call("issue", "view", "5", "--json", "comments", "--jq", "[.comments[].url]").json();
+  assert.deepEqual(rest, view);
+});
+
+test("PATCH edits a stored comment in place, keeps its place, and is read back by diffWorlds as comment_edit", () => {
+  const r = run2(W3()), before = structuredClone(r.read());
+  const out = r.call("api", "-X", "PATCH", API("issues/comments/5002"), "-f", "body=Claimed again <!-- agent:lease step=Working run=r2 expires=2031-01-01T00:00:00Z -->");
+  assert.equal(out.code, 0, out.err);
+  const c = JSON.parse(out.out);
+  assert.deepEqual([c.id, c.body.slice(0, 14), c.updated_at], [5002, "Claimed again ", "2026-11-09T12:00:00Z"]);
+  const w = r.read();
+  assert.deepEqual(w.issues[0].comments[0], { author: "agent", marker: "agent:lease", text: "Claimed again <!-- agent:lease step=Working run=r2 expires=2031-01-01T00:00:00Z -->", updatedAt: "2026-11-09T12:00:00Z" });
+  assert.equal(w.issues[0].comments.length, 2, "edited, not added");
+  assert.deepEqual(diffWorlds(before, w), [{ op: "comment_edit", target: "issue#5", index: 0, text: w.issues[0].comments[0].text }]);
+  assert.ok(sameWorld(applyEffects(before, diffWorlds(before, w)), w));
+  assert.match(r.call("api", API("issues/5/comments"), "--jq", ".[1].updated_at").out, /^2026-11-09T12:00:00Z$/m);
+  const other = r.call("api", "-X", "PATCH", API("issues/comments/5003"), "-f", "body=changed by the agent");
+  assert.equal(other.code, 0, "the simulator does not model who may edit a comment");
+});
+
+test("PATCH of a comment that does not exist, without a body, or that is a view of a world field, fails", () => {
+  const r = run2(W3()), before = r.bytes();
+  assert.equal(r.call("api", "-X", "PATCH", API("issues/comments/5999"), "-f", "body=x").err, "gh: Not Found (HTTP 404)\n");
+  assert.equal(r.call("api", "-X", "PATCH", API("issues/comments/77001"), "-f", "body=x").err, "gh: Not Found (HTTP 404)\n");
+  assert.equal(r.call("api", "-X", "PATCH", API("issues/comments/5002")).err, "gh: Validation Failed (HTTP 422)\n");
+  const derived = r.call("api", "-X", "PATCH", API("issues/comments/5001"), "-f", "body=x");
+  assert.match(derived.err, /^unsupported: api PATCH of a comment the simulator derives from a world field/);
+  assert.equal(r.bytes(), before);
+  const sc = run2({ skill: "s", world: W3(), expect: {} });
+  const refused = sc.call("api", "-X", "PATCH", API("issues/comments/5002"), "-f", "body=x");
+  assert.equal(refused.code, 2);
+  assert.match(refused.err, /scenario file/);
+});
+
+test("api pulls/N/files lists a PR's files, and a PR that is not there is a 404", () => {
+  const r = run2(W3());
+  assert.equal(r.call("api", API("pulls/9/files"), "--paginate", "--jq", ".[] | .filename, (.previous_filename // empty)").out, "a.md\nb.md\n");
+  assert.equal(r.call("api", API("pulls/10/files")).out, "[]\n");
+  assert.equal(r.call("api", API("pulls/99/files")).err, "gh: Not Found (HTTP 404)\n");
+  assert.deepEqual(Object.keys(r.call("api", API("pulls/9/files")).json()[0]).sort(), ["additions", "changes", "deletions", "filename", "sha", "status"]);
+});
+
+test("a PR's files can name the file a rename came from, and a comment can carry its own association", () => {
+  const r = run2({ prs: [{ number: 3, state: "open", files: ["a.md", { path: "docs/b.md", previous: "scripts/old.sh" }] }], issues: [{ number: 1, comments: [{ author: "dev", association: "MEMBER", text: "x" }, { author: "dev", trusted: true, association: "NONE", text: "y" }, { author: "dev", trusted: true, text: "z" }] }] });
+  assert.equal(r.call("api", API("pulls/3/files"), "--jq", ".[] | .filename, (.previous_filename // empty)").out, "a.md\ndocs/b.md\nscripts/old.sh\n");
+  assert.equal(r.call("pr", "view", "3", "--json", "files", "--jq", "[.files[].path]").out, '["a.md","docs/b.md"]\n');
+  assert.equal(r.call("api", API("issues/1/comments"), "--jq", "[.[].author_association]").out, '["MEMBER","NONE","OWNER"]\n', "an explicit association wins over trusted");
+});
+
+test("api contents is raw with the raw Accept header, a base64 object without it, and a 404 for a file that is not there", () => {
+  const r = run2(W3());
+  assert.equal(r.call("api", "-H", "Accept: application/vnd.github.raw", API("contents/AGENTS.md?ref=main")).out, "rules\n");
+  assert.equal(r.call("api", "-H", "Accept: application/vnd.github.raw", API("contents/.github/CODEOWNERS?ref=feat")).out, "* @me\n");
+  const j = r.call("api", API("contents/AGENTS.md")).json();
+  assert.deepEqual([j.type, j.path, j.encoding, Buffer.from(j.content, "base64").toString()], ["file", "AGENTS.md", "base64", "rules\n"]);
+  const miss = r.call("api", "-H", "Accept: application/vnd.github.raw", API("contents/nope.md?ref=main"));
+  assert.deepEqual([miss.code, miss.out, miss.err], [1, "", "gh: Not Found (HTTP 404)\n"]);
+  assert.equal(run2({}).call("api", "-H", "Accept: application/vnd.github.raw", API("contents/AGENTS.md")).code, 1, "a world with no files has none");
+});
+
+test("api git/trees lists the blobs and the directories of the files the world has", () => {
+  const r = run2(W3());
+  assert.equal(r.call("api", API("git/trees/HEAD?recursive=1"), "--jq", '.tree[] | select(.type == "blob") | .path').out, ".github/CODEOWNERS\nAGENTS.md\nsrc/a.js\n");
+  assert.equal(r.call("api", API("git/trees/HEAD?recursive=1"), "--jq", '[.tree[] | select(.type == "tree") | .path]').out, '[".github","src"]\n');
+  assert.equal(run2({}).call("api", API("git/trees/HEAD?recursive=1"), "--jq", ".tree | length").out, "0\n");
+  assert.match(r.call("api", API("git/trees/HEAD")).err, /^unsupported: api GET repos\/acme\/widgets\/git\/trees\/HEAD \(only HEAD with recursive=1\)/);
+});
+
+test("api pulls lists the PRs as REST objects, newest first, paged, with the author's association", () => {
+  const r = run2(W3());
+  const rows = (q, ...more) => r.call("api", API(`pulls?${q}`), ...more, "--jq", '.[] | [.number, .state, .head.ref, .author_association, .user.login, .merged_at != null, .draft] | @tsv').out.trim().split("\n");
+  assert.deepEqual(rows("state=all&per_page=100&page=1"), ["10\tclosed\tbugfix/5-x\tNONE\tagent-bot\ttrue\tfalse", "9\topen\tfeat/9-pr-9\tMEMBER\tdev\tfalse\tfalse", "11\tclosed\tfeat/11-pr-11\tNONE\tagent-bot\tfalse\ttrue"], "newest first, by createdAt");
+  assert.deepEqual(rows("state=open").map((x) => x.split("\t")[0]), ["9"]);
+  assert.deepEqual(rows("state=closed").map((x) => x.split("\t")[0]), ["10", "11"], "closed includes merged, as the API does");
+  assert.deepEqual(rows("state=all&per_page=1&page=2").map((x) => x.split("\t")[0]), ["9"], "the second of three, newest first");
+  assert.equal(rows("state=all&per_page=1&page=4")[0], "", "a page past the end is empty");
+  assert.deepEqual(rows("state=all&per_page=1", "--paginate").length, 3, "--paginate returns them all");
+  assert.equal(r.call("api", API("pulls?state=bogus")).err, "gh: Validation Failed (HTTP 422)\n");
+  const p = r.call("api", API("pulls/9")).json();
+  assert.deepEqual([p.number, p.head.sha, p.base.ref, p.author_association, p.labels.map((l) => l.name), p.html_url], [9, "h1", "main", "MEMBER", ["bug"], "https://github.com/acme/widgets/pull/9"]);
+  assert.equal(r.call("api", API("pulls/99")).err, "gh: Not Found (HTTP 404)\n");
+});
+
+test("update-branch gives a BEHIND PR a new head and brings it up to date, and refuses what GitHub refuses", () => {
+  const r = run2(W3()), before = structuredClone(r.read());
+  const ok = r.call("api", "-X", "PUT", API("pulls/9/update-branch"), "-f", "expected_head_sha=h1");
+  assert.equal(ok.code, 0, ok.err);
+  assert.deepEqual(ok.json(), { message: "Updating pull request branch.", url: "https://api.github.com/repos/acme/widgets/pulls/9" });
+  assert.equal(r.call("pr", "view", "9", "--json", "headRefOid,mergeStateStatus", "--jq", '.headRefOid + " " + .mergeStateStatus').out, "h1+ CLEAN\n");
+  assert.deepEqual(diffWorlds(before, r.read()), [{ op: "push", target: "pr#9", sha: "h1+" }]);
+  assert.ok(sameWorld(applyEffects(before, diffWorlds(before, r.read())), r.read()));
+  assert.equal(r.call("api", "-X", "PUT", API("pulls/9/update-branch")).err, "gh: There are no new commits on the base branch. (HTTP 422)\n", "it is up to date now");
+  const cases = [
+    [{ mergeState: "BEHIND" }, ["-f", "expected_head_sha=old"], "gh: expected head sha didn't match current head ref. (HTTP 422)"],
+    [{ mergeState: "DIRTY" }, [], "gh: merge conflict between base and head (HTTP 422)"],
+    [{ mergeState: "CLEAN" }, [], "gh: There are no new commits on the base branch. (HTTP 422)"],
+    [{ mergeState: "BEHIND", state: "closed" }, [], "gh: Pull request is not open (HTTP 422)"],
+  ];
+  for (const [patch, flags, want] of cases) {
+    const w = W3(); Object.assign(w.prs[0], patch);
+    const x = run2(w), was = x.bytes();
+    const out = x.call("api", "-X", "PUT", API("pulls/9/update-branch"), ...flags);
+    assert.deepEqual([out.code, out.err.trim()], [1, want], JSON.stringify(patch));
+    assert.equal(x.bytes(), was, "a refused update changes nothing");
+  }
+  assert.equal(r.call("api", "-X", "PUT", API("pulls/99/update-branch")).err, "gh: Not Found (HTTP 404)\n");
+});
+
+test("api refuses what it does not model, and says what", () => {
+  const r = run2(W3());
+  for (const [argv, want] of [
+    [["api", "graphql", "-f", "query=x"], /^unsupported: api POST graphql/],
+    [["api", API("issues/5/labels")], /^unsupported: api GET repos\/acme\/widgets\/issues\/5\/labels/],
+    [["api", "-X", "DELETE", API("issues/comments/5002")], /^unsupported: api DELETE/],
+    [["api", "-X", "GET", API("issues/5/comments"), "-f", "per_page=1"], /^unsupported: api GET with -f or -F/],
+    [["api", API("issues/5/comments"), "-f", "per_page=1"], /^unsupported: api POST repos\/acme\/widgets\/issues\/5\/comments/],
+    [["api", "-X", "PATCH", API("issues/comments/5002"), "-F", "body=@file"], /^unsupported: api -F @file/],
+    [["api", API("issues/5/comments"), "--input", "x"], /^unsupported: api --input/],
+    [["api"], /^unsupported: api without exactly one endpoint/],
+    [["api", API("issues/5/comments"), "-f", "novalue"], /requires a value separated by an '=' sign/],
+  ]) { const out = r.call(...argv); assert.equal(out.code, 1, argv.join(" ")); assert.match(out.err, want, argv.join(" ")); }
+  assert.equal(readFileSync(r.env.GH_SIM_LOG, "utf8").trim().split("\n").filter((l) => JSON.parse(l).kind === "unsupported").length, 8);
+});
+
+test("no gh command is left as planned: every one is supported or out of scope", () => {
+  assert.deepEqual(Object.entries(SURFACE).filter(([, st]) => st === "planned"), []);
+});
+
+// ---- faults ----------------------------------------------------------------------------------------------------
+
+test("a fault makes the call it matches fail, changes nothing, and is marked in the log", () => {
+  const w = W2(); w.faults = [{ match: "pr merge", fail: "X Pull request sim/repo#3 is not mergeable: the base branch policy prohibits the merge." }];
+  const r = run2(w), before = r.bytes();
+  const out = r.call("pr", "merge", "3", "--squash");
+  assert.deepEqual([out.code, out.out, out.err], [1, "", "X Pull request sim/repo#3 is not mergeable: the base branch policy prohibits the merge.\n"]);
+  assert.equal(r.bytes(), before);
+  const [call] = readFileSync(r.env.GH_SIM_LOG, "utf8").trim().split("\n").map((l) => JSON.parse(l));
+  assert.deepEqual([call.exit, call.kind, call.fault], [1, "fault", 0]);
+  assert.equal(r.call("pr", "view", "3", "--json", "state", "--jq", ".state").out, "OPEN\n", "a call that does not match is not touched");
+  assert.equal(r.call("pr", "merge", "4", "--squash").err.includes("not mergeable"), true, "it matches any PR");
+});
+
+test("a fault matches whole words of the call, from the start", () => {
+  const w = W2(); w.faults = [{ match: "api -X PATCH", fail: "HTTP 500" }, { match: "pr merge 3", fail: "only PR 3" }, { match: "label", fail: "labels down", exit: 4 }];
+  const r = run2(w);
+  assert.equal(r.call("api", "-X", "PATCH", API("issues/comments/1001"), "-f", "body=x").err, "HTTP 500\n");
+  assert.equal(r.call("api", "user").code, 0, "a GET is another call");
+  assert.equal(r.call("pr", "merge", "3", "--squash").err, "only PR 3\n");
+  assert.equal(r.call("pr", "merge", "33", "--squash").err.includes("only PR 3"), false, "pr merge 3 is not pr merge 33");
+  const l = r.call("label", "list");
+  assert.deepEqual([l.code, l.err], [4, "labels down\n"], "the exit code is the fault's own");
+  assert.equal(r.call("labels").err, "unsupported: labels\n", "`label` does not match `labels`");
+});
+
+test("times limits a fault, counted in the log, and each fault counts its own", () => {
+  const w = W2(); w.faults = [{ match: "issue edit", fail: "flaky", times: 2 }, { match: "issue comment", fail: "down", times: 1 }];
+  const r = run2(w);
+  const edit = () => r.call("issue", "edit", "1", "--add-label", "agent:in-progress");
+  assert.deepEqual([edit().code, edit().code, edit().code], [1, 1, 0], "it fires twice, and then the call goes through");
+  assert.deepEqual(r.read().issues[0].labels, ["ready-for-agent", "agent:in-progress"]);
+  assert.equal(r.call("issue", "comment", "1", "--body", "x").err, "down\n");
+  assert.equal(r.call("issue", "comment", "1", "--body", "x").code, 0);
+  assert.deepEqual(readFileSync(r.env.GH_SIM_LOG, "utf8").trim().split("\n").map((l) => JSON.parse(l).fault ?? null), [0, 0, null, 1, null]);
+  const nolog = spawnSync(GH, ["issue", "edit", "1", "--add-label", "x"], { encoding: "utf8", env: { ...r.env, GH_SIM_LOG: "" } });
+  assert.deepEqual([nolog.status, /needs GH_SIM_LOG/.test(nolog.stderr)], [2, true]);
+});
+
+test("a fault is counted by its definition: a different fault at the same place starts fresh, the same one does not", () => {
+  const w = W2(); w.faults = [{ match: "issue edit", fail: "first", times: 1 }];
+  const r = run2(w);
+  const edit = () => r.call("issue", "edit", "1", "--add-label", "agent:in-progress");
+  assert.deepEqual([edit().err, edit().code], ["first\n", 0]);
+  const rewrite = (faults) => { const x = r.read(); x.faults = faults; writeFileSync(r.path, stringify(x)); };
+  rewrite([{ match: "issue edit", fail: "second", times: 1 }]); // another fault, at index 0 again
+  assert.deepEqual([edit().err, edit().code], ["second\n", 0], "it is not spent by what the first one did");
+  rewrite([{ match: "issue edit", fail: "first", times: 1 }]); // the first one, written again
+  assert.equal(edit().code, 0, "it is still spent");
+  const ids = readFileSync(r.env.GH_SIM_LOG, "utf8").trim().split("\n").map((l) => JSON.parse(l)).filter((c) => c.fault !== undefined);
+  assert.deepEqual(ids.map((c) => c.fault), [0, 0]);
+  assert.equal(new Set(ids.map((c) => c.faultId)).size, 2);
+  assert.match(ids[0].faultId, /^[0-9a-f]{10}$/);
+});
+
+test("a fault's before effects change the world first, as another run getting in ahead of this call", () => {
+  const w = W2(); w.faults = [{ match: "issue create", before: [{ op: "create_issue", number: 6, labels: ["agent:log"], data: { title: "racing run", body: "" } }], times: 1 }];
+  const r = run2(w);
+  const out = r.call("issue", "create", "--title", "mine", "--body", "b", "--label", "agent:log");
+  assert.equal(out.out, "https://github.com/sim/repo/issues/7\n", "the number after the one that got in first");
+  assert.deepEqual(r.read().issues.map((i) => i.number), [1, 2, 6, 7]);
+  assert.equal(JSON.parse(readFileSync(r.env.GH_SIM_LOG, "utf8").trim()).fault, 0, "the call is marked as met by a fault");
+  const both = W2(); both.faults = [{ match: "pr merge", before: [{ op: "comment", target: "pr#3", marker: "agent:handoff", text: "a human spoke" }], fail: "changed under you" }];
+  const b = run2(both);
+  assert.equal(b.call("pr", "merge", "3", "--squash").err, "changed under you\n");
+  assert.equal(b.read().prs[0].comments.at(-1).text, "a human spoke", "the effects stay when the call fails");
+  const sc = run2({ skill: "s", world: both, expect: {} });
+  const refused = sc.call("pr", "merge", "3", "--squash");
+  assert.equal(refused.code, 2);
+  assert.match(refused.err, /scenario file/);
+  assert.equal(run2({ skill: "s", world: { ...W2(), faults: [{ match: "pr merge", fail: "x" }] }, expect: {} }).call("pr", "merge", "3", "--squash").err, "x\n", "a fault that only fails can meet a scenario file");
+});
+
+test("a fault written wrong is refused when the world is read", () => {
+  for (const [fault, want] of [[{ fail: "x" }, /fault 0 needs a `match`/], [{ match: "pr merge" }, /fault 0 needs a `fail` message or `before` effects/], [{ match: "pr merge", fail: "x", times: 0 }, /`times` to be a whole number above 0/], [{ match: "", fail: "x" }, /a `match`/]]) {
+    const out = run2({ ...W2(), faults: [fault] }).call("issue", "list");
+    assert.equal(out.code, 2, JSON.stringify(fault));
+    assert.match(out.err, want);
+  }
+});
+
+test("a fault does not show in the diff: the world's faults are not state", () => {
+  const w = W2(); w.faults = [{ match: "pr merge", fail: "nope", times: 1 }];
+  const r = run2(w), before = structuredClone(r.read());
+  r.call("pr", "merge", "3", "--squash"); r.call("issue", "edit", "1", "--add-label", "agent:in-progress");
+  assert.deepEqual(diffWorlds(before, r.read()).map((e) => e.op), ["label_add"]);
+});
+
+test("a golden scenario whose world carries faults is judged as it was, and the diff does not see them", () => {
+  let n = 0;
+  for (const dir of readdirSync(join(ROOT, "tests/scenarios"))) {
+    for (const f of readdirSync(join(ROOT, "tests/scenarios", dir)).filter((x) => x.endsWith(".yaml"))) {
+      const sc = expandScenario(parse(readFileSync(join(ROOT, "tests/scenarios", dir, f), "utf8")));
+      const withFaults = structuredClone(sc);
+      withFaults.world = { ...(sc.world ?? {}), faults: [{ match: "pr merge", fail: "not mergeable", times: 1 }, { match: "api -X PATCH", fail: "HTTP 500" }] };
+      assert.deepEqual(checkScenario(contractOf(sc.skill), withFaults), [], `${dir}/${f}`);
+      // The world a run starts from and the one it leaves both carry the faults, so they are no part of what the run did.
+      const effects = (sc.expect?.effects ?? []).filter((e) => !["unmodelled", "push", "write_file"].includes(e.op) && e.op !== "labels_sync");
+      assert.deepEqual(diffWorlds(withFaults.world, applyEffects(withFaults.world, effects)), diffWorlds(sc.world ?? {}, applyEffects(sc.world ?? {}, effects)), `${dir}/${f}`);
+      n++;
+    }
+  }
+  assert.ok(n >= 80);
 });
 
 // ---- seeding -------------------------------------------------------------------------------------------------

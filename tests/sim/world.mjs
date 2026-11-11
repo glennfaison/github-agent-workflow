@@ -54,6 +54,12 @@ export function loadWorld(file) {
   for (const pr of world.prs) for (const c of pr.checks ?? []) {
     if (!CHECK_VALUES.includes(c)) throw new SimError(`GH_SIM_WORLD: pr#${pr.number} has a check \`${c}\`; a check is one of ${CHECK_VALUES.join(", ")}`, { code: 2 });
   }
+  for (const [i, f] of (world.faults ?? []).entries()) {
+    const bad = typeof f.match !== "string" || f.match === "" ? "a `match`, the words of the call it is for (`pr merge`)"
+      : f.fail === undefined && f.before === undefined ? "a `fail` message or `before` effects"
+      : f.times !== undefined && !(Number.isInteger(f.times) && f.times > 0) ? "`times` to be a whole number above 0" : null;
+    if (bad) throw new SimError(`GH_SIM_WORLD: fault ${i} needs ${bad}`, { code: 2 });
+  }
   const notShown = [];
   for (const [kind, key] of [["issue", "issues"], ["pr", "prs"]]) {
     for (const it of world[key]) for (const f of NOT_SHOWN[kind]) if (f in it) notShown.push(`${kind}#${it.number}.${f}`);
@@ -119,14 +125,18 @@ function derivedComments(ctx, kind, it) {
   return out;
 }
 
+/** How many of an item's comments are views of world fields (a lease, a handoff) and not stored. They come first. */
+export const derivedCount = (ctx, kind, it) => derivedComments(ctx, kind, it).length;
+
 /** Every comment on an item, oldest first: login, association, body, createdAt, id and url. */
 export function commentsOf(ctx, kind, it) {
   const base = Date.parse(createdAt(it));
   const stored = (it.comments ?? []).map((c) => ({
     login: c.author === "agent" ? ctx.user : c.author === "human" || c.author === undefined ? "someone" : c.author,
-    association: c.trusted ? "OWNER" : "NONE",
+    association: c.association ?? (c.trusted ? "OWNER" : "NONE"),
     body: bodyOf(c),
     at: c.createdAt,
+    updatedAt: c.updatedAt,
   }));
   return [...derivedComments(ctx, kind, it), ...stored].map((c, i) => {
     const id = (it.number * 1000) + i + 1;
@@ -144,6 +154,9 @@ const lastTouch = (ctx, kind, it) => commentsOf(ctx, kind, it).reduce((m, c) => 
 
 // Fields that every world has an honest empty answer for.
 const EMPTY = { assignees: [], projectCards: [], projectItems: [], reactionGroups: [], milestone: null };
+
+/** A PR's merge state. A run that updated a branch that was `BEHIND` (`pushed`) has brought it up to date. */
+export const mergeStateOf = (pr) => (pr.mergeState === "BEHIND" && pr.pushed ? "CLEAN" : pr.mergeState ?? (pr.draft ? "DRAFT" : "CLEAN"));
 
 /** The branch a PR is on. A scenario can name one with `branch`. Otherwise it is `feat/<closed issue>-<slug>`. */
 export const branchOf = (pr) => pr.branch ?? `feat/${pr.closes?.[0] ?? pr.number}-pr-${pr.number}`;
@@ -171,7 +184,7 @@ const build = {
   }),
   pr: (ctx, it) => {
     const checks = checksOf(ctx, it);
-    const merge = it.mergeState ?? (it.draft ? "DRAFT" : "CLEAN");
+    const merge = mergeStateOf(it);
     return {
       ...EMPTY,
       id: `PR_${it.number}`, number: it.number, title: it.title ?? `Pull request ${it.number}`, body: it.body ?? "", url: itemUrl(ctx, "pr", it),
@@ -182,7 +195,7 @@ const build = {
       headRefName: branchOf(it), headRefOid: String(it.head ?? ""), baseRefName: it.base ?? ctx.defaultBranch,
       isCrossRepository: Boolean(it.fork), mergeStateStatus: merge,
       mergeable: merge === "DIRTY" ? "CONFLICTING" : merge === "UNKNOWN" ? "UNKNOWN" : "MERGEABLE",
-      files: (it.files ?? []).map((path) => ({ path, additions: 0, deletions: 0 })), changedFiles: (it.files ?? []).length, additions: 0, deletions: 0,
+      files: (it.files ?? []).map((f) => ({ path: typeof f === "string" ? f : f.path, additions: 0, deletions: 0 })), changedFiles: (it.files ?? []).length, additions: 0, deletions: 0,
       closingIssuesReferences: (it.closes ?? []).map((n) => ({ number: n, url: `https://github.com/${ctx.nameWithOwner}/issues/${n}`, repository: { name: ctx.name, owner: { login: ctx.owner } } })),
       reviewRequests: [], reviewDecision: "",
       statusCheckRollup: checks.map((c) => ({ __typename: "CheckRun", name: c.name, workflowName: c.workflow, status: c.bucket === "pending" ? "IN_PROGRESS" : "COMPLETED", conclusion: c.bucket === "pending" ? "" : c.state, detailsUrl: c.link, startedAt: c.startedAt, completedAt: c.completedAt })),
@@ -199,3 +212,28 @@ export const MODELLED = {
 
 /** An issue or a PR as `gh` shows it, with every modelled field. */
 export const view = (ctx, kind, it) => build[kind](ctx, it);
+
+// ---- the REST API (`gh api`) -------------------------------------------------------------------------------
+
+const restUser = (login) => ({ login, id: 1, type: "User" });
+
+/** A comment as `repos/{owner}/{repo}/issues/N/comments` returns it. */
+export function restComment(ctx, kind, it, c) {
+  return {
+    url: `https://api.github.com/repos/${ctx.nameWithOwner}/issues/comments/${c.id}`, html_url: c.url, id: c.id, node_id: `IC_${c.id}`,
+    issue_url: `https://api.github.com/repos/${ctx.nameWithOwner}/issues/${it.number}`, user: restUser(c.login), author_association: c.association,
+    body: c.body, created_at: c.createdAt, updated_at: c.updatedAt ?? c.createdAt,
+  };
+}
+
+/** A pull request as `repos/{owner}/{repo}/pulls` returns it. A world PR can give its author's `association` (default NONE). */
+export function restPr(ctx, it) {
+  const state = it.state ?? "open", at = createdAt(it);
+  return {
+    url: `https://api.github.com/repos/${ctx.nameWithOwner}/pulls/${it.number}`, html_url: itemUrl(ctx, "pr", it), id: 100_000 + it.number, node_id: `PR_${it.number}`,
+    number: it.number, state: state === "open" ? "open" : "closed", title: it.title ?? `Pull request ${it.number}`, body: it.body ?? "", draft: Boolean(it.draft),
+    user: restUser(it.author ?? ctx.user), author_association: it.association ?? "NONE", labels: labelsOf(ctx, it).map((l) => ({ id: 0, name: l.name, description: l.description, color: l.color })),
+    created_at: at, updated_at: lastTouch(ctx, "pr", it), closed_at: state === "open" ? null : (it.closedAt ?? lastTouch(ctx, "pr", it)), merged_at: state === "merged" ? (it.mergedAt ?? lastTouch(ctx, "pr", it)) : null,
+    head: { label: `${ctx.owner}:${branchOf(it)}`, ref: branchOf(it), sha: String(it.head ?? "") }, base: { label: `${ctx.owner}:${it.base ?? ctx.defaultBranch}`, ref: it.base ?? ctx.defaultBranch },
+  };
+}
