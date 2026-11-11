@@ -7,6 +7,7 @@
 // A command, flag or --json field the simulator does not cover exits 1 with `unsupported: <what>`.
 
 import { appendFileSync, readFileSync } from "node:fs";
+import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import { SURFACE } from "./surface.mjs";
 import { applyEffects } from "../../scripts/scenario.mjs";
@@ -502,7 +503,7 @@ const api = {
     if (method === "GET" && (g = /^pulls\/(\d+)\/files$/.exec(rest))) {
       const pr = findItem(ctx.world, "pr", Number(g[1]));
       if (!pr) throw notFound();
-      return out(page((pr.files ?? []).map((filename) => ({ sha: "sim", filename, status: "modified", additions: 0, deletions: 0, changes: 0 })), q, a));
+      return out(page((pr.files ?? []).map((f) => (typeof f === "string" ? { sha: "sim", filename: f, status: "modified", additions: 0, deletions: 0, changes: 0 } : { sha: "sim", filename: f.path, previous_filename: f.previous, status: "renamed", additions: 0, deletions: 0, changes: 0 })), q, a));
     }
     if (method === "PUT" && (g = /^pulls\/(\d+)\/update-branch$/.exec(rest))) return out(updateBranch(ctx, Number(g[1]), fields));
     if (method === "GET" && (g = /^pulls\/(\d+)$/.exec(rest))) {
@@ -547,19 +548,23 @@ export const HANDLERS = {
  * The fault, if any, that this call meets. A world's `faults` are `{match, fail, exit?, before?, times?}`: a call that
  * starts with `match` (whole words: `pr merge`, `api -X PATCH`) fails with `fail` and exits `exit` (default 1) without
  * changing anything. `before` is a list of effects applied to the world first, which is how another run gets in ahead of
- * this call. `times` limits how often a fault fires. It counts the log, so it needs GH_SIM_LOG.
+ * this call. `times` limits how often a fault fires. A fault is known by its definition, so firing is counted in the log
+ * under that (`faultId`, a hash of the definition), which needs GH_SIM_LOG. Another fault that is later at the same place in
+ * the list does not inherit the count, and the same fault written again does.
  */
+const faultId = (f) => createHash("sha1").update(JSON.stringify([f.match, f.fail, f.exit, f.before, f.times])).digest("hex").slice(0, 10);
 function faultFor(world, argv, env) {
   const call = argv.join(" ");
-  const fired = (i) => {
+  const fired = (id) => {
     if (!env.GH_SIM_LOG) throw new SimError("GH_SIM_WORLD: a fault with `times` needs GH_SIM_LOG, which is where firing is counted", { code: 2 });
     let text = ""; try { text = readFileSync(env.GH_SIM_LOG, "utf8"); } catch { /* no call has been logged yet */ }
-    return text.split("\n").filter((l) => l && JSON.parse(l).fault === i).length;
+    return text.split("\n").filter((l) => l && JSON.parse(l).faultId === id).length;
   };
   for (const [i, f] of (world.faults ?? []).entries()) {
     if (call !== f.match && !call.startsWith(`${f.match} `)) continue;
-    if (f.times !== undefined && fired(i) >= f.times) continue;
-    return { i, f };
+    const id = faultId(f);
+    if (f.times !== undefined && fired(id) >= f.times) continue;
+    return { i, f, id };
   }
   return null;
 }
@@ -569,7 +574,7 @@ export function run(argv, env = process.env) {
   const words = [];
   for (const w of argv) { if (w.startsWith("-") || words.length === 2) break; words.push(w); }
   const command = words.slice(0, 2).join(" ") || words[0];
-  let fault;
+  let fault, id;
   try {
     if (!env.GH_SIM_WORLD) throw new SimError("GH_SIM_WORLD is not set: the gh simulator needs a world file", { code: 2 });
     const handler = HANDLERS[command] ?? HANDLERS[words[0]];
@@ -579,13 +584,13 @@ export function run(argv, env = process.env) {
     let world = seeded;
     const hit = faultFor(world, argv, env);
     if (hit) {
-      fault = hit.i;
+      fault = hit.i; id = hit.id;
       if (hit.f.before) {
         if (scenario) throw refuse(" (a fault's `before` effects write)");
         world = applyEffects(world, hit.f.before);
         saveWorld(env.GH_SIM_WORLD, world);
       }
-      if (hit.f.fail !== undefined) throw Object.assign(new SimError(hit.f.fail, { code: hit.f.exit ?? 1, kind: "fault" }), { fault });
+      if (hit.f.fail !== undefined) throw Object.assign(new SimError(hit.f.fail, { code: hit.f.exit ?? 1, kind: "fault" }), { fault, faultId: id });
     }
     const ctx = contextOf(world, env);
     ctx.scenario = scenario;
@@ -595,10 +600,10 @@ export function run(argv, env = process.env) {
     const result = handler.run(ctx, a);
     // Only a call that got this far changes the file.
     if (writes) saveWorld(env.GH_SIM_WORLD, ctx.world);
-    return typeof result === "string" ? { stdout: result, code: 0, kind: "ok", fault } : { stdout: result.text, stderr: result.err, code: result.code, kind: "ok", fault };
+    return typeof result === "string" ? { stdout: result, code: 0, kind: "ok", fault, faultId: id } : { stdout: result.text, stderr: result.err, code: result.code, kind: "ok", fault, faultId: id };
   } catch (e) {
     if (!(e instanceof SimError)) throw e;
-    return { stdout: "", stderr: e.message + "\n", code: e.code, kind: e.kind, fault: e.fault ?? fault };
+    return { stdout: "", stderr: e.message + "\n", code: e.code, kind: e.kind, fault: e.fault ?? fault, faultId: e.faultId ?? id };
   }
 }
 
@@ -607,7 +612,7 @@ if (import.meta.url === `file://${process.argv[1]}` || process.argv[1]?.endsWith
   const r = run(argv);
   if (process.env.GH_SIM_LOG) {
     const ts = new Date(process.env.GH_SIM_NOW ? Date.parse(process.env.GH_SIM_NOW) : Date.now()).toISOString();
-    appendFileSync(process.env.GH_SIM_LOG, JSON.stringify({ ts, argv, exit: r.code, kind: r.kind, ...(r.fault !== undefined ? { fault: r.fault } : {}) }) + "\n");
+    appendFileSync(process.env.GH_SIM_LOG, JSON.stringify({ ts, argv, exit: r.code, kind: r.kind, ...(r.fault !== undefined ? { fault: r.fault, faultId: r.faultId } : {}) }) + "\n");
   }
   if (r.stdout) process.stdout.write(r.stdout);
   if (r.stderr) process.stderr.write(r.stderr);

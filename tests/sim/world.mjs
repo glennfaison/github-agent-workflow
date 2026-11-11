@@ -133,7 +133,7 @@ export function commentsOf(ctx, kind, it) {
   const base = Date.parse(createdAt(it));
   const stored = (it.comments ?? []).map((c) => ({
     login: c.author === "agent" ? ctx.user : c.author === "human" || c.author === undefined ? "someone" : c.author,
-    association: c.trusted ? "OWNER" : "NONE",
+    association: c.association ?? (c.trusted ? "OWNER" : "NONE"),
     body: bodyOf(c),
     at: c.createdAt,
     updatedAt: c.updatedAt,
@@ -195,7 +195,7 @@ const build = {
       headRefName: branchOf(it), headRefOid: String(it.head ?? ""), baseRefName: it.base ?? ctx.defaultBranch,
       isCrossRepository: Boolean(it.fork), mergeStateStatus: merge,
       mergeable: merge === "DIRTY" ? "CONFLICTING" : merge === "UNKNOWN" ? "UNKNOWN" : "MERGEABLE",
-      files: (it.files ?? []).map((path) => ({ path, additions: 0, deletions: 0 })), changedFiles: (it.files ?? []).length, additions: 0, deletions: 0,
+      files: (it.files ?? []).map((f) => ({ path: typeof f === "string" ? f : f.path, additions: 0, deletions: 0 })), changedFiles: (it.files ?? []).length, additions: 0, deletions: 0,
       closingIssuesReferences: (it.closes ?? []).map((n) => ({ number: n, url: `https://github.com/${ctx.nameWithOwner}/issues/${n}`, repository: { name: ctx.name, owner: { login: ctx.owner } } })),
       reviewRequests: [], reviewDecision: "",
       statusCheckRollup: checks.map((c) => ({ __typename: "CheckRun", name: c.name, workflowName: c.workflow, status: c.bucket === "pending" ? "IN_PROGRESS" : "COMPLETED", conclusion: c.bucket === "pending" ? "" : c.state, detailsUrl: c.link, startedAt: c.startedAt, completedAt: c.completedAt })),

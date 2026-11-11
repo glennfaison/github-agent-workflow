@@ -12,7 +12,8 @@ import { SURFACE, ghCommandsIn } from "./sim/surface.mjs";
 import { HANDLERS, run } from "./sim/gh-sim.mjs";
 import { loadWorld } from "./sim/world.mjs";
 import { seed } from "./sim/seed.mjs";
-import { checkState, applyEffects, diffWorlds, sameWorld, canonicalWorld, checkScenario } from "../scripts/scenario.mjs";
+import { checkState, applyEffects, diffWorlds, sameWorld, canonicalWorld, checkScenario, expandScenario } from "../scripts/scenario.mjs";
+import { contractOf } from "../scripts/scenario-coverage.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const GH = join(ROOT, "tests/sim/bin/gh");
@@ -803,6 +804,13 @@ test("api pulls/N/files lists a PR's files, and a PR that is not there is a 404"
   assert.deepEqual(Object.keys(r.call("api", API("pulls/9/files")).json()[0]).sort(), ["additions", "changes", "deletions", "filename", "sha", "status"]);
 });
 
+test("a PR's files can name the file a rename came from, and a comment can carry its own association", () => {
+  const r = run2({ prs: [{ number: 3, state: "open", files: ["a.md", { path: "docs/b.md", previous: "scripts/old.sh" }] }], issues: [{ number: 1, comments: [{ author: "dev", association: "MEMBER", text: "x" }, { author: "dev", trusted: true, association: "NONE", text: "y" }, { author: "dev", trusted: true, text: "z" }] }] });
+  assert.equal(r.call("api", API("pulls/3/files"), "--jq", ".[] | .filename, (.previous_filename // empty)").out, "a.md\ndocs/b.md\nscripts/old.sh\n");
+  assert.equal(r.call("pr", "view", "3", "--json", "files", "--jq", "[.files[].path]").out, '["a.md","docs/b.md"]\n');
+  assert.equal(r.call("api", API("issues/1/comments"), "--jq", "[.[].author_association]").out, '["MEMBER","NONE","OWNER"]\n', "an explicit association wins over trusted");
+});
+
 test("api contents is raw with the raw Accept header, a base64 object without it, and a 404 for a file that is not there", () => {
   const r = run2(W3());
   assert.equal(r.call("api", "-H", "Accept: application/vnd.github.raw", API("contents/AGENTS.md?ref=main")).out, "rules\n");
@@ -921,6 +929,22 @@ test("times limits a fault, counted in the log, and each fault counts its own", 
   assert.deepEqual([nolog.status, /needs GH_SIM_LOG/.test(nolog.stderr)], [2, true]);
 });
 
+test("a fault is counted by its definition: a different fault at the same place starts fresh, the same one does not", () => {
+  const w = W2(); w.faults = [{ match: "issue edit", fail: "first", times: 1 }];
+  const r = run2(w);
+  const edit = () => r.call("issue", "edit", "1", "--add-label", "agent:in-progress");
+  assert.deepEqual([edit().err, edit().code], ["first\n", 0]);
+  const rewrite = (faults) => { const x = r.read(); x.faults = faults; writeFileSync(r.path, stringify(x)); };
+  rewrite([{ match: "issue edit", fail: "second", times: 1 }]); // another fault, at index 0 again
+  assert.deepEqual([edit().err, edit().code], ["second\n", 0], "it is not spent by what the first one did");
+  rewrite([{ match: "issue edit", fail: "first", times: 1 }]); // the first one, written again
+  assert.equal(edit().code, 0, "it is still spent");
+  const ids = readFileSync(r.env.GH_SIM_LOG, "utf8").trim().split("\n").map((l) => JSON.parse(l)).filter((c) => c.fault !== undefined);
+  assert.deepEqual(ids.map((c) => c.fault), [0, 0]);
+  assert.equal(new Set(ids.map((c) => c.faultId)).size, 2);
+  assert.match(ids[0].faultId, /^[0-9a-f]{10}$/);
+});
+
 test("a fault's before effects change the world first, as another run getting in ahead of this call", () => {
   const w = W2(); w.faults = [{ match: "issue create", before: [{ op: "create_issue", number: 6, labels: ["agent:log"], data: { title: "racing run", body: "" } }], times: 1 }];
   const r = run2(w);
@@ -952,6 +976,23 @@ test("a fault does not show in the diff: the world's faults are not state", () =
   const r = run2(w), before = structuredClone(r.read());
   r.call("pr", "merge", "3", "--squash"); r.call("issue", "edit", "1", "--add-label", "agent:in-progress");
   assert.deepEqual(diffWorlds(before, r.read()).map((e) => e.op), ["label_add"]);
+});
+
+test("a golden scenario whose world carries faults is judged as it was, and the diff does not see them", () => {
+  let n = 0;
+  for (const dir of readdirSync(join(ROOT, "tests/scenarios"))) {
+    for (const f of readdirSync(join(ROOT, "tests/scenarios", dir)).filter((x) => x.endsWith(".yaml"))) {
+      const sc = expandScenario(parse(readFileSync(join(ROOT, "tests/scenarios", dir, f), "utf8")));
+      const withFaults = structuredClone(sc);
+      withFaults.world = { ...(sc.world ?? {}), faults: [{ match: "pr merge", fail: "not mergeable", times: 1 }, { match: "api -X PATCH", fail: "HTTP 500" }] };
+      assert.deepEqual(checkScenario(contractOf(sc.skill), withFaults), [], `${dir}/${f}`);
+      // The world a run starts from and the one it leaves both carry the faults, so they are no part of what the run did.
+      const effects = (sc.expect?.effects ?? []).filter((e) => !["unmodelled", "push", "write_file"].includes(e.op) && e.op !== "labels_sync");
+      assert.deepEqual(diffWorlds(withFaults.world, applyEffects(withFaults.world, effects)), diffWorlds(sc.world ?? {}, applyEffects(sc.world ?? {}, effects)), `${dir}/${f}`);
+      n++;
+    }
+  }
+  assert.ok(n >= 80);
 });
 
 // ---- seeding -------------------------------------------------------------------------------------------------
