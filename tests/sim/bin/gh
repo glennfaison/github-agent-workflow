@@ -1,4 +1,4 @@
 #!/usr/bin/env bash
 # The `gh` simulator. Put this directory first on PATH, name a world file in GH_SIM_WORLD, and every
 # `gh` call is answered from that world and appended to GH_SIM_LOG. See docs/adr/0014-gh-simulator.md.
-exec node "$(dirname "${BASH_SOURCE[0]}")/../gh-sim.mjs" "$@"
+exec node "${BASH_SOURCE[0]%/*}/../gh-sim.mjs" "$@"

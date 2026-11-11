@@ -1,11 +1,11 @@
 // What the `gh` simulator covers. One entry per `gh` command the skills, the scripts and `lib.sh` use.
 //
 //   supported     the simulator answers it
-//   planned       a later part of the simulator will answer it; today it exits `unsupported: <command>`
 //   out-of-scope  the package deliberately does not use it, or the simulator will not model it
 //
 // tests/gh-sim.test.mjs greps skills/ for `gh` calls and fails for one that is missing here, so a new
-// `gh` call in a skill is noticed. The list of `supported` entries must equal the simulator's handlers.
+// `gh` call in a skill is noticed. The `supported` entries must equal the simulator's handlers, and an entry that no
+// skill uses is stale. `planned` is not a status any more: every command is supported or deliberately out of scope.
 
 export const SURFACE = {
   "issue list": "supported",
@@ -28,7 +28,7 @@ export const SURFACE = {
   "pr comment": "supported",
   "pr merge": "supported",
   "label create": "supported",
-  api: "planned",
+  api: "supported",
 
   // log.md tells agents never to look an issue up with search, so a skill calls it only to forbid it.
   search: "out-of-scope",

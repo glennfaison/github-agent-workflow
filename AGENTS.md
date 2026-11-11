@@ -38,7 +38,7 @@ skills/<bucket>/<skill>/SKILL.md     exactly three levels deep
 
 **Every result a skill can return has a scenario** under `tests/scenarios/<skill>/`: a world, the inputs, the expected result line and the net effects. `scripts/scenario.mjs` checks each against the skill's contract (scopes, invariants, eligibility oracles), and `npm run scenarios:coverage` lists results with none. A new result line without a scenario fails `npm test`. See `docs/adr/0012-scenarios.md`.
 
-**Every `gh` command a skill uses is listed in `tests/sim/surface.mjs`.** The `gh` simulator (`tests/sim/bin/gh`) answers `gh` from a world file, and a test greps `skills/` and `scripts/` for `gh` calls. A new one fails `npm test` until it is listed as `supported`, `planned` or `out-of-scope`. Use only `--json` fields that `gh` has. See `docs/adr/0014-gh-simulator.md`.
+**Every `gh` command a skill uses is listed in `tests/sim/surface.mjs`.** The `gh` simulator (`tests/sim/bin/gh`) answers `gh` from a world file, and a test greps `skills/` and `scripts/` for `gh` calls. A new one fails `npm test` until it is listed as `supported` (and the simulator answers it) or `out-of-scope`. Use only `--json` fields that `gh` has. `tests/lib.test.sh` runs against the same simulator, so there is one mock of `gh`. See `docs/adr/0014-gh-simulator.md`.
 
 ## Inputs and defaults
 

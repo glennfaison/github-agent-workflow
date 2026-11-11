@@ -21,7 +21,7 @@ export const MUTEX_PR = ["agent:needs-work", "agent:ready-for-review", "agent:hu
 export const LEASE_LABELS = ["agent:triage", "agent:in-progress"];
 const REPOSITORY_OPS = ["push", "merge", "delete_branch", "create_pr", "label_create", "label_update", "write_file"];
 // `unmodelled` is not something a skill does: diffWorlds reports a change it cannot express with it.
-const OPS = ["label_add", "label_remove", "comment", "close", "push", "merge", "delete_branch", "create_pr", "create_issue", "review_request", "label_create", "label_update", "write_file", "unmodelled"];
+const OPS = ["label_add", "label_remove", "comment", "comment_edit", "close", "push", "merge", "delete_branch", "create_pr", "create_issue", "review_request", "label_create", "label_update", "write_file", "unmodelled"];
 
 // ---- repository state: the label set and the agent instructions file ------------------------------
 // A world may hold `labels: [{name, description}]` (the repository's label set) and `files: {path: text}`.
@@ -202,7 +202,7 @@ export const ORACLES = {
 export function scopeOf(effect, ctx) {
   if (effect.op === "unmodelled") return "unmodelled";
   if (REPOSITORY_OPS.includes(effect.op)) return "repository";
-  if (effect.op === "comment") {
+  if (effect.op === "comment" || effect.op === "comment_edit") {
     const t = item(ctx.world, effect.target);
     if (t && (t.labels ?? []).includes("agent:log")) return "shared";
   }
@@ -253,6 +253,13 @@ export function applyEffects(world, effects) {
         if (!t.labels.includes(e.label)) throw new Error(`removes \`${e.label}\` from ${e.target}, which does not carry it`);
         t.labels = t.labels.filter((l) => l !== e.label); break;
       case "comment": t.comments.push({ marker: e.marker, text: e.text, ...(e.trusted !== undefined ? { trusted: e.trusted } : {}) }); break;
+      // A comment the run edited in place (a lease): `index` is its place among the item's comments, `text` its new text.
+      case "comment_edit": {
+        const c = t.comments[e.index];
+        if (!c) throw new Error(`\`comment_edit\` on ${e.target}: it has no comment ${e.index}`);
+        c.text = e.text;
+        break;
+      }
       case "close": t.state = "closed"; if (e.reason) t.closeReason = e.reason; break;
       case "push": t.head = e.sha ?? `${t.head}+`; t.pushed = true; break;
       case "merge": t.state = "merged"; break;
@@ -325,8 +332,13 @@ export function diffWorlds(before, after) {
 
     const bc = b.comments ?? [], ac = a.comments ?? [];
     const same = (x, y) => x.marker === y.marker && x.text === y.text;
-    if (bc.length > ac.length || bc.some((c, i) => !same(c, ac[i]))) odd(target, "comments", bc, ac);
-    else for (const c of ac.slice(bc.length)) out.push({ op: "comment", target, ...defined({ marker: c.marker, text: c.text }) });
+    // A comment that keeps its marker and has new text was edited in place. Any other change to the comments is `unmodelled`.
+    const edited = (x, y) => y !== undefined && !same(x, y) && x.marker === y.marker && typeof y.text === "string";
+    if (bc.length > ac.length || bc.some((c, i) => !same(c, ac[i]) && !edited(c, ac[i]))) odd(target, "comments", bc, ac);
+    else {
+      bc.forEach((c, i) => { if (!same(c, ac[i])) out.push({ op: "comment_edit", target, index: i, text: ac[i].text }); });
+      for (const c of ac.slice(bc.length)) out.push({ op: "comment", target, ...defined({ marker: c.marker, text: c.text }) });
+    }
 
     if (a.state !== b.state) {
       const open = b.state === "open" || b.state === undefined;
