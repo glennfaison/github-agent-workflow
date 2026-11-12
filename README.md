@@ -93,6 +93,25 @@ Every skill takes its inputs two ways, mixed freely in one prompt:
 
 `groom_batch` and `issues_per_run` were renamed `triage_batch` and `explore_batch`. The old names still work until the next major version.
 
+## Evaluating a skill against a model
+
+`npm test` checks a skill's text and its scenarios, but never watches a model follow it. To do that, run a model against the `gh` simulator:
+
+```bash
+export ANTHROPIC_API_KEY=...
+npm run eval -- shepherd-github-pr/conflict-without-checks --model <model>
+npm run eval -- shepherd-github-pr --model <model> --max-runs 3 --max-tokens 300000
+```
+
+The model is given the skill, the scenario's inputs, a `Skill` tool and a shell where `gh` is the simulator and `origin` is a local repository. What it leaves behind is judged with the scenario checker, and the report is one of **pass**, **deviation** (it differs from the scenario's golden without breaking a rule, and the golden may be the one that is wrong) or **violation** (it breaks the skill's contract), with the diff of effects and the skills it called.
+
+- **It is opt-in and costs money.** Without `ANTHROPIC_API_KEY` it stops and says so. Every request of a run is billed, and each one carries the whole conversation, so a run of a pipeline skill is typically in the low hundreds of thousands of tokens. `--max-tokens` (default 500000) caps the tokens of the whole invocation, `--max-turns` (default 60) caps one run, and `--max-runs` (default 1) caps how many scenarios a skill name runs. A run that hits a cap is reported as incomplete, not judged. It is never part of `npm test` or CI.
+- **You choose the model:** `--model` or `EVAL_MODEL`. There is no default.
+- **It runs the model's shell commands on your machine**, in a temporary directory with only `PATH` passed on (no API key, no GitHub token). That is not a sandbox against a hostile skill; use a container for one you do not trust.
+- **Try a changed skill without editing the package:** `--skills-dir <copy of skills/>` shows the model that copy while the verdict still comes from the package's contract. A copy that skips a conflicted PR is reported as a violation.
+- **Transcripts** (messages, the `Skill` calls, the `gh` call log, the verdict) are written to `.eval/transcripts/`, which git ignores.
+- Only item skills are run so far. A world field that stands for prose (`openQuestions`, `useCase` and the like) is not visible through `gh`, and the report says when a scenario has one.
+
 ## Security
 
 This pipeline merges code with nobody watching, and anyone can comment on a public issue. So the skills treat issue, PR and comment text as data, never as instructions, and they believe a lease, handoff or failure marker only when a repository owner, member or collaborator, the agent's own account, or a login in `trusted_authors` wrote it. A marker from anyone else is ignored. If the agent runs as a GitHub App, put its bot login in `trusted_authors`. See **Trust** in the protocol, and [ADR 0006](./docs/adr/0006-trust-boundary-for-markers.md).
