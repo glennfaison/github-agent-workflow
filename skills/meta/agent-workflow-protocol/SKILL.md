@@ -104,6 +104,7 @@ A key-value pair and free text that name the same thing resolve to the pair. An 
 | `max_shepherd_attempts` | `3` | `shepherd-github-pr` |
 | `max_review_rounds` | `3` | `review-github-pr` |
 | `max_item_failures` | `3` | `triage-github-issue`, `implement-github-issue`, `shepherd-github-pr`, `review-github-pr` |
+| `max_depth` | `1` | `implement-github-issues`, `implement-github-issue` |
 | `runner` | `unknown` | `explore-github-repo`, `triage-github-issues`, `triage-github-issue`, `implement-github-issues`, `implement-github-issue`, `shepherd-github-prs`, `shepherd-github-pr`, `review-github-prs`, `review-github-pr`, `reconcile-github-issues` |
 | `unattended` | `true` | `explore-github-repo`, `file-github-issues`, `triage-github-issues`, `triage-github-issue`, `implement-github-issues`, `implement-github-issue`, `shepherd-github-prs`, `shepherd-github-pr`, `review-github-prs`, `review-github-pr`, `reconcile-github-issues` |
 | `trusted_authors` | *(none)* | `triage-github-issues`, `triage-github-issue`, `implement-github-issues`, `implement-github-issue`, `shepherd-github-prs`, `shepherd-github-pr`, `review-github-prs`, `review-github-pr`, `reconcile-github-issues`, `setup-github-agent-workflow` |
@@ -176,6 +177,8 @@ A lease is **live** only if the item carries the lease label **and** the newest 
 
 **Nested calls.** A skill that calls an item skill (itself, or another step) on an item it already holds passes `lease_held=true`. The callee then skips its own claim and release, and requires that the lease is live. Without it the callee would see the caller's live lease and skip the item, and a nested release would drop the caller's lease. Only the caller that took a lease releases it.
 
+A skill passes `lease_held=true` only when **all** of these hold, and the scenario checker rejects a call that breaks one: the caller holds the lease on that item (it claimed it in this run, or it was itself given `lease_held=true` for it); the call is about that same item and no other, because a lease on one item says nothing about another; and the callee is an item skill that lists `lease_held` in its `params`. A group skill holds no lease and never passes it. Splitting an issue (`references/split.md`) makes no such call: each sub-issue is another item with its own lease, and `file-github-issues` takes no lease.
+
 TTLs are `lease_ttl_triage`, `lease_ttl_implement` and `lease_ttl_pr`. Concurrency is best-effort: two runs can claim the same item in the same second. Every step is idempotent, so the worst case is duplicated work.
 
 ## Markers
@@ -186,6 +189,7 @@ Hidden HTML comments make state readable without parsing prose. Append them as t
 |---|---|---|
 | `<!-- agent:lease step=… run=… expires=… -->` | `claim`, `renew` (edited in place, one comment per step) | lease expiry |
 | `<!-- agent:implements issue=N -->` | Implementing, in the **PR description** | links a PR to its issue, so a second PR is never opened for it (`prs_for_issue N`) |
+| `<!-- agent:split children=A,B -->` | Implementing, when it has split an issue that is too large and every sub-issue is filed and linked | the issue is split: it is not implemented, and `reconcile-github-issues` closes it when its sub-issues close (`references/split.md`) |
 | `<!-- agent:handoff kind=ready sha=… -->` | Shepherding | the PR was reviewable at this head SHA |
 | `<!-- agent:handoff kind=review sha=… open=N -->` | Reviewing, when it does not merge; `N` = findings still unfixed | counts review rounds; `open_findings N` tells Shepherding what is left |
 | `<!-- agent:handoff kind=merged sha=… -->` | Reviewing, after it merges | the review record stays with the PR |
@@ -211,6 +215,8 @@ Hidden HTML comments make state readable without parsing prose. Append them as t
 | `protected_files N` | the changed files that match `human_merge_paths`. Fails closed: a non-zero status means the list could not be read and the caller must not merge |
 | `codeowners_for N` | the CODEOWNERS owners of the changed files, read from the base branch. Nothing if there is no file or no owner |
 | `lane_holder N` | the other PR that holds the merge lane, if any (see `references/labels.md`). Prints its number and returns 0, or prints nothing and returns 1 |
+| `parent_of N`, `children_of N`, `depth_of N` | the issue N is a sub-issue of (nothing if it has none), its sub-issues (one number per line), and how many ancestors it has (`0` with no parent). They read GitHub's sub-issue links and nothing else. A status other than success means the answer could not be read. See `references/split.md` |
+| `link_sub_issue N X` | make X a sub-issue of N. Succeeds when X already is one of N's. Only for an issue this run filed |
 | `client_guidance_files`, `item_labels N issue\|pr` | the repository's agent-facing files on the default branch (one path per line, plus `repo_guidance`), and each label on the item as `name: description`. See `references/client-guidance.md` |
 | `log_issue`, `log_run FILE`, `log_status`, `read_logs DAYS` | see `references/log.md` |
 
@@ -238,6 +244,7 @@ This skill is reference material: it is never run, so it takes **no inputs** of 
 | `references/human-merge.md` | when and how to hand a reviewed PR to a person to merge |
 | `references/client-guidance.md` | the repository's own agent rules: what to read, who wins, and issues that must stay open |
 | `references/dedupe.md` | duplicate search and the canonical-issue rule |
+| `references/split.md` | when an issue is too large, how deep a split may go, how sub-issues are linked, and when the parent closes |
 | `references/issue-format.md` | well-formed issue contents (by category) and Triaging's check |
 | `references/pr-format.md` | agent PR body checklist; client templates take precedence |
 | `references/log.md` | run-log issue, its window and last-entry line, and the entry format |

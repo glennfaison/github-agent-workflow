@@ -14,6 +14,7 @@
 import { isDeepStrictEqual } from "node:util";
 import { readFileSync } from "node:fs";
 import { contractOf } from "./skill-contracts.mjs";
+import { canSplit, depthOf } from "../skills/meta/agent-workflow-protocol/scripts/helpers.mjs";
 
 export const MUTEX_ISSUE = ["needs-info", "ready-for-agent", "ready-for-human", "agent:pr-open"];
 export const MUTEX_PR = ["agent:needs-work", "agent:ready-for-review", "agent:human-merge"];
@@ -113,10 +114,25 @@ export function leaseProblem(it, leaseLabels, inputs = {}) {
   return held ? "another run holds a live lease" : null;
 }
 
+/** True when a trusted comment on the item carries the marker. A world comment is `{marker, trusted?, text?}`, trusted unless it says `trusted: false`: who wrote a comment is part of the world, and a run only adds its own. */
+export const hasTrustedMarker = (it, m) => (it.comments ?? []).some((c) => c.marker === m && c.trusted !== false);
+
+/** The issues that are sub-issues of `n` in the world: those whose `parent` is `n`. */
+export const childrenOf = (world, n) => (world.issues ?? []).filter((i) => i.parent === n);
+
+/**
+ * How many ancestors issue `n` has in the world, from each issue's `parent` (null for none). Null when a link
+ * leads to an issue the world does not hold or loops: that depth could not be read, and an unread depth never splits.
+ */
+export function worldDepth(world, n) {
+  const parents = Object.fromEntries((world.issues ?? []).map((i) => [i.number, i.parent ?? null]));
+  try { return depthOf(n, parents); } catch { return null; }
+}
+
 /** How many `requires` entries each oracle mirrors. A test fails when a skill's count differs. */
 export const ORACLE_REQUIRES = {
   "triage-github-issue": 3,
-  "implement-github-issue": 2,
+  "implement-github-issue": 3,
   "review-github-pr": 2,
   "shepherd-github-pr": 4,
 };
@@ -142,6 +158,7 @@ export const ORACLES = {
     if (issue.state !== "open" || !L.includes("ready-for-agent") || L.includes("agent:stuck")) {
       return { eligible: false, reason: "not an open ready-for-agent issue" };
     }
+    if (hasTrustedMarker(issue, "agent:split")) return { eligible: false, reason: "already split" };
     const lease = leaseProblem(issue, ["agent:in-progress"], inputs);
     return lease ? { eligible: false, reason: lease } : { eligible: true };
   },
@@ -201,9 +218,9 @@ export function createdItem(w, e) {
 
 /**
  * What a new item is made with, besides what a `create_*` effect names: its title, its body, when it was created, who
- * opened it and (for a PR) its branch. A `create_*` effect carries these as `data`. Editing one later is still `unmodelled`.
+ * opened it, (for a PR) its branch and (for an issue) the parent it is a sub-issue of. A `create_*` effect carries these as `data`. Editing one later is still `unmodelled`.
  */
-export const CREATION_DATA = ["title", "body", "createdAt", "author", "branch"];
+export const CREATION_DATA = ["title", "body", "createdAt", "author", "branch", "parent"];
 
 /** Apply effects to a copy of the world. Throws when an effect is impossible. */
 export function applyEffects(world, effects) {
@@ -235,7 +252,7 @@ export function applyEffects(world, effects) {
       case "label_remove":
         if (!t.labels.includes(e.label)) throw new Error(`removes \`${e.label}\` from ${e.target}, which does not carry it`);
         t.labels = t.labels.filter((l) => l !== e.label); break;
-      case "comment": t.comments.push({ marker: e.marker, text: e.text }); break;
+      case "comment": t.comments.push({ marker: e.marker, text: e.text, ...(e.trusted !== undefined ? { trusted: e.trusted } : {}) }); break;
       // A comment the run edited in place (a lease): `index` is its place among the item's comments, `text` its new text.
       case "comment_edit": {
         const c = t.comments[e.index];
@@ -689,7 +706,9 @@ export function checkGroupScenario(contract, sc) {
   if (got.length === want.length && got.every((t) => want.includes(t)) && got.some((t, i) => t !== want[i])) bad(`dispatches in the wrong order: oldest first is ${want.join(", ")}`);
 
   // forwarding and results
+  if ("lease_held" in inputs) bad("a group skill holds no lease, so its run cannot be given lease_held");
   for (const d of dispatches) {
+    if ("lease_held" in (d.inputs ?? {})) bad(`the dispatch of ${d.target} passes lease_held: a group skill holds no lease and never passes it`);
     compare(`the dispatch of ${d.target}`, d.inputs ?? {}, fwd, itemName);
     const n = String(d.target).match(/#(\d+)$/)?.[1];
     if (typeof d.result !== "string" || !d.result.startsWith(`#${n} `) || !matchesReturn(d.result, item_.returns)) bad(`${d.target}'s result \`${d.result}\` is not one of ${itemName}'s returns`);
@@ -761,6 +780,8 @@ export function checkScenario(contract, sc) {
   const isItem = contract.kind === "item" && contract.target?.param;
   const claimed = new Set(isItem && sc.target ? [sc.target] : []);
   const leaseHeld = sc.inputs?.lease_held === true;
+  // a call is a skill name, or {skill, target, inputs} when the inputs matter (lease_held)
+  const calls = (sc.expect.calls ?? []).map((c) => (typeof c === "string" ? { skill: c } : c));
 
   // 1. results
   const interrupted = sc.interrupted === true; // the pass died partway, so it returned nothing
@@ -812,7 +833,56 @@ export function checkScenario(contract, sc) {
     if (e.op === "close") {
       const t = item(world, e.target);
       if (t?.keepOpen) bad(`closes ${e.target}, which is keep-open`);
+      if (t && ref(e.target).kind === "issue" && hasTrustedMarker(t, "agent:split")) { // references/split.md, When the sub-issues close
+        const kids = childrenOf(world, t.number);
+        if (kids.length === 0) bad(`closes ${e.target}, a split issue whose sub-issues cannot be read`);
+        const open = kids.filter((c) => c.state === "open");
+        if (open.length) bad(`closes ${e.target}, a split issue, while sub-issue ${open.map((c) => `#${c.number}`).join(", ")} is open`);
+        const dropped = kids.filter((c) => c.closeReason === "not planned");
+        if (dropped.length) bad(`closes ${e.target}, a split issue, although sub-issue ${dropped.map((c) => `#${c.number}`).join(", ")} was closed as not planned`);
+      }
     }
+  }
+
+  // splitting an issue that is too large (references/split.md)
+  const maxDepth = sc.inputs?.max_depth ?? 1;
+  const made = work.filter((e) => e.op === "create_issue");
+  const targetN = isItem && sc.target ? ref(sc.target).n : null;
+  for (const e of made) {
+    if (e.data?.parent === undefined) continue;
+    const d = worldDepth(after, e.number);
+    if (d === null) bad(`sub-issue #${e.number} has a depth that cannot be read`);
+    else if (!canSplit(d - 1, maxDepth)) bad(`sub-issue #${e.number} is ${d} deep, past max_depth=${maxDepth}`);
+    if (isItem && e.data.parent !== targetN) bad(`sub-issue #${e.number} is linked to #${e.data.parent}, not to ${sc.target}, the issue this run split`);
+  }
+  if (sc.skill === "implement-github-issue" && isItem) {
+    const depth = worldDepth(world, targetN);
+    const may = canSplit(depth, maxDepth);
+    if (outcome === "split") {
+      const listed = [...results[0].matchAll(/#(\d+)/g)].map((m) => Number(m[1])).slice(1);
+      const sorted = (a) => [...a].sort((x, y) => x - y);
+      if (listed.length < 2) bad("a split makes two or more sub-issues");
+      if (!isDeepStrictEqual(sorted(made.map((e) => e.number)), sorted(listed))) bad(`the result names ${JSON.stringify(listed)}, but the run created ${JSON.stringify(made.map((e) => e.number))}`);
+      for (const e of made) {
+        if ((e.labels ?? []).length) bad(`sub-issue #${e.number} is filed with labels: ${e.labels.join(", ")}. Triaging picks up an issue with none`);
+        if (e.data?.parent !== targetN) bad(`sub-issue #${e.number} is not linked to ${sc.target} (\`data.parent\`)`);
+      }
+      const mark = work.find((e) => e.op === "comment" && e.target === sc.target && e.marker === "agent:split");
+      if (!mark) bad("a split without an `agent:split` comment on the issue");
+      else {
+        const kids = (mark.text ?? "").match(/children=([0-9,]+)/)?.[1];
+        if (kids === undefined || !isDeepStrictEqual(sorted(kids.split(",").map(Number)), sorted(listed))) bad(`the \`agent:split\` comment names ${kids ?? "no children"}, not ${listed.join(",")}`);
+      }
+      if (work.some((e) => e.op === "label_add" && e.target === sc.target && e.label === "agent:pr-open")) bad("a split issue does not gain agent:pr-open: no PR is open");
+      if (work.some((e) => e.op === "label_remove" && e.target === sc.target && e.label === "ready-for-agent")) bad("a split issue keeps ready-for-agent");
+      if (work.some((e) => e.op === "create_pr" || e.op === "push")) bad("a split opens no PR and pushes no branch");
+      if (!may) bad(`splits ${sc.target}, which is ${depth === null ? "of a depth that cannot be read" : `${depth} deep`} with max_depth=${maxDepth}: only an issue with fewer ancestors than max_depth splits`);
+    } else if (made.length) bad(`creates issues but the result is \`${results[0]}\`, not a split`);
+  }
+  if (sc.skill === "file-github-issues" && sc.inputs?.parent !== undefined) {
+    const P = Number(sc.inputs.parent);
+    if (results.some((r) => r === `duplicate of #${P} (commented)`)) bad(`reports a slice as a duplicate of #${P}, the parent it is a slice of`);
+    for (const e of made) if (!String(e.data?.body ?? "").startsWith(`Part of #${P}.`)) bad(`issue #${e.number} does not start with \`Part of #${P}.\``);
   }
 
   // merge rules (review-github-pr)
@@ -869,7 +939,21 @@ export function checkScenario(contract, sc) {
   }
 
   // skills called must be in the contract's `calls`
-  for (const c of sc.expect.calls ?? []) if (!(contract.calls ?? []).includes(c)) bad(`calls \`${c}\`, which is not in the contract's calls`);
+  for (const c of calls) if (!(contract.calls ?? []).includes(c.skill)) bad(`calls \`${c.skill}\`, which is not in the contract's calls`);
+
+  // lease_held=true lends the caller's lease to a nested call (**Nested calls** in the protocol). Only a skill that holds
+  // the lease on an item may pass it, only for that item, and only to an item skill that lists `lease_held`.
+  for (const c of calls) {
+    if (String(c.inputs?.lease_held) !== "true") continue;
+    const callee = contractOf(c.skill);
+    if (!isItem) bad(`passes lease_held=true to ${c.skill}, but this skill holds no lease`);
+    else {
+      if (outcome === "skipped") bad(`passes lease_held=true to ${c.skill}, but a skipped run claimed nothing, so it holds no lease`);
+      if (c.target === undefined) bad(`passes lease_held=true to ${c.skill} without saying which item the call is about`);
+      else if (c.target !== sc.target) bad(`passes lease_held=true to ${c.skill} for ${c.target}, but holds the lease on ${sc.target} only`);
+      if (!callee || callee.kind !== "item" || !(callee.params ?? []).includes("lease_held")) bad(`passes lease_held=true to ${c.skill}, which is not an item skill that lists \`lease_held\``);
+    }
+  }
 
   // triage-github-issue: a prior trusted outcome that stands is reused, so unattended-triage is not called for it
   if (sc.skill === "triage-github-issue" && sc.target) {
@@ -877,7 +961,7 @@ export function checkScenario(contract, sc) {
     const cs = t.comments ?? [];
     const i = cs.findLastIndex((c) => c.marker === "agent:outcome" && c.trusted);
     const stands = i !== -1 && !cs.slice(i + 1).some((c) => c.author === "human");
-    if (stands && (sc.expect.calls ?? []).includes("unattended-triage")) bad("calls unattended-triage although a prior trusted outcome still stands");
+    if (stands && calls.some((c) => c.skill === "unattended-triage")) bad("calls unattended-triage although a prior trusted outcome still stands");
   }
 
   // 5. rerun: asked again, the skill must find nothing to redo (`idempotent` in the contract)

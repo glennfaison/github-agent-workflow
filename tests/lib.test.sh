@@ -407,6 +407,33 @@ check "item_labels prints the label description" "evergreen: Recurring enhanceme
 w '.issues += [{number:91,state:"open",labels:["evergreen","no-description"]}]'
 check "item_labels keeps a label with no description" "evergreen: Recurring enhancement that stays open indefinitely|no-description: " "$(item_labels 91 issue | paste -sd'|' -)"
 
+echo "Splitting an issue: sub-issue links"
+check "max_depth default" "1:1" "$(bash -c 'source "$1"; echo "$max_depth:$MAX_DEPTH"' _ "$LIB")"
+check "max_depth can be set" "0" "$(max_depth=0 bash -c 'source "$1"; echo "$max_depth"' _ "$LIB")"
+items 200 204   # the issues the links are made between
+check "an issue with no parent has none" "" "$(parent_of 200)"
+parent_of 200 >/dev/null; check "no parent is not an error" 0 $?
+check "an issue with no parent has depth 0" "0" "$(depth_of 200)"
+check "a split is only allowed below the limit (depth 0, max 1)" "yes" "$(node "$PKG/skills/meta/agent-workflow-protocol/scripts/helpers.mjs" can-split "$(depth_of 200)" "$max_depth")"
+link_sub_issue 200 201; check "link_sub_issue links a child" 0 $?
+link_sub_issue 200 202
+check "parent_of reads the link" "200" "$(parent_of 201)"
+check "children_of lists the sub-issues in order" "201,202" "$(children_of 200 | paste -sd, -)"
+check "a sub-issue has depth 1" "1" "$(depth_of 201)"
+check "a sub-issue is not split again (depth 1, max 1)" "no" "$(node "$PKG/skills/meta/agent-workflow-protocol/scripts/helpers.mjs" can-split "$(depth_of 201)" "$max_depth")"
+link_sub_issue 200 201; check "linking twice succeeds" 0 $?
+check "linking twice adds nothing" "201,202" "$(children_of 200 | paste -sd, -)"
+link_sub_issue 201 203
+check "a grandchild has depth 2" "2" "$(depth_of 203)"
+check "an issue with no sub-issues has no children" "" "$(children_of 203)"
+fault '[{"match":"api repos/{owner}/{repo}/issues/200/parent","fail":"gh: Server Error (HTTP 500)"}]'   # reading 200'"'"'s parent fails
+parent_of 200 >/dev/null 2>&1; check "an unreadable parent is an error, not 'none'" 1 $?
+depth_of 201 >/dev/null 2>&1;  check "an unreadable ancestor fails depth_of" 1 $?
+no_faults
+w '.issues |= map(if .number == 204 then .parent = 200 elif .number == 200 then .parent = 204 else . end)'   # 200 and 204 are each other's parent
+depth_of 200 >/dev/null 2>&1; check "a cycle fails depth_of" 1 $?
+w '.issues |= map(if .number == 204 or .number == 200 then del(.parent) else . end)'
+
 echo "The gh simulator"
 # A call the simulator does not cover fails, and a helper may swallow the failure. The log does not forget it.
 check "no call in this run was one the simulator does not cover" "" "$(jq -r 'select(.kind == "unsupported") | .argv | join(" ")' "$GH_SIM_LOG")"

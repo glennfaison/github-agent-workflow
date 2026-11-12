@@ -1,0 +1,13 @@
+name: A split issue is closed when every sub-issue is closed as completed
+why: "Issue #68."
+skill: reconcile-github-issues
+world:
+  issues:
+    - {number: 12, state: open, labels: [ready-for-agent], comments: [{marker: "agent:split", trusted: true, text: "children=13,14"}]}
+    - {number: 13, state: closed, labels: [], parent: 12}
+    - {number: 14, state: closed, labels: [], parent: 12, closeReason: completed}
+expect:
+  results: ["#12 closed: all sub-issues closed"]
+  effects:
+    - {op: label_remove, target: "issue#12", label: ready-for-agent}
+    - {op: close, target: "issue#12"}

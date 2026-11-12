@@ -27,6 +27,7 @@ One candidate as key-value pairs: fill in each empty `title` to `evidence` line.
 ```
 Run /file-github-issues
 dry_run=false
+parent=
 limit=
 repo_guidance=AGENTS.md
 dedupe_closed_days=30
@@ -92,6 +93,7 @@ write_log=true
 ```
 Run /implement-github-issues on github.com/OWNER/REPO
 implement_batch=1
+max_depth=1
 runner=NAME
 log_window_days=14
 unattended=true
@@ -108,6 +110,7 @@ git_hooks_path=
 repo_guidance=AGENTS.md
 lease_ttl_implement=3 hours
 max_item_failures=3
+max_depth=1
 runner=NAME
 log_window_days=14
 unattended=true

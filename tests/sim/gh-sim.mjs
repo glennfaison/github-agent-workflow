@@ -11,7 +11,7 @@ import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import { SURFACE } from "./surface.mjs";
 import { applyEffects } from "../../scripts/scenario.mjs";
-import { SimError, unsupported, loadWorld, saveWorld, contextOf, view, commentsOf, derivedCount, checksOf, runId, branchOf, createdAt, iso, mergeStateOf, restComment, restPr, GH_FIELDS, MODELLED } from "./world.mjs";
+import { SimError, unsupported, loadWorld, saveWorld, contextOf, view, commentsOf, derivedCount, checksOf, runId, branchOf, createdAt, iso, mergeStateOf, restComment, restPr, restIssue, issueId, GH_FIELDS, MODELLED } from "./world.mjs";
 
 // ---- arguments ---------------------------------------------------------------------------------------------
 
@@ -458,6 +458,33 @@ function patchComment(ctx, id, fields) {
   return restComment(ctx, kind, findItem(ctx.world, kind, n), commentsOf(ctx, kind, findItem(ctx.world, kind, n))[i]);
 }
 
+/** The parent of issue `n` in the world (its `parent` field), as an issue, or a 404 when it has none. */
+function parentOf(ctx, n) {
+  const it = findItem(ctx.world, "issue", n);
+  if (!it) throw notFound();
+  const parent = it.parent == null ? undefined : findItem(ctx.world, "issue", it.parent);
+  if (!parent) throw notFound();
+  return restIssue(ctx, parent);
+}
+
+/** Makes the issue with id `sub_issue_id` a sub-issue of `parent`. GitHub allows one parent, and no loops. */
+function addSubIssue(ctx, parentN, fields) {
+  const parent = findItem(ctx.world, "issue", parentN);
+  if (!parent) throw notFound();
+  const id = Number(fields.sub_issue_id);
+  const child = Number.isInteger(id) ? ctx.world.issues.find((i) => issueId(i.number) === id) : undefined;
+  if (!child) throw apiError(404, "Not Found");
+  if (child.number === parentN) throw apiError(422, "An issue cannot be a sub-issue of itself");
+  if (child.parent != null) throw apiError(422, "Issue may not have more than one parent");
+  for (let up = parent; up; up = up.parent == null ? undefined : findItem(ctx.world, "issue", up.parent)) {
+    if (up.number === child.number) throw apiError(422, "Issue would create a cycle of sub-issues");
+  }
+  requireWritable(ctx, "sub_issues");
+  // A sub-issue filed by the run carries its parent as creation data, so a run that files and links is no `unmodelled`.
+  child.parent = parentN;
+  return restIssue(ctx, parent);
+}
+
 function contents(ctx, path, raw) {
   const files = ctx.world.files ?? {};
   if (!(path in files)) throw notFound();
@@ -500,6 +527,18 @@ const api = {
       return out(page(commentsOf(ctx, kind, it).map((c) => restComment(ctx, kind, it, c)), q, a));
     }
     if (method === "PATCH" && (g = /^issues\/comments\/(\d+)$/.exec(rest))) return out(patchComment(ctx, Number(g[1]), fields));
+    if (method === "GET" && (g = /^issues\/(\d+)$/.exec(rest))) {
+      const it = findItem(ctx.world, "issue", Number(g[1]));
+      if (!it) throw notFound();
+      return out(restIssue(ctx, it));
+    }
+    if (method === "GET" && (g = /^issues\/(\d+)\/parent$/.exec(rest))) return out(parentOf(ctx, Number(g[1])));
+    if (method === "GET" && (g = /^issues\/(\d+)\/sub_issues$/.exec(rest))) {
+      const n = Number(g[1]);
+      if (!findItem(ctx.world, "issue", n)) throw notFound();
+      return out(page(ctx.world.issues.filter((i) => i.parent === n).sort((x, y) => x.number - y.number).map((i) => restIssue(ctx, i)), q, a));
+    }
+    if (method === "POST" && (g = /^issues\/(\d+)\/sub_issues$/.exec(rest))) return out(addSubIssue(ctx, Number(g[1]), fields));
     if (method === "GET" && (g = /^pulls\/(\d+)\/files$/.exec(rest))) {
       const pr = findItem(ctx.world, "pr", Number(g[1]));
       if (!pr) throw notFound();

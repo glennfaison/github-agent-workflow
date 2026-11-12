@@ -62,6 +62,8 @@ Three inputs are mostly for skills that call other skills, and a scheduled promp
 | `lease_held` | the **Defaults** table, and the item skills | A nested call that borrows its caller's lease |
 | `limit` | `file-github-issues` | Capping one call. `explore-github-repo` passes `explore_batch` as `limit`, so set `explore_batch` on a schedule instead |
 
+`max_depth` (default `1`) is a setting, not plumbing: it bounds how deep `implement-github-issue` splits an issue that is too large into sub-issues, and `0` turns splitting off. Splitting uses GitHub's sub-issue links, so the token needs write access to issues. Without them the issue is never split. See `references/split.md` in the protocol.
+
 ## Cadence (starting point)
 
 - Exploring: a few times a week

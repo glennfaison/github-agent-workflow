@@ -62,7 +62,7 @@ Title: `Refactor <what> to <benefit>`
 | **Behaviour guard.** Required | How anyone can tell behaviour did not change: the existing tests that cover the code, or a note that a characterization test must be written first |
 | **Where.** Required | File paths and symbols |
 | Cost of leaving it | What it slows down, breaks or risks |
-| Size | `small`, `medium` or `large`. If `large`, propose how to split it |
+| Size | `small`, `medium` or `large`. If `large`, propose how to split it. `implement-github-issue` splits a `large` issue that divides into sub-issues (`references/split.md`) |
 | Suggested direction | |
 
 ### Debt (`Category: debt`)

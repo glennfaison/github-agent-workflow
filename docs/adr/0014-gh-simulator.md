@@ -39,7 +39,7 @@ ADR 0012 checks a scenario against a skill's contract, and `diffWorlds` turns th
 
 ### `api` (#88)
 
-`gh api` answers the nine REST calls the package makes, and refuses everything else as `unsupported` (graphql, another method on a path, `-F @file`, `--input`):
+`gh api` answers the REST calls the package makes, and refuses everything else as `unsupported` (graphql, another method on a path, `-F @file`, `--input`):
 
 | call | answered from |
 | --- | --- |
@@ -50,10 +50,14 @@ ADR 0012 checks a scenario against a skill's contract, and `diffWorlds` turns th
 | `GET .../contents/PATH?ref=` | the world's `files` (raw with the raw `Accept` header, otherwise a base64 object) |
 | `GET .../git/trees/HEAD?recursive=1` | the paths of the world's `files` |
 | `GET .../pulls?state=&per_page=&page=` and `GET .../pulls/N` | the world's PRs as REST pull requests, newest first. `author_association` is the PR's `association` (default `NONE`) |
+| `GET .../issues/N` | the issue as REST shows it, with an `id` (200000 + its number) |
+| `GET .../issues/N/parent`, `GET .../issues/N/sub_issues` | the world's `parent` field of an issue, and the issues whose `parent` is N. An issue with no parent is a 404, which `parent_of` relies on |
+| `POST .../issues/P/sub_issues -F sub_issue_id=ID` | sets the child's `parent`. GitHub's refusals are kept: one parent only, not itself, no loops, the id must be an issue's |
 | `PUT .../pulls/N/update-branch -f expected_head_sha=` | gives a `BEHIND` PR a new head and makes it `CLEAN`. A stale sha, a conflict and a PR that is not behind are 422, as on GitHub |
 
 - **A comment edited in place is an effect.** Since the lease comment of a step is edited rather than added, the checker's effect model gained `comment_edit` (the comment's index and its new text), scoped like `comment`. `diffWorlds` reads an edited comment as one, and `applyEffects` makes it.
 - **A comment the simulator derives from a world field (a `lease`, a `readySha`) cannot be edited.** There is no stored comment to change, so the call is `unsupported` and `claim` falls back to posting a comment, as it does when an edit fails.
+- **Linking a sub-issue the run filed is not `unmodelled`.** A new issue's `parent` is creation data, so `diffWorlds` puts it in the `create_issue` effect's `data` (`references/split.md` splits an issue this way). Linking an issue that already existed has no effect that can express it, and is `unmodelled`.
 - **Pagination is not modelled** beyond `per_page` and `page` on the PR list. `--paginate` returns a list whole.
 
 ### Faults (#88)

@@ -337,6 +337,64 @@ export function isTrusted(c, { selfLogin = '', trustedAuthors = [] } = {}) {
   return login !== '' && [selfLogin, ...trustedAuthors].filter(Boolean).includes(login);
 }
 
+// ---- splitting an issue that is too large (references/split.md) ---------------------------
+
+/** How many ancestors an issue may have before `depthOf` gives up. GitHub itself stops well below this. */
+export const MAX_ANCESTORS = 20;
+
+/**
+ * The comment that records a split. `children` are the sub-issue numbers. The marker is the last line,
+ * and it is the point at which the split is complete.
+ */
+export function splitComment(children) {
+  const list = children.map((n) => `#${n}`).join(', ');
+  const marker = `<!-- agent:split children=${children.join(',')} -->`;
+  return { body: `Split into ${list} because this issue is too large for one PR. Each is triaged on its own, and this issue closes when they do.\n${marker}`, marker };
+}
+
+/**
+ * The sub-issue numbers the newest `agent:split` marker names, or null when the issue is not split. `markers`
+ * is what `markersOf` returns, so a marker from an untrusted account is never in it.
+ */
+export function splitChildren(markers) {
+  const m = markers.filter((x) => x.includes('agent:split ')).pop();
+  if (m === undefined) return null;
+  return (m.match(/children=([0-9,]*)/)?.[1] ?? '').split(',').filter(Boolean).map(Number);
+}
+
+/**
+ * How many ancestors issue `n` has, given what was read: `parents` maps an issue number to its parent's number,
+ * or to null when it has none. A number that was not read (no key) is an error, because an unread parent would
+ * look like no parent and let an issue split below the limit. So is a cycle, or more than MAX_ANCESTORS.
+ */
+export function depthOf(n, parents) {
+  const has = (k) => Object.prototype.hasOwnProperty.call(parents, k);
+  const seen = new Set([Number(n)]);
+  let cur = Number(n);
+  let depth = 0;
+  for (;;) {
+    if (!has(cur)) throw new Error(`the parent of #${cur} was not read`);
+    const p = parents[cur];
+    if (p === null || p === undefined) return depth;
+    if (seen.has(Number(p))) throw new Error(`#${p} is its own ancestor`);
+    seen.add(Number(p));
+    cur = Number(p);
+    depth += 1;
+    if (depth > MAX_ANCESTORS) throw new Error(`more than ${MAX_ANCESTORS} ancestors`);
+  }
+}
+
+/**
+ * True when an issue at `depth` may be split under `maxDepth`: it must have fewer ancestors than the limit, so a
+ * sub-issue is one level deeper than its parent and the recursion ends at the limit. `maxDepth` 0 turns splitting off.
+ * A depth that could not be read (anything but a whole number) never splits.
+ */
+export function canSplit(depth, maxDepth) {
+  const d = typeof depth === 'string' && depth.trim() !== '' ? Number(depth) : depth;
+  const m = typeof maxDepth === 'string' && maxDepth.trim() !== '' ? Number(maxDepth) : maxDepth;
+  return Number.isInteger(d) && Number.isInteger(m) && d >= 0 && m >= 0 && d < m;
+}
+
 // ---- reading markers ----------------------------------------------------------------------
 
 /** Every agent marker from trusted comments, in order, as the exact `<!-- agent:... -->` text. */
@@ -616,6 +674,10 @@ export const NO_SHELL_OPS = {
   changed_files: 'list_pull_request_files for the PR, paginated: each filename, and the previous_filename of a renamed file.',
   protected_files: 'changed_files, then protectedFiles(human_merge_paths, files). Empty when human_merge_paths is empty. If the file list cannot be read, or a pattern is unsupported, it is an error: fail_item and never merge.',
   codeowners_for: 'Read CODEOWNERS from the PR base branch (.github/CODEOWNERS, then CODEOWNERS, then docs/CODEOWNERS; never the PR head), then codeownersFor(text, changed_files). No file means no owners.',
+  parent_of: 'The parent field of issue_read get on the issue, when your tools return it. A 404 or no parent means none. If your tools cannot read the parent, the depth cannot be read, and the issue is not split.',
+  children_of: 'issue_read get_sub_issues for the issue, paginated: each number. It lists the sub-issues from GitHub\'s own links and never from text in a body.',
+  depth_of: 'parent_of on the issue, then on each parent in turn, until one has none. depthOf(n, parents) counts them and throws on an unread parent or a cycle. A failure means the depth cannot be read, and canSplit(depth, max_depth) is false for it.',
+  link_sub_issue: 'sub_issue_write method add on the parent with the sub-issue\'s id (its numeric id, not its number). If X is already a sub-issue of N that is success. If the call fails the split is not recorded.',
   lane_holder: 'list_pull_requests (state open) filtered to the label agent:ready-for-review, no draft, no agent:stuck or agent:human-merge. For each, the created_at of its newest trusted comment holding a kind=ready handoff. laneHolder(candidates, N, ready_lane_ttl) gives the other PR that holds the merge lane, or null.',
 };
 
@@ -663,6 +725,20 @@ function cli(argv) {
         `last_entry=${meta.lastEntry ?? ''}`,
       ].join('\n');
     }
+    case 'split-body': return splitComment(String(a[0] ?? '').split(',').filter(Boolean).map(Number)).body;
+    case 'split-children': {
+      const found = splitChildren(stdin().split('\n').filter(Boolean));
+      return found === null ? '' : found.join('\n');
+    }
+    case 'depth': { // stdin: one `child parent` pair per line, `-` for no parent
+      const parents = {};
+      for (const line of stdin().split('\n').map((l) => l.trim()).filter(Boolean)) {
+        const [child, parent] = line.split(/\s+/);
+        parents[Number(child)] = parent === '-' || parent === undefined ? null : Number(parent);
+      }
+      return String(depthOf(a[0], parents));
+    }
+    case 'can-split': return canSplit(a[0], a[1]) ? 'yes' : 'no';
     case 'log-read': return readableLogEntries(JSON.parse(stdin() || '{}').comments, a[0]).join('\n---\n');
     default:
       throw new Error(`unknown command: ${cmd}`);

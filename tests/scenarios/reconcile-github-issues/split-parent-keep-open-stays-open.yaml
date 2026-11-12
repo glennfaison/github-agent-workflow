@@ -1,0 +1,14 @@
+name: A keep-open split issue is not closed when its sub-issues close
+why: "Issue #68. Same rule as a merged PR on a keep-open issue."
+skill: reconcile-github-issues
+world:
+  issues:
+    - {number: 12, state: open, keepOpen: true, labels: [ready-for-agent], comments: [{marker: "agent:split", trusted: true, text: "children=13,14"}]}
+    - {number: 13, state: closed, labels: [], parent: 12}
+    - {number: 14, state: closed, labels: [], parent: 12}
+expect:
+  results: ["#12 kept open: all sub-issues closed"]
+  effects:
+    - {op: label_remove, target: "issue#12", label: ready-for-agent}
+    - {op: comment, target: "issue#12"}
+    - {op: label_add, target: "issue#12", label: ready-for-human}

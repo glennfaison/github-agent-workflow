@@ -718,7 +718,7 @@ test("the effects of every golden scenario, made as gh calls, leave the world th
   // Not replayed: a scenario that opens a PR (its commit is a `git` fact) or syncs the label catalog (a repository op).
   // A new scenario with an effect that no `gh` call makes has to be added here on purpose.
   const NOT_REPLAYED = [
-    "implement-github-issue/an-interrupted-pass-does-not-open-a-second-pr.yaml", "implement-github-issue/merged-pr-on-a-keep-open-issue-is-ignored.yaml",
+    "implement-github-issue/a-split-marker-from-a-stranger-does-not-count.yaml", "implement-github-issue/an-interrupted-pass-does-not-open-a-second-pr.yaml", "implement-github-issue/merged-pr-on-a-keep-open-issue-is-ignored.yaml",
     "setup-github-agent-workflow/an-agent-label-is-reset-and-a-triage-label-is-kept.yaml", "setup-github-agent-workflow/an-empty-repository-gets-every-label.yaml",
   ];
   assert.deepEqual(skipped.filter((f) => !NOT_REPLAYED.includes(f)), [], "a scenario has an effect that no gh call makes");
@@ -868,6 +868,87 @@ test("update-branch gives a BEHIND PR a new head and brings it up to date, and r
     assert.equal(x.bytes(), was, "a refused update changes nothing");
   }
   assert.equal(r.call("api", "-X", "PUT", API("pulls/99/update-branch")).err, "gh: Not Found (HTTP 404)\n");
+});
+
+const W4 = () => ({
+  repo: "acme/widgets",
+  issues: [
+    { number: 1, state: "open", title: "Epic", labels: ["ready-for-agent"], body: "big" },
+    { number: 2, state: "open", title: "Slice", parent: 1 },
+    { number: 3, state: "closed", title: "Slice 2", parent: 1, closeReason: "not planned" },
+    { number: 4, state: "open", title: "Grandchild", parent: 2 },
+    { number: 5, state: "open", title: "Loose" },
+  ],
+});
+
+test("api reads an issue, with an id the sub-issue API takes", () => {
+  const r = run2(W4());
+  const i = r.call("api", API("issues/3")).json();
+  assert.deepEqual([i.number, i.id, i.state, i.state_reason, i.title, i.html_url], [3, 200003, "closed", "not_planned", "Slice 2", "https://github.com/acme/widgets/issues/3"]);
+  assert.equal(r.call("api", API("issues/1"), "--jq", ".id").out, "200001\n");
+  assert.equal(r.call("api", API("issues/1"), "--jq", "[.labels[].name]").out, '["ready-for-agent"]\n');
+  assert.equal(r.call("api", API("issues/99")).err, "gh: Not Found (HTTP 404)\n");
+});
+
+test("api reads an issue's parent, and a 404 is how an issue with none answers", () => {
+  const r = run2(W4());
+  assert.equal(r.call("api", API("issues/2/parent"), "--jq", ".number").out, "1\n");
+  assert.equal(r.call("api", API("issues/4/parent"), "--jq", ".number").out, "2\n");
+  const top = r.call("api", API("issues/1/parent"), "--jq", ".number");
+  assert.deepEqual([top.code, top.out, top.err], [1, "", "gh: Not Found (HTTP 404)\n"]);
+  assert.equal(r.call("api", API("issues/99/parent")).err, "gh: Not Found (HTTP 404)\n");
+  const dangling = run2({ issues: [{ number: 2, state: "open", parent: 77 }] });
+  assert.equal(dangling.call("api", API("issues/2/parent")).code, 1, "a parent the world does not hold is not found");
+});
+
+test("api lists an issue's sub-issues, oldest number first", () => {
+  const r = run2(W4());
+  assert.equal(r.call("api", API("issues/1/sub_issues"), "--paginate", "--jq", ".[].number").out, "2\n3\n");
+  assert.equal(r.call("api", API("issues/5/sub_issues"), "--jq", "length").out, "0\n");
+  assert.equal(r.call("api", API("issues/99/sub_issues")).err, "gh: Not Found (HTTP 404)\n");
+  assert.equal(r.call("api", API("issues/1/sub_issues?per_page=1&page=2"), "--jq", ".[].number").out, "3\n");
+});
+
+test("POST sub_issues links an issue by id, and the link is read back", () => {
+  const r = run2(W4());
+  const id = r.call("api", API("issues/5"), "--jq", ".id").out.trim();
+  const out = r.call("api", "-X", "POST", API("issues/1/sub_issues"), "-F", `sub_issue_id=${id}`);
+  assert.equal(out.code, 0, out.err);
+  assert.equal(out.json().number, 1, "it answers with the parent");
+  assert.equal(r.read().issues[4].parent, 1);
+  assert.equal(r.call("api", API("issues/5/parent"), "--jq", ".number").out, "1\n");
+  assert.equal(r.call("api", API("issues/1/sub_issues"), "--jq", "[.[].number]").out, "[2,3,5]\n");
+});
+
+test("a sub-issue link GitHub would refuse is refused, and changes nothing", () => {
+  const r = run2(W4()), before = r.bytes();
+  const link = (parent, child, extra = []) => r.call("api", "-X", "POST", API(`issues/${parent}/sub_issues`), "-F", `sub_issue_id=${child}`, ...extra);
+  assert.equal(link(1, 200001).err, "gh: An issue cannot be a sub-issue of itself (HTTP 422)\n");
+  assert.equal(link(1, 200002).err, "gh: Issue may not have more than one parent (HTTP 422)\n");
+  assert.equal(link(4, 200001).err, "gh: Issue would create a cycle of sub-issues (HTTP 422)\n", "1 is 4's grandparent");
+  assert.equal(link(5, 123).err, "gh: Not Found (HTTP 404)\n", "no issue has that id");
+  assert.equal(link(99, 200005).err, "gh: Not Found (HTTP 404)\n");
+  assert.equal(r.call("api", "-X", "POST", API("issues/1/sub_issues")).err, "gh: Not Found (HTTP 404)\n", "no id given");
+  assert.equal(r.bytes(), before);
+  const sc = run2({ skill: "s", world: W4(), expect: {} });
+  const refused = sc.call("api", "-X", "POST", API("issues/1/sub_issues"), "-F", "sub_issue_id=200005");
+  assert.equal(refused.code, 2);
+  assert.match(refused.err, /scenario file/);
+});
+
+test("a run that files an issue and links it leaves its parent in the create effect, and linking an old issue is unmodelled", () => {
+  const r = run2(W4()), before = structuredClone(r.read());
+  const made = r.call("issue", "create", "--title", "Add the parser", "--body", "Part of #1.");
+  const n = Number(made.out.trim().split("/").pop());
+  assert.equal(r.call("api", "-X", "POST", API("issues/1/sub_issues"), "-F", `sub_issue_id=${200000 + n}`).code, 0);
+  const diff = diffWorlds(before, r.read());
+  assert.deepEqual(diff.filter((e) => e.op === "unmodelled"), []);
+  assert.deepEqual(diff.find((e) => e.op === "create_issue").data, { title: "Add the parser", body: "Part of #1.", createdAt: diff[0].data.createdAt, author: "agent-bot", parent: 1 });
+  assert.ok(sameWorld(applyEffects(before, diff), r.read()));
+  const old = run2(W4());
+  const b2 = structuredClone(old.read());
+  old.call("api", "-X", "POST", API("issues/1/sub_issues"), "-F", "sub_issue_id=200005");
+  assert.deepEqual(diffWorlds(b2, old.read()).map((e) => [e.op, e.field]), [["unmodelled", "parent"]], "an issue that already existed gets its parent as a change no effect can express");
 });
 
 test("api refuses what it does not model, and says what", () => {

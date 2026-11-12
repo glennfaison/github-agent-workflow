@@ -1,0 +1,14 @@
+name: A split marker that no trusted account wrote does not stop the issue being implemented
+why: "Issue #68. See Trust in the protocol: a marker from anyone else is ignored."
+skill: implement-github-issue
+target: issue#12
+world:
+  issues:
+    - {number: 12, state: open, labels: [ready-for-agent], comments: [{marker: "agent:split", trusted: false}]}
+expect:
+  rerun: ineligible
+  result: "#12 PR #40 opened"
+  effects:
+    - {op: create_pr, number: 40, labels: ["agent:needs-work"], closes: [12]}
+    - {op: label_remove, target: "issue#12", label: ready-for-agent}
+    - {op: label_add, target: "issue#12", label: agent:pr-open}

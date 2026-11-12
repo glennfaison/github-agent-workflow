@@ -226,6 +226,21 @@ export function restComment(ctx, kind, it, c) {
   };
 }
 
+/** An issue's id, as the REST API shows it. The sub-issue API takes an id, not a number. */
+export const issueId = (n) => 200_000 + n;
+
+/** An issue as `repos/{owner}/{repo}/issues/N` returns it. */
+export function restIssue(ctx, it) {
+  const closed = it.state === "closed";
+  return {
+    url: `https://api.github.com/repos/${ctx.nameWithOwner}/issues/${it.number}`, html_url: itemUrl(ctx, "issue", it), id: issueId(it.number), node_id: `I_${it.number}`,
+    number: it.number, state: closed ? "closed" : "open", state_reason: closed ? (it.closeReason === "not planned" ? "not_planned" : "completed") : null,
+    title: it.title ?? `Issue ${it.number}`, body: it.body ?? "", user: restUser(it.author ?? "reporter"), author_association: "NONE",
+    labels: labelsOf(ctx, it).map((l) => ({ id: 0, name: l.name, description: l.description, color: l.color })),
+    comments: commentsOf(ctx, "issue", it).length, created_at: createdAt(it), updated_at: lastTouch(ctx, "issue", it), closed_at: closed ? (it.closedAt ?? lastTouch(ctx, "issue", it)) : null,
+  };
+}
+
 /** A pull request as `repos/{owner}/{repo}/pulls` returns it. A world PR can give its author's `association` (default NONE). */
 export function restPr(ctx, it) {
   const state = it.state ?? "open", at = createdAt(it);

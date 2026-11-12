@@ -1,0 +1,11 @@
+name: A split issue is left alone while any sub-issue is open
+why: "Issue #68."
+skill: reconcile-github-issues
+world:
+  issues:
+    - {number: 12, state: open, labels: [ready-for-agent], comments: [{marker: "agent:split", trusted: true, text: "children=13,14"}]}
+    - {number: 13, state: closed, labels: [], parent: 12}
+    - {number: 14, state: open, labels: [ready-for-agent], parent: 12}
+expect:
+  results: ["nothing to do"]
+  effects: []
