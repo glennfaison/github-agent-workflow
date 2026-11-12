@@ -1,5 +1,0 @@
----
-"github-agent-workflow": patch
----
-
-The five group skills have scenarios (three each). A group scenario lists `expect.dispatches`, the group's `results` and its one run-log `entry`, and for `triage-github-issues` the `reconcile` call that comes first. The checker picks the batch from the real item skill's eligibility oracle, oldest first, so a dispatch of an ineligible item, one past the batch, or in the wrong order fails. It reads what a dispatch must carry from the real item contract, `write_log=false` and the run's inputs that the item lists in `params`, so a dispatch that drops `trusted_authors`, or forwards something the item does not list, fails. `explore-github-repo` is checked as its own kind of group: findings ranked best first, one call to `file-github-issues` with `limit` and the shared inputs, only filed issues counting toward the cap, and the count line and deferred list in the log. The coverage gate wants three scenarios for a group skill, one that dispatches and one that does not. See ADR 0012.
