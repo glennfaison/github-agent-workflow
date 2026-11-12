@@ -76,7 +76,7 @@ A world (and so a scenario's `world:`) may carry `faults: [{match, fail, exit?, 
 ## What it does not do
 
 - **It is not GitHub.** Rate limits, pagination, webhooks, merge queues, branch protection and reviews are not modelled. A merge is blocked by the merge state a world gives, nothing else. Some error messages are what `gh` prints and some are close to it (a merge of a closed PR, an unreadable body file).
-- **Some world fields cannot be shown.** `entries`, `kind`, `openQuestions`, `useCase` and `wontfix` stand for facts a model would read from prose (a log entry, a body), not for GitHub state. `seed.mjs` says which ones a world has. A scenario that depends on them needs a runner to write the prose (#61).
+- **Some world fields cannot be shown.** `entries`, `kind`, `openQuestions`, `useCase` and `wontfix` stand for facts a model would read from prose (a log entry, a body), not for GitHub state. `seed.mjs` says which ones a world has. A scenario that depends on them needs a runner to write the prose. `npm run eval` (ADR 0016, #61) does not do that yet: it reports that the scenario has such fields.
 - **A world has no branch names, check names or logs.** A PR is on `feat/<closed issue>-pr-<N>`, which matches the pattern `prs_for_issue` reads, unless it names a `branch`. A check is `check-<i>`. The log of a failing run is one fixed line.
 - **Its field lists are a copy.** They come from one `gh` version and can fall behind.
 - **It is slow next to a shell function.** Each call starts Node (about 75 ms, half of it loading `yaml` through the checker). `tests/lib.test.sh` makes about 390 calls and takes about 45 seconds, where the stub took 10. A compile cache saved little (12 ms a call), so it is not used.

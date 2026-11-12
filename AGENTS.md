@@ -40,6 +40,8 @@ skills/<bucket>/<skill>/SKILL.md     exactly three levels deep
 
 **Every `gh` command a skill uses is listed in `tests/sim/surface.mjs`.** The `gh` simulator (`tests/sim/bin/gh`) answers `gh` from a world file, and a test greps `skills/` and `scripts/` for `gh` calls. A new one fails `npm test` until it is listed as `supported` (and the simulator answers it) or `out-of-scope`. Use only `--json` fields that `gh` has. `tests/lib.test.sh` runs against the same simulator, so there is one mock of `gh`. See `docs/adr/0014-gh-simulator.md`.
 
+**A model can be run through a skill, and the outcome checked.** `npm run eval -- <skill>/<scenario> --model <model>` seeds the simulator from a scenario's `world`, lets a model work the skill, and judges what it left behind with the same checker: a **violation** of the contract, a **deviation** from the scenario's golden (the golden may be wrong), or a pass. It is opt-in: it needs `ANTHROPIC_API_KEY`, it costs money (`--max-runs` and `--max-tokens` cap it, 500000 tokens by default), and it is never part of `npm test` or CI. Transcripts go in `.eval/`, which git ignores. See `docs/adr/0016-model-evals.md`.
+
 ## Inputs and defaults
 
 **Every skill has an `## Inputs` section.** It names the inputs the skill accepts, in two interchangeable forms: **key-value pairs** (`key=value` on a line of its own) and **free text** (whatever the prompt says). It also names the skill's **implicit dependencies**: the tools, skills and repository state it needs that are not inputs. Every pipeline skill lists `runner` and `unattended`, and every skill that reads markers lists `trusted_authors`.
@@ -72,6 +74,7 @@ npm test                      # starts with hooks:check
 npm run sync:check
 npm run check-plugin-version
 npm run check                 # lint, validate, check-plugin-version and test: everything CI runs
+npm run eval -- <skill>/<scenario> --model <model>   # not a check: runs a model, costs money (ANTHROPIC_API_KEY)
 ```
 
 ## Git hooks
