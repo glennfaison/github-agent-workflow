@@ -14,6 +14,55 @@ export const PIPELINE_KINDS = ["item", "group", "sweep"];
 export const KINDS = [...PIPELINE_KINDS, "utility", "reference"];
 export const WRITE_SCOPES = ["claimed", "repository", "other", "shared", "unmodelled"];
 
+// What an effect can be, as the scenario checker models it (scripts/scenario.mjs). `unmodelled` is not something a skill
+// does, so a contract cannot allow it. An effect in REPOSITORY_OPS is a `repository` write, whatever it targets.
+export const REPOSITORY_OPS = ["push", "merge", "delete_branch", "create_pr", "label_create", "label_update", "write_file"];
+const ITEM_OPS = ["label_add", "label_remove", "comment", "comment_edit", "close", "review_request"];
+export const ALLOW_OPS = [...ITEM_OPS, "create_issue", ...REPOSITORY_OPS];
+const LABEL_OPS = ["label_add", "label_remove"];
+const MARKER_OPS = ["comment", "comment_edit"];
+// The ops that can land in each scope: scopeOf puts REPOSITORY_OPS in `repository`, a comment on the run log in `shared`,
+// and a `create_issue` always in `other`.
+export const SCOPE_OPS = {
+  claimed: ITEM_OPS,
+  repository: REPOSITORY_OPS,
+  other: [...ITEM_OPS, "create_issue"],
+  shared: MARKER_OPS,
+};
+
+/**
+ * The parts of one `effects.writes.<scope>` entry. An entry is a sentence, or `{text, allow}`: the sentence stays as the
+ * explanation, and `allow` is one mapping or a list of them, each saying which effect the sentence permits.
+ * @returns {{text: string|undefined, allow: object[]|undefined}} `allow` is undefined for a prose-only entry
+ */
+export function entryParts(entry) {
+  if (typeof entry === "string") return { text: entry, allow: undefined };
+  if (!entry || typeof entry !== "object" || Array.isArray(entry)) return { text: undefined, allow: undefined };
+  const a = entry.allow;
+  return { text: entry.text, allow: a === undefined ? undefined : Array.isArray(a) ? a : [a] };
+}
+
+/** Every structured `allow` mapping in a scope's entries, flattened. Empty when the scope is still prose. */
+export function allowsOf(list) {
+  return (Array.isArray(list) ? list : []).flatMap((e) => entryParts(e).allow ?? []);
+}
+
+/** Problems with one `allow` mapping, as short messages. */
+function checkAllow(a, scope) {
+  if (!a || typeof a !== "object" || Array.isArray(a)) return ["an `allow` must be a mapping with an `op`"];
+  const out = [];
+  for (const k of Object.keys(a)) if (!["op", "label", "marker"].includes(k)) out.push(`\`allow\` has unknown key \`${k}\``);
+  if (!ALLOW_OPS.includes(a.op)) return [...out, `\`allow.op\` must be one of ${ALLOW_OPS.join(", ")}`];
+  if (SCOPE_OPS[scope] && !SCOPE_OPS[scope].includes(a.op)) out.push(`\`${a.op}\` can never land in \`${scope}\`, so this entry would allow nothing`);
+  if (LABEL_OPS.includes(a.op)) {
+    if (!isText(a.label)) out.push(`\`${a.op}\` needs a \`label\`: a name, or a glob such as \`agent:*\`. Use \`*\` to allow any`);
+  } else if (a.label !== undefined) out.push(`\`label\` applies only to ${LABEL_OPS.join(" and ")}, not \`${a.op}\``);
+  if (MARKER_OPS.includes(a.op)) {
+    if (!("marker" in a) || (a.marker !== null && !isText(a.marker))) out.push(`\`${a.op}\` needs a \`marker\`: a name, a glob such as \`agent:*\`, or \`null\` for a comment with no marker`);
+  } else if ("marker" in a) out.push(`\`marker\` applies only to ${MARKER_OPS.join(" and ")}, not \`${a.op}\``);
+  return out;
+}
+
 const COMMON = ["kind", "step", "params", "requires", "returns", "ensures", "effects", "never", "calls", "idempotent", "terminates"];
 // A utility skill is called from other skills and has no step of its own, but says who calls it.
 const UTILITY = COMMON.filter((k) => k !== "step").concat("used_by");
@@ -154,8 +203,21 @@ export function checkContracts(skills, byName, external = new Set(), { pending =
         if (!e.writes || typeof e.writes !== "object" || Array.isArray(e.writes)) err("`effects.writes` must be a mapping (it may be empty)");
         else {
           for (const [scope, list] of Object.entries(e.writes)) {
-            if (!WRITE_SCOPES.includes(scope)) err(`effects.writes scope \`${scope}\` is not one of ${WRITE_SCOPES.join(", ")}`);
-            else if (!isStrings(list)) err(`effects.writes.${scope} must be a non-empty list of strings`);
+            if (!WRITE_SCOPES.includes(scope)) { err(`effects.writes scope \`${scope}\` is not one of ${WRITE_SCOPES.join(", ")}`); continue; }
+            if (!Array.isArray(list) || list.length === 0) { err(`effects.writes.${scope} must be a non-empty list of entries`); continue; }
+            const parts = list.map(entryParts);
+            list.forEach((x, i) => {
+              if (typeof x === "string" ? !isText(x) : !isText(parts[i].text)) err(`effects.writes.${scope}[${i}] must be a sentence, or a mapping with a \`text\` sentence and an \`allow\``);
+              if (typeof x === "object" && x !== null && !Array.isArray(x)) {
+                for (const k of Object.keys(x)) if (k !== "text" && k !== "allow") err(`effects.writes.${scope}[${i}] has unknown key \`${k}\``);
+                if (x.allow !== undefined && parts[i].allow.length === 0) err(`effects.writes.${scope}[${i}].allow must not be empty`);
+              }
+              for (const a of parts[i].allow ?? []) for (const m of checkAllow(a, scope)) err(`effects.writes.${scope}[${i}]: ${m}`);
+            });
+            // A scope is prose or it is structured. Once one entry has an \`allow\`, anything no \`allow\` matches is forbidden, so a
+            // prose-only entry beside it would read as permission it does not give.
+            const structured = parts.filter((x) => x.allow).length;
+            if (structured && structured !== parts.length) err(`effects.writes.${scope} mixes entries with and without \`allow\`. Once one has it, every entry must, because only what an \`allow\` lists is permitted`);
           }
           if (c.kind !== "item" && e.writes.claimed) err("only an item skill claims, so a group or sweep skill has no `effects.writes.claimed`");
           if (c.kind === "item" && argTarget && !e.writes.claimed) err("an item skill that is given an issue or PR claims it, so it needs `effects.writes.claimed`");
