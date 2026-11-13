@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { checkContracts, extractContract, resultHead, headings, purity } from "../scripts/contracts.mjs";
+import { checkContracts, extractContract, resultHead, headings, purity, entryParts, allowsOf } from "../scripts/contracts.mjs";
 
 const ITEM = `kind: item
 step: Triaging
@@ -305,4 +305,60 @@ test("a utility skill that calls another utility skill closes the loop too", () 
   assert.deepEqual(run([item(CALLER), outer, inner]), []);
   const unlisted = { ...skill("inner", UTIL.replace("[do-it]", "[do-it]"), "", ["pr"]) };
   assert.ok(run([item(CALLER), outer, unlisted]).some((e) => /calls `inner`, but its `used_by` does not list `check-it`/.test(e)));
+});
+
+// ---- structured `allow` entries ----------------------------------------------------------------------------------------
+const claimedWith = (block) => ITEM.replace('claimed: ["A label."]', `claimed:\n${block}`);
+const allowErrors = (block) => run([item(claimedWith(block))]);
+
+test("a sentence may carry an `allow`: one mapping, or a list of them", () => {
+  assert.deepEqual(allowErrors(`      - text: "Swap the state label."\n        allow:\n          - { op: label_remove, label: agent:needs-work }\n          - { op: label_add, label: agent:ready-for-review }`), []);
+  assert.deepEqual(allowErrors(`      - text: "A comment."\n        allow: { op: comment, marker: agent:handoff }`), []);
+  assert.deepEqual(allowErrors(`      - text: "A comment with no marker."\n        allow: { op: comment, marker: null }`), []);
+});
+
+test("a glob is a valid label or marker", () => {
+  assert.deepEqual(allowErrors(`      - text: "Any agent label."\n        allow: { op: label_add, label: "agent:*" }`), []);
+});
+
+test("an `allow` needs a known op, and rejects a key it does not have", () => {
+  assert.ok(allowErrors(`      - text: "x"\n        allow: { op: explode }`).some((e) => /`allow.op` must be one of/.test(e)));
+  assert.ok(allowErrors(`      - text: "x"\n        allow: { op: unmodelled }`).some((e) => /`allow.op` must be one of/.test(e)));
+  assert.ok(allowErrors(`      - text: "x"\n        allow: { op: push, branch: main }`).some((e) => /unknown key `branch`/.test(e)));
+  assert.ok(allowErrors(`      - text: "x"\n        allow: [one, two]`).some((e) => /must be a mapping with an `op`/.test(e)));
+});
+
+test("a label op needs a label, and a comment op needs a marker", () => {
+  assert.ok(allowErrors(`      - text: "x"\n        allow: { op: label_add }`).some((e) => /`label_add` needs a `label`/.test(e)));
+  assert.ok(allowErrors(`      - text: "x"\n        allow: { op: comment }`).some((e) => /`comment` needs a `marker`/.test(e)));
+  assert.ok(allowErrors(`      - text: "x"\n        allow: { op: comment_edit, marker: "" }`).some((e) => /`comment_edit` needs a `marker`/.test(e)));
+});
+
+test("a label or marker on an op that has none is rejected", () => {
+  assert.ok(allowErrors(`      - text: "x"\n        allow: { op: close, label: agent:x }`).some((e) => /`label` applies only to label_add and label_remove/.test(e)));
+  assert.ok(allowErrors(`      - text: "x"\n        allow: { op: label_add, label: a, marker: b }`).some((e) => /`marker` applies only to comment and comment_edit/.test(e)));
+});
+
+test("an `allow` for an op that can never land in its scope is rejected", () => {
+  assert.ok(allowErrors(`      - text: "x"\n        allow: { op: push }`).some((e) => /`push` can never land in `claimed`/.test(e)));
+  const repo = ITEM.replace("claimed:", "claimed:").replace('claimed: ["A label."]', 'claimed: ["A label."]\n    repository:\n      - text: "x"\n        allow: { op: label_add, label: a }');
+  assert.ok(run([item(repo)]).some((e) => /`label_add` can never land in `repository`/.test(e)));
+});
+
+test("a scope is either all sentences or all `allow`: a bare sentence beside an `allow` is rejected", () => {
+  const mixed = allowErrors(`      - text: "Structured."\n        allow: { op: label_add, label: a }\n      - "Prose only."`);
+  assert.ok(mixed.some((e) => /mixes entries with and without `allow`/.test(e)));
+});
+
+test("an empty `allow`, an unknown entry key and an entry without text are rejected", () => {
+  assert.ok(allowErrors(`      - text: "x"\n        allow: []`).some((e) => /\.allow must not be empty/.test(e)));
+  assert.ok(allowErrors(`      - text: "x"\n        why: y\n        allow: { op: push }`).some((e) => /unknown key `why`/.test(e)));
+  assert.ok(allowErrors(`      - allow: { op: label_add, label: a }`).some((e) => /must be a sentence, or a mapping with a `text`/.test(e)));
+});
+
+test("entryParts and allowsOf read both forms", () => {
+  assert.deepEqual(entryParts("A sentence."), { text: "A sentence.", allow: undefined });
+  assert.deepEqual(entryParts({ text: "T", allow: { op: "push" } }), { text: "T", allow: [{ op: "push" }] });
+  assert.deepEqual(allowsOf(["prose", { text: "T", allow: [{ op: "push" }, { op: "merge" }] }]), [{ op: "push" }, { op: "merge" }]);
+  assert.deepEqual(allowsOf(["only", "prose"]), []);
 });

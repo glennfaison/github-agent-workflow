@@ -49,15 +49,35 @@ effects:
   reads: [the PR, its check state and failing logs, "the newest `kind=review` handoff", its merge state, "lane_holder", markers, the repository's own guidance]
   writes:
     claimed:
-      - "The agent:in-progress lease label and its marker. A stale label from a dead run is replaced by the new lease. With `lease_held=true` nothing is written here."
-      - "Attempt, branch-update and ready-handoff comments, and the swap of agent:needs-work for agent:ready-for-review."
-      - "An agent:failure marker on failure. On escalation, the escalate comment and agent:stuck."
+      - text: "The agent:in-progress lease label and its marker. A stale label from a dead run is replaced by the new lease. With `lease_held=true` nothing is written here."
+        allow:
+          - { op: label_add, label: agent:in-progress }
+          - { op: label_remove, label: agent:in-progress }
+          - { op: comment, marker: agent:lease }
+          - { op: comment_edit, marker: agent:lease }
+      - text: "Attempt, branch-update and ready-handoff comments, and the swap of agent:needs-work for agent:ready-for-review."
+        allow:
+          - { op: comment, marker: agent:attempt }
+          - { op: comment, marker: agent:branch-update }
+          - { op: comment, marker: agent:handoff }
+          - { op: label_remove, label: agent:needs-work }
+          - { op: label_add, label: agent:ready-for-review }
+      - text: "An agent:failure marker on failure. On escalation, the escalate comment and agent:stuck."
+        allow:
+          - { op: comment, marker: agent:failure }
+          - { op: comment, marker: agent:escalate }
+          - { op: label_add, label: agent:stuck }
     repository:
-      - "Commits pushed to the PR branch, or the base branch merged or updated into it."
+      - text: "Commits pushed to the PR branch, or the base branch merged or updated into it."
+        allow: { op: push }
     other:
-      - "A one-line comment on the linked issue, and a review request to human_reviewer, when escalating."
+      - text: "A one-line comment on the linked issue, and a review request to human_reviewer, when escalating."
+        allow:
+          - { op: comment, marker: null }
+          - { op: review_request }
     shared:
-      - "One run-log entry (when write_log is true)."
+      - text: "One run-log entry (when write_log is true)."
+        allow: { op: comment, marker: null }
   external: ["The repository's test commands."]
 never:
   - "Wait for CI to finish."

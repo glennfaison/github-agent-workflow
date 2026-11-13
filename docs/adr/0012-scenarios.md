@@ -34,7 +34,7 @@ A **scenario** is a world, a skill and its inputs, and the expected outcome: one
 
 - **It does not run a skill.** The goldens are written from the skill text, so they check that the contract, the expected outcomes and the invariants agree with each other. They cannot show that a model follows the text.
 - **The goldens can be wrong in the same way as the contract.** Both came from the same reading of the skills. A scenario that a real run contradicts should change one of them.
-- **Scopes are checked, not the lists under them.** The contract's `effects.writes` entries are prose, so an effect is checked against its scope and not against the exact sentence.
+- **Scopes are checked, and the lists under them only where a contract has structured entries.** An `effects.writes` entry is prose unless it carries an `allow`, so an effect in a prose scope is checked against the scope and not against the exact sentence. ADR 0017 adds `allow` and migrates the skills a scope at a time.
 - **An oracle duplicates the prose.** Each oracle is `requires` written a second time, so the two can drift. A test compares the number of `requires` entries with `ORACLE_REQUIRES` in `scripts/scenario.mjs` and fails when they differ. It is a prompt to look, not a proof: rewording an entry without changing the count goes unnoticed. Group skills have no oracle.
 
 ## Update: group skills

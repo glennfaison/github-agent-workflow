@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 import { parse } from "yaml";
 import { extractContract } from "../scripts/contracts.mjs";
 import { coverage, contractOf, rerunGaps } from "../scripts/scenario-coverage.mjs";
-import { checkScenario, expandScenario, labelCatalog, syncLabels, LABEL_CATALOG, diffWorlds, applyEffects, matchesReturn, checkState, ORACLES, ORACLE_REQUIRES } from "../scripts/scenario.mjs";
+import { checkScenario, allowedBy, globMatches, markerOf, expandScenario, labelCatalog, syncLabels, LABEL_CATALOG, diffWorlds, applyEffects, matchesReturn, checkState, ORACLES, ORACLE_REQUIRES } from "../scripts/scenario.mjs";
 
 const PKG = join(dirname(fileURLToPath(import.meta.url)), "..");
 const dir = join(PKG, "tests/scenarios");
@@ -782,3 +782,97 @@ test("explore's count line, its log, a dry run and an empty round are checked", 
     assert.deepEqual(problems(grp, sc), []);
   });
 }
+
+// ---- structured `allow` entries: the scope is not enough (shepherd-github-pr is the worked example) ----------------------
+const handoff = () => find("shepherd-github-pr/green-and-lane-free-hands-off.yaml");
+const notAllowed = /is a `\w+` write, but it is not one the contract's `allow` entries permit/;
+
+test("the golden hand-off passes the allow-list, so the contract matches what the scenarios do", () => {
+  assert.deepEqual(problems(shepherd, handoff()), []);
+});
+
+test("a label the contract does not list is refused, though the skill may write its own PR", () => {
+  const sc = handoff();
+  sc.expect.effects.push({ op: "label_add", target: "pr#40", label: "wontfix" });
+  const found = problems(shepherd, sc).filter((p) => notAllowed.test(p));
+  assert.equal(found.length, 1);
+  assert.match(found[0], /label_add on pr#40/);
+  assert.match(found[0], /label_add `wontfix`/);
+  assert.match(found[0], /It allows:.*label_add `agent:ready-for-review`/);
+});
+
+test("removing a label the contract does not list is refused", () => {
+  const sc = handoff();
+  sc.world.prs[0].labels.push("agent:human-merge");
+  sc.expect.effects.push({ op: "label_remove", target: "pr#40", label: "agent:human-merge" });
+  assert.ok(problems(shepherd, sc).some((p) => notAllowed.test(p)));
+});
+
+test("a comment with a marker the contract does not list is refused, and so is one with no marker", () => {
+  for (const extra of [{ op: "comment", target: "pr#40", marker: "agent:merged" }, { op: "comment", target: "pr#40" }]) {
+    const sc = handoff();
+    sc.expect.effects.push(extra);
+    assert.ok(problems(shepherd, sc).some((p) => notAllowed.test(p)), JSON.stringify(extra));
+  }
+});
+
+test("a write to another item is judged by the `other` entries: an unmarked comment is allowed, a label is not", () => {
+  const sc = find("shepherd-github-pr/escalates-at-the-attempt-limit.yaml");
+  assert.deepEqual(problems(shepherd, sc), [], "the golden scenario comments on the linked issue");
+  const marked = structuredClone(sc);
+  marked.expect.effects.push({ op: "comment", target: "issue#12", marker: "agent:handoff" });
+  assert.ok(problems(shepherd, marked).some((p) => /comment on issue#12.*\bother\b.*not one the contract's `allow`/.test(p)));
+  const labelled = structuredClone(sc);
+  labelled.expect.effects.push({ op: "label_add", target: "issue#12", label: "ready-for-human" });
+  assert.ok(problems(shepherd, labelled).some((p) => /label_add on issue#12.*\bother\b/.test(p)));
+});
+
+test("a scope that lists only sentences is still checked by its scope alone", () => {
+  const prose = structuredClone(shepherd);
+  prose.effects.writes.claimed = ["Some labels and comments."];
+  const sc = handoff();
+  sc.expect.effects.push({ op: "label_add", target: "pr#40", label: "wontfix" });
+  assert.deepEqual(problems(prose, sc).filter((p) => notAllowed.test(p)), []);
+});
+
+test("the rerun's effects go through the allow-list too", () => {
+  const sc = find("shepherd-github-pr/green-and-lane-free-hands-off.yaml");
+  sc.expect.rerun_effects = [{ op: "label_add", target: "pr#40", label: "wontfix" }];
+  assert.ok(problems(shepherd, sc).some((p) => /^the rerun's label_add on pr#40 /.test(p) && notAllowed.test(p)));
+});
+
+test("globMatches: `*` is the only wildcard, and a dot is a dot", () => {
+  assert.ok(globMatches("agent:*", "agent:stuck"));
+  assert.ok(globMatches("*", "anything at all"));
+  assert.ok(globMatches("ready-for-agent", "ready-for-agent"));
+  assert.ok(!globMatches("agent:*", "xagent:stuck"));
+  assert.ok(!globMatches("ready-for-agent", "ready-for-agent-2"));
+  assert.ok(!globMatches("a.b", "axb"));
+  assert.ok(!globMatches("a+", "aa"));
+});
+
+test("allowedBy: op, label and marker must all match", () => {
+  const ctx = { world: { prs: [{ number: 7, comments: [{ marker: "agent:lease", text: "a" }, { text: "plain" }] }], issues: [] }, claimed: new Set() };
+  const label = (l, op = "label_add") => ({ op, target: "pr#7", label: l });
+  assert.ok(allowedBy(label("agent:stuck"), [{ op: "label_add", label: "agent:*" }], ctx));
+  assert.equal(allowedBy(label("agent:stuck", "label_remove"), [{ op: "label_add", label: "agent:*" }], ctx), null, "the op differs");
+  assert.equal(allowedBy(label("wontfix"), [{ op: "label_add", label: "agent:*" }], ctx), null, "the label differs");
+  const comment = (marker) => ({ op: "comment", target: "pr#7", ...(marker ? { marker } : {}) });
+  assert.ok(allowedBy(comment("agent:handoff"), [{ op: "comment", marker: "agent:*" }], ctx));
+  assert.ok(allowedBy(comment(), [{ op: "comment", marker: null }], ctx), "null allows a comment with no marker");
+  assert.equal(allowedBy(comment(), [{ op: "comment", marker: "agent:*" }], ctx), null, "a glob does not match no marker");
+  assert.equal(allowedBy(comment("agent:handoff"), [{ op: "comment", marker: null }], ctx), null, "null does not allow a marker");
+  assert.ok(allowedBy({ op: "push", target: "pr#7" }, [{ op: "push" }], ctx));
+  assert.equal(allowedBy({ op: "merge", target: "pr#7" }, [{ op: "push" }], ctx), null);
+});
+
+test("a comment edited in place has the marker of the comment it edits", () => {
+  const ctx = { world: { prs: [{ number: 7, comments: [{ marker: "agent:lease", text: "a" }, { text: "plain" }] }], issues: [] }, claimed: new Set() };
+  const edit = (index) => ({ op: "comment_edit", target: "pr#7", index, text: "b" });
+  assert.equal(markerOf(edit(0), ctx), "agent:lease");
+  assert.equal(markerOf(edit(1), ctx), null);
+  assert.equal(markerOf(edit(5), ctx), undefined);
+  assert.ok(allowedBy(edit(0), [{ op: "comment_edit", marker: "agent:lease" }], ctx));
+  assert.equal(allowedBy(edit(1), [{ op: "comment_edit", marker: "agent:lease" }], ctx), null, "the plain comment is not the lease");
+  assert.equal(allowedBy(edit(5), [{ op: "comment_edit", marker: null }], ctx), null, "a comment that is not there matches nothing, not even `null`");
+});

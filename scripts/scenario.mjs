@@ -14,14 +14,14 @@
 import { isDeepStrictEqual } from "node:util";
 import { readFileSync } from "node:fs";
 import { contractOf } from "./skill-contracts.mjs";
+import { ALLOW_OPS, REPOSITORY_OPS, allowsOf } from "./contracts.mjs";
 import { canSplit, depthOf } from "../skills/meta/agent-workflow-protocol/scripts/helpers.mjs";
 
 export const MUTEX_ISSUE = ["needs-info", "ready-for-agent", "ready-for-human", "agent:pr-open"];
 export const MUTEX_PR = ["agent:needs-work", "agent:ready-for-review", "agent:human-merge"];
 export const LEASE_LABELS = ["agent:triage", "agent:in-progress"];
-const REPOSITORY_OPS = ["push", "merge", "delete_branch", "create_pr", "label_create", "label_update", "write_file"];
 // `unmodelled` is not something a skill does: diffWorlds reports a change it cannot express with it.
-const OPS = ["label_add", "label_remove", "comment", "comment_edit", "close", "push", "merge", "delete_branch", "create_pr", "create_issue", "review_request", "label_create", "label_update", "write_file", "unmodelled"];
+const OPS = [...ALLOW_OPS, "unmodelled"];
 
 // ---- repository state: the label set and the agent instructions file ------------------------------
 // A world may hold `labels: [{name, description}]` (the repository's label set) and `files: {path: text}`.
@@ -208,6 +208,54 @@ export function scopeOf(effect, ctx) {
   }
   if (ctx.claimed.has(effect.target) && effect.op !== "create_issue") return "claimed";
   return "other";
+}
+
+/** `*` matches any run of characters, and nothing else is special: labels and markers are plain names. */
+export function globMatches(glob, s) {
+  const re = glob.split("*").map((p) => p.replace(/[.+?^${}()|[\]\\]/g, "\\$&")).join(".*");
+  return new RegExp(`^${re}$`).test(s);
+}
+
+/**
+ * The marker of the comment an effect writes. A `comment` names its own. A `comment_edit` names only the index, so the
+ * marker is the one on that comment in the world the run started from. `null`: the comment has no marker.
+ * `undefined`: it cannot be found, which no `allow` matches.
+ */
+export function markerOf(effect, ctx) {
+  if (effect.op === "comment") return effect.marker ?? null;
+  const c = item(ctx.world, effect.target)?.comments?.[effect.index];
+  return c ? (c.marker ?? null) : undefined;
+}
+
+/** The first of the structured `allow` mappings that permits the effect, or null. `op` must match, and so must `label` and `marker` where the mapping has them. */
+export function allowedBy(effect, allows, ctx) {
+  for (const a of allows) {
+    if (a.op !== effect.op) continue;
+    if (a.label !== undefined && !(typeof effect.label === "string" && globMatches(a.label, effect.label))) continue;
+    if ("marker" in a) {
+      const m = markerOf(effect, ctx);
+      if (a.marker === null ? m !== null : !(typeof m === "string" && globMatches(a.marker, m))) continue;
+    }
+    return a;
+  }
+  return null;
+}
+
+const describe = (x) => [x.op, x.label !== undefined && `\`${x.label}\``, "marker" in x && (x.marker === null ? "(no marker)" : `\`${x.marker}\``)].filter(Boolean).join(" ");
+
+/**
+ * Why the contract does not allow an effect, or null when it does. First the scope must be one `effects.writes` lists.
+ * Then, if that scope has structured entries (`allow`), one of them must match: the scope alone is not enough, because
+ * a skill that may add its own labels could otherwise add any label. `why` ends the sentence that the caller starts.
+ * Throws when the effect cannot be placed (it names an item that is not in the world).
+ */
+export function forbiddenWrite(contract, effect, ctx) {
+  const scope = scopeOf(effect, ctx);
+  const writes = contract.effects?.writes ?? {};
+  if (!Object.hasOwn(writes, scope)) return { scope, why: `is a \`${scope}\` write, which the contract does not allow` };
+  const allows = allowsOf(writes[scope]);
+  if (allows.length === 0 || allowedBy(effect, allows, ctx)) return null;
+  return { scope, why: `is a \`${scope}\` write, but it is not one the contract's \`allow\` entries permit (${describe({ ...effect, ...(effect.op === "comment_edit" ? { marker: markerOf(effect, ctx) } : {}) })}). It allows: ${allows.map(describe).join("; ")}` };
 }
 
 /** The item that a `create_pr` or `create_issue` effect adds to the world `w`. */
@@ -589,8 +637,8 @@ export function checkPureScenario(contract, sc) {
   if (allowed.length === 0 && work.length) bad("a pure skill must leave no effects");
   for (const e of work.length && allowed.length ? work : []) {
     try {
-      const scope = scopeOf(e, { world: sc.world ?? { issues: [], prs: [] }, claimed: new Set() });
-      if (!allowed.includes(scope)) bad(`${e.op} on ${e.target ?? `#${e.number}`} is a \`${scope}\` write, which the contract does not allow`);
+      const f = forbiddenWrite(contract, e, { world: sc.world ?? { issues: [], prs: [] }, claimed: new Set() });
+      if (f) bad(`${e.op} on ${e.target ?? `#${e.number}`} ${f.why}`);
     } catch (err) { bad(err.message); }
   }
   if (work.length) { try { applyEffects(sc.world ?? { issues: [], prs: [] }, work); } catch (err) { bad(err.message); } }
@@ -800,13 +848,12 @@ export function checkScenario(contract, sc) {
   const ctx = { world, claimed };
 
   // 2. scopes
-  const allowed = Object.keys(contract.effects?.writes ?? {});
   for (const e of work) {
-    let scope;
-    try { scope = scopeOf(e, ctx); } catch (err) { bad(err.message); continue; }
-    if (allowed.includes(scope)) continue;
+    let f;
+    try { f = forbiddenWrite(contract, e, ctx); } catch (err) { bad(err.message); continue; }
+    if (!f) continue;
     if (e.op === "unmodelled") bad(`the run changed \`${e.field}\` of ${e.target}, which the checker cannot model, and the contract lists no \`unmodelled\` write`);
-    else bad(`${e.op} on ${e.target ?? `#${e.number}`} is a \`${scope}\` write, which the contract does not allow`);
+    else bad(`${e.op} on ${e.target ?? `#${e.number}`} ${f.why}`);
   }
   if (outcome === "skipped" && work.length) bad("skipped must leave no effects");
   if (outcome === "noop" && work.length) bad("noop may leave only the lease comment");
@@ -985,8 +1032,8 @@ export function checkScenario(contract, sc) {
     for (const e of again) {
       if (e.marker !== "agent:lease" && made.has(key(e))) bad(`the rerun repeats ${e.op} on ${e.target}, which the interrupted run already did`);
       try {
-        const scope = scopeOf(e, { world: after, claimed });
-        if (!allowed.includes(scope)) bad(`the rerun's ${e.op} on ${e.target} is a \`${scope}\` write, which the contract does not allow`);
+        const f = forbiddenWrite(contract, e, { world: after, claimed });
+        if (f) bad(`the rerun's ${e.op} on ${e.target} ${f.why}`);
       } catch (err) { bad(err.message); }
     }
     try { applyEffects(after, again); } catch (err) { bad(`the rerun's effects do not apply: ${err.message}`); }
