@@ -876,3 +876,28 @@ test("a comment edited in place has the marker of the comment it edits", () => {
   assert.equal(allowedBy(edit(1), [{ op: "comment_edit", marker: "agent:lease" }], ctx), null, "the plain comment is not the lease");
   assert.equal(allowedBy(edit(5), [{ op: "comment_edit", marker: null }], ctx), null, "a comment that is not there matches nothing, not even `null`");
 });
+
+// ---- the item skills are migrated to `allow`: what each skill's text forbids is now caught ---------------------------------
+// Each row is a golden scenario plus one effect the skill's own text forbids. A scope-only check accepted every one.
+const FORBIDDEN = [
+  ["triage-github-issue/open-questions-mean-needs-info.yaml", { op: "label_add", target: "issue#12", label: "wontfix" }, "triage never applies wontfix"],
+  ["triage-github-issue/open-questions-mean-needs-info.yaml", { op: "label_add", target: "issue#12", label: "agent:pr-open" }, "triage does not open a PR state"],
+  ["triage-github-issue/open-questions-mean-needs-info.yaml", { op: "comment", target: "issue#12", marker: "agent:handoff" }, "a PR handoff marker on an issue"],
+  ["triage-github-issue/duplicate-is-closed.yaml", { op: "close", target: "issue#7" }, "only the claimed issue is ever closed"],
+  ["triage-github-issue/duplicate-is-closed.yaml", { op: "label_add", target: "issue#7", label: "ready-for-agent" }, "no state label on another issue"],
+  ["implement-github-issue/existing-open-pr-is-not-duplicated.yaml", { op: "label_add", target: "pr#40", label: "agent:ready-for-review" }, "only agent:needs-work goes on an existing PR"],
+  ["implement-github-issue/existing-open-pr-is-not-duplicated.yaml", { op: "merge", target: "pr#40" }, "implementing never merges"],
+  ["implement-github-issue/existing-open-pr-is-not-duplicated.yaml", { op: "label_add", target: "issue#12", label: "wontfix" }, "a label the skill never sets"],
+  ["review-github-pr/findings-are-sent-back.yaml", { op: "label_add", target: "pr#50", label: "agent:ready-for-review" }, "a sent-back PR does not return to the lane"],
+  ["review-github-pr/findings-are-sent-back.yaml", { op: "comment", target: "pr#50" }, "an unmarked comment on the claimed PR"],
+  ["review-github-pr/merge-closes-the-linked-issue.yaml", { op: "label_add", target: "issue#12", label: "ready-for-agent" }, "a linked issue is not sent back to the agents"],
+  ["review-github-pr/merge-closes-the-linked-issue.yaml", { op: "comment", target: "issue#12", marker: "agent:handoff" }, "a marker on a linked issue"],
+];
+for (const [file, extra, why] of FORBIDDEN) {
+  test(`${file.split("/")[0]}: ${why}`, () => {
+    const sc = find(file);
+    assert.deepEqual(problems(contractOf(sc.skill), sc), [], "the golden scenario is clean first");
+    sc.expect.effects.push(extra);
+    assert.ok(problems(contractOf(sc.skill), sc).some((p) => notAllowed.test(p)), JSON.stringify(extra));
+  });
+}

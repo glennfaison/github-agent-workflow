@@ -52,19 +52,44 @@ effects:
   reads: [the Agent Brief or description, comments, every image, linked ADRs, relevant code, "prs_for_issue", remote branches, the repository's own guidance, item labels]
   writes:
     claimed:
-      - "The agent:in-progress lease label and its marker. A stale label from a dead run is replaced by the new lease. With `lease_held=true` nothing is written here."
-      - "The issue's state label (ready-for-agent to agent:pr-open, needs-info or ready-for-human)."
-      - "A Triage Notes, closed-PR or `Implemented in` comment, and closing the issue when its PR already merged."
-      - "One comment ending in the `agent:split` marker when the issue is split."
-      - "An agent:failure marker on failure. On escalation, the escalate comment and agent:stuck."
+      - text: "The agent:in-progress lease label and its marker. A stale label from a dead run is replaced by the new lease. With `lease_held=true` nothing is written here."
+        allow:
+          - { op: label_add, label: agent:in-progress }
+          - { op: label_remove, label: agent:in-progress }
+          - { op: comment, marker: agent:lease }
+          - { op: comment_edit, marker: agent:lease }
+      - text: "The issue's state label (ready-for-agent to agent:pr-open, needs-info or ready-for-human)."
+        allow:
+          - { op: label_remove, label: ready-for-agent }
+          - { op: label_remove, label: agent:pr-open }
+          - { op: label_add, label: agent:pr-open }
+          - { op: label_add, label: needs-info }
+          - { op: label_add, label: ready-for-human }
+      - text: "A Triage Notes, closed-PR or `Implemented in` comment, and closing the issue when its PR already merged."
+        allow:
+          - { op: comment, marker: null }
+          - { op: close }
+      - text: "One comment ending in the `agent:split` marker when the issue is split."
+        allow: { op: comment, marker: agent:split }
+      - text: "An agent:failure marker on failure. On escalation, the escalate comment and agent:stuck."
+        allow:
+          - { op: comment, marker: agent:failure }
+          - { op: comment, marker: agent:escalate }
+          - { op: label_add, label: agent:stuck }
     repository:
-      - "A feature or bugfix branch pushed to origin, with commits."
-      - "One PR against pr_base_branch, labelled agent:needs-work."
+      - text: "A feature or bugfix branch pushed to origin, with commits."
+        allow: { op: push }
+      - text: "One PR against pr_base_branch, labelled agent:needs-work."
+        allow: { op: create_pr }
     other:
-      - "agent:needs-work on an existing OPEN agent PR for the issue."
-      - "New sub-issues through file-github-issues when the issue is split, each with no labels, each linked to the issue as a sub-issue."
+      - text: "agent:needs-work on an existing OPEN agent PR for the issue."
+        allow: { op: label_add, label: agent:needs-work }
+      - text: "New sub-issues through file-github-issues when the issue is split, each with no labels, each linked to the issue as a sub-issue."
+        allow: { op: create_issue }
     shared:
-      - "One run-log entry (when write_log is true)."
+      - text: "One run-log entry (when write_log is true)."
+        allow: { op: comment, marker: null }
+
   external: ["build_cmd, when set, and the repository's test commands."]
 never:
   - "Wait for checks, fix CI, or post the reviewer handoff. shepherd-github-pr does that."

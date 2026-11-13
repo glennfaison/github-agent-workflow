@@ -44,15 +44,37 @@ effects:
   reads: [the issue description and every comment, images, linked ADRs, repository files, other issues (dedupe), the repository's own guidance, item labels]
   writes:
     claimed:
-      - "The agent:triage lease label and its marker. A stale label from a dead run is replaced by the new lease. With `lease_held=true` nothing is written here."
-      - "State and category labels, and removal of needs-triage."
-      - "The outcome comment, a link comment, description updates, and minimized resolved comments."
-      - "Closing the issue as a duplicate, when references/dedupe.md says so."
-      - "An agent:failure marker on failure. On escalation, the escalate comment and agent:stuck."
+      - text: "The agent:triage lease label and its marker. A stale label from a dead run is replaced by the new lease. With `lease_held=true` nothing is written here."
+        allow:
+          - { op: label_add, label: agent:triage }
+          - { op: label_remove, label: agent:triage }
+          - { op: comment, marker: agent:lease }
+          - { op: comment_edit, marker: agent:lease }
+      - text: "State and category labels, and removal of needs-triage."
+        allow:
+          - { op: label_add, label: needs-info }
+          - { op: label_add, label: ready-for-agent }
+          - { op: label_add, label: ready-for-human }
+          - { op: label_add, label: bug }
+          - { op: label_add, label: enhancement }
+          - { op: label_remove, label: needs-triage }
+      - text: "The outcome comment, a link comment, description updates, and minimized resolved comments. The description updates and minimizing are not modelled, so only the comments are checked."
+        allow:
+          - { op: comment, marker: agent:outcome }
+          - { op: comment, marker: null }
+      - text: "Closing the issue as a duplicate, when references/dedupe.md says so."
+        allow: { op: close }
+      - text: "An agent:failure marker on failure. On escalation, the escalate comment and agent:stuck."
+        allow:
+          - { op: comment, marker: agent:failure }
+          - { op: comment, marker: agent:escalate }
+          - { op: label_add, label: agent:stuck }
     other:
-      - "The comments references/dedupe.md allows on other issues."
+      - text: "The comments references/dedupe.md allows on other issues."
+        allow: { op: comment, marker: null }
     shared:
-      - "One run-log entry (when write_log is true)."
+      - text: "One run-log entry (when write_log is true)."
+        allow: { op: comment, marker: null }
 never:
   - "Write or change code, or touch PRs."
   - "Commit, or edit GLOSSARY.md, ADRs or .out-of-scope/."

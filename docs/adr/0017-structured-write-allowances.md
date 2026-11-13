@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted. Step 1 of 3 is built (#67): the schema, the checker and `shepherd-github-pr` as the worked example. The other skills move a scope at a time, so each step can be reviewed.
+Accepted. Steps 1 and 2 of 3 are built (#67): the schema, the checker and `shepherd-github-pr` as the worked example, then the other item skills. The rest move a scope at a time, so each step can be reviewed.
 
 ## Context
 
@@ -41,8 +41,15 @@ claimed:
 - **The golden scenarios still come from the same reading of the skill.** An `allow` made from the prose and a scenario made from the prose can share a mistake. Running a model (ADR 0016) is what tests that.
 - **It checks effects, not their order or count.** One extra comment with an allowed marker passes.
 
+## Notes from migrating the item skills
+
+- **The goldens did not cover everything the skill text permits.** Each `allow` list was written from the skill's own text and its references, then run against the goldens, so a label that no scenario applies (`bug`, `enhancement`) is still listed. A golden that applies something the text does not permit would now fail, and none did.
+- **Some writes cannot be expressed as effects.** `triage-github-issue` updates a description and minimizes comments. Those are `unmodelled`, which no contract lists, so a run that does either is still rejected, as before. The sentence says so, and only the comments are checked.
+- **The outcome comment has no fixed marker.** The skill text does not name one and the goldens use both `agent:outcome` and none, so triage allows both. Pinning it is a skill change and not part of this one.
+- **Removing a state label is listed only where the text does it.** Triage may remove `needs-triage` and its own lease, not `needs-info` (its `never` list says only a human does). An issue that already carries a state label is ineligible, so triage never swaps one.
+
 ## Migration
 
-1. The schema, the checker and `shepherd-github-pr` (this step).
-2. The item skills: `triage-github-issue`, `implement-github-issue`, `review-github-pr`.
+1. The schema, the checker and `shepherd-github-pr`. Done.
+2. The other item skills: `triage-github-issue`, `implement-github-issue`, `review-github-pr`. Done.
 3. The group, sweep and file skills: the `-issues` and `-prs` groups, `reconcile-github-issues`, `file-github-issues` and `explore-github-repo`.
