@@ -1,5 +1,13 @@
 # github-agent-workflow
 
+## 1.11.1
+
+### Patch Changes
+
+- 875c84a: The remaining contracts (the four group skills, `reconcile-github-issues`, `file-github-issues`, `explore-github-repo` and `setup-github-agent-workflow`) now list what they may write as `allow` entries, which completes ADR 0017: every contract that writes is checked by what it writes and not only by where. An `allow` for `create_issue` and `create_pr` now has a required `labels` list, so "new issues, with no labels" and "a PR labelled agent:needs-work" are checked, and `implement-github-issue` is tightened to match. The wording of the contracts is unchanged.
+- 56158fe: `triage-github-issue`, `implement-github-issue` and `review-github-pr` now list what they may write as `allow` entries (step 2 of ADR 0017), so the scenario checker refuses a label, a comment marker or an op that the skill's text does not permit, even where its scope allows a write. For example triage applying `wontfix`, implementing merging a PR, or review sending a linked issue back to `ready-for-agent`. The wording of the skills' contracts is unchanged.
+- ef29e66: An entry of a contract's `effects.writes` can now carry an `allow` (`op`, and where it applies `label` and `marker`), so the scenario checker can tell that an effect is the right one and not only that it is in the right scope. A skill that adds `wontfix` to its claimed PR, or comments with a marker it does not list, is now a violation. A scope that has no `allow` is checked as before, and one that mixes the two is rejected. `shepherd-github-pr` is the first contract migrated (ADR 0017); the others follow a scope at a time.
+
 ## 1.11.0
 
 ### Minor Changes
