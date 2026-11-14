@@ -32,7 +32,8 @@ effects:
   reads: [open issues with their labels]
   writes:
     shared:
-      - "One run-log entry."
+      - text: "One run-log entry."
+        allow: { op: comment, marker: null }
 never:
   - "Triage an issue itself, or change code or PRs."
   - "Claim an issue. Only triage-github-issue claims."

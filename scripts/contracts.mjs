@@ -21,6 +21,7 @@ const ITEM_OPS = ["label_add", "label_remove", "comment", "comment_edit", "close
 export const ALLOW_OPS = [...ITEM_OPS, "create_issue", ...REPOSITORY_OPS];
 const LABEL_OPS = ["label_add", "label_remove"];
 const MARKER_OPS = ["comment", "comment_edit"];
+const CREATE_OPS = ["create_issue", "create_pr"];
 // The ops that can land in each scope: scopeOf puts REPOSITORY_OPS in `repository`, a comment on the run log in `shared`,
 // and a `create_issue` always in `other`.
 export const SCOPE_OPS = {
@@ -51,7 +52,7 @@ export function allowsOf(list) {
 function checkAllow(a, scope) {
   if (!a || typeof a !== "object" || Array.isArray(a)) return ["an `allow` must be a mapping with an `op`"];
   const out = [];
-  for (const k of Object.keys(a)) if (!["op", "label", "marker"].includes(k)) out.push(`\`allow\` has unknown key \`${k}\``);
+  for (const k of Object.keys(a)) if (!["op", "label", "marker", "labels"].includes(k)) out.push(`\`allow\` has unknown key \`${k}\``);
   if (!ALLOW_OPS.includes(a.op)) return [...out, `\`allow.op\` must be one of ${ALLOW_OPS.join(", ")}`];
   if (SCOPE_OPS[scope] && !SCOPE_OPS[scope].includes(a.op)) out.push(`\`${a.op}\` can never land in \`${scope}\`, so this entry would allow nothing`);
   if (LABEL_OPS.includes(a.op)) {
@@ -60,6 +61,9 @@ function checkAllow(a, scope) {
   if (MARKER_OPS.includes(a.op)) {
     if (!("marker" in a) || (a.marker !== null && !isText(a.marker))) out.push(`\`${a.op}\` needs a \`marker\`: a name, a glob such as \`agent:*\`, or \`null\` for a comment with no marker`);
   } else if ("marker" in a) out.push(`\`marker\` applies only to ${MARKER_OPS.join(" and ")}, not \`${a.op}\``);
+  if (CREATE_OPS.includes(a.op)) {
+    if (!Array.isArray(a.labels) || !a.labels.every(isText)) out.push(`\`${a.op}\` needs \`labels\`: the labels the new item may carry, each a name or a glob. \`[]\` means none`);
+  } else if (a.labels !== undefined) out.push(`\`labels\` applies only to ${CREATE_OPS.join(" and ")}, not \`${a.op}\``);
   return out;
 }
 

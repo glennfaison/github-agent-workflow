@@ -31,7 +31,8 @@ effects:
   reads: [open issues labelled ready-for-agent]
   writes:
     shared:
-      - "One run-log entry."
+      - text: "One run-log entry."
+        allow: { op: comment, marker: null }
 never:
   - "Implement an issue itself, or claim one. Only implement-github-issue claims."
   - "Wait for checks or fix CI. shepherd-github-prs does that."

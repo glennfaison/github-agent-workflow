@@ -31,7 +31,8 @@ effects:
   reads: [open non-draft PRs labelled agent:ready-for-review]
   writes:
     shared:
-      - "One run-log entry."
+      - text: "One run-log entry."
+        allow: { op: comment, marker: null }
 never:
   - "Review or merge a PR itself, or claim one. Only review-github-pr claims."
 calls: []

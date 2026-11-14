@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted. Steps 1 and 2 of 3 are built (#67): the schema, the checker and `shepherd-github-pr` as the worked example, then the other item skills. The rest move a scope at a time, so each step can be reviewed.
+Accepted and built (#67), in three steps so each could be reviewed: the schema, the checker and `shepherd-github-pr` as the worked example, then the other item skills, then the group, sweep, file and setup skills. Every contract that writes now lists its writes as `allow` entries.
 
 ## Context
 
@@ -22,6 +22,7 @@ claimed:
 ```
 
 - `op` is required and is one of the effect ops the checker models, except `unmodelled`.
+- `labels` is required for `create_issue` and `create_pr`: the labels the new item may carry, each a name or a glob. Every label it is made with must match one, and `[]` means none.
 - `label` is required for `label_add` and `label_remove`, and is a name or a glob. `*` is the only wildcard. Use `*` alone to allow any label, which is then a visible choice and not a gap.
 - `marker` is required for `comment` and `comment_edit`: a name, a glob, or `null` for a comment with no marker (a run-log entry, a one-line comment on a linked issue). A `comment_edit` carries only an index, so its marker is the marker of the comment it edits in the world the run started from. A comment that cannot be found matches nothing.
 
@@ -37,7 +38,8 @@ claimed:
 
 ## What it does not do
 
-- **`create_pr`, `create_issue`, `close` and `review_request` are matched by op alone.** What a new item is labelled with, or what a PR is closed for, is not constrained yet. The schema rejects `label` and `marker` on them, so they cannot be mistaken for checked.
+- **`close` and `review_request` are matched by op alone.** What an issue is closed for, or who a review is requested from, is not constrained. The schema rejects `label`, `marker` and `labels` on them, so they cannot be mistaken for checked.
+- **A created item's other fields are unconstrained.** Only its labels are matched. Its title, body, parent and the PR's base are not.
 - **The golden scenarios still come from the same reading of the skill.** An `allow` made from the prose and a scenario made from the prose can share a mistake. Running a model (ADR 0016) is what tests that.
 - **It checks effects, not their order or count.** One extra comment with an allowed marker passes.
 
@@ -48,8 +50,14 @@ claimed:
 - **The outcome comment has no fixed marker.** The skill text does not name one and the goldens use both `agent:outcome` and none, so triage allows both. Pinning it is a skill change and not part of this one.
 - **Removing a state label is listed only where the text does it.** Triage may remove `needs-triage` and its own lease, not `needs-info` (its `never` list says only a human does). An issue that already carries a state label is ineligible, so triage never swaps one.
 
+## Notes from migrating the group and file skills
+
+- **A group's `allow` is declarative for now.** Scenarios already forbid a group from doing item work, with an earlier and stricter rule, so its `shared` entry is exercised by the contract tests and by real runs through `eval`, not by the goldens (they have no effects).
+- **`reconcile-github-issues` may add any one of the four state labels and remove the others.** Its repair picks the target by a priority order that the checker does not model, so the list permits the whole mutex set and the repair sentence says so. It never lists `needs-triage`, a lease label to add, or a lease marker.
+- **`setup-github-agent-workflow` is migrated too**, though it was not in the plan: its two entries map onto `label_create`, `label_update` and `write_file`.
+
 ## Migration
 
 1. The schema, the checker and `shepherd-github-pr`. Done.
 2. The other item skills: `triage-github-issue`, `implement-github-issue`, `review-github-pr`. Done.
-3. The group, sweep and file skills: the `-issues` and `-prs` groups, `reconcile-github-issues`, `file-github-issues` and `explore-github-repo`.
+3. The four group skills (one run-log entry each), `reconcile-github-issues`, `file-github-issues`, `explore-github-repo` and `setup-github-agent-workflow`. Done. This step added `labels`, so "new issues, with no labels" is checked, and `implement-github-issue`'s PR (`agent:needs-work` only) and sub-issues (none) are now pinned too.

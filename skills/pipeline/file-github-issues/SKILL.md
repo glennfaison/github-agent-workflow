@@ -50,8 +50,10 @@ effects:
   reads: [open issues, recently closed issues (dedupe_closed_days), ".out-of-scope/", the repository's own guidance and issue templates]
   writes:
     other:
-      - "New issues, with no labels (unless dry_run)."
-      - "One evidence comment on an open issue that reports the same problem (unless dry_run)."
+      - text: "New issues, with no labels (unless dry_run)."
+        allow: { op: create_issue, labels: [] }
+      - text: "One evidence comment on an open issue that reports the same problem (unless dry_run)."
+        allow: { op: comment, marker: null }
 never:
   - "Apply, remove or change any label."
   - "Comment on, close or edit an issue other than the evidence comment in the dedupe step."

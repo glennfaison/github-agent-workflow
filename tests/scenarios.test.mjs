@@ -4,7 +4,7 @@ import { readFileSync, readdirSync, existsSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parse } from "yaml";
-import { extractContract } from "../scripts/contracts.mjs";
+import { extractContract, allowsOf } from "../scripts/contracts.mjs";
 import { coverage, contractOf, rerunGaps } from "../scripts/scenario-coverage.mjs";
 import { checkScenario, allowedBy, globMatches, markerOf, expandScenario, labelCatalog, syncLabels, LABEL_CATALOG, diffWorlds, applyEffects, matchesReturn, checkState, ORACLES, ORACLE_REQUIRES } from "../scripts/scenario.mjs";
 
@@ -901,3 +901,67 @@ for (const [file, extra, why] of FORBIDDEN) {
     assert.ok(problems(contractOf(sc.skill), sc).some((p) => notAllowed.test(p)), JSON.stringify(extra));
   });
 }
+
+// ---- `labels` on a create, and the group, sweep and file skills ---------------------------------------------------------
+test("allowedBy: a created item may carry only the labels the entry lists", () => {
+  const ctx = { world: { issues: [], prs: [] }, claimed: new Set() };
+  const made = (labels) => ({ op: "create_issue", number: 9, ...(labels ? { labels } : {}) });
+  assert.ok(allowedBy(made(), [{ op: "create_issue", labels: [] }], ctx), "no labels at all");
+  assert.ok(allowedBy(made([]), [{ op: "create_issue", labels: [] }], ctx));
+  assert.equal(allowedBy(made(["bug"]), [{ op: "create_issue", labels: [] }], ctx), null, "`[]` allows none");
+  assert.ok(allowedBy(made(["bug"]), [{ op: "create_issue", labels: ["bug", "enhancement"] }], ctx));
+  assert.equal(allowedBy(made(["bug", "wontfix"]), [{ op: "create_issue", labels: ["bug"] }], ctx), null, "every label must be listed");
+  assert.ok(allowedBy(made(["agent:stuck"]), [{ op: "create_issue", labels: ["agent:*"] }], ctx));
+  assert.ok(allowedBy({ op: "create_pr", number: 3, labels: ["agent:needs-work"] }, [{ op: "create_pr", labels: ["agent:needs-work"] }], ctx));
+  assert.equal(allowedBy({ op: "create_pr", number: 3, labels: ["agent:needs-work", "x"] }, [{ op: "create_pr", labels: ["agent:needs-work"] }], ctx), null);
+});
+
+test("an issue filed with a label, or a PR opened with the wrong one, is refused", () => {
+  const filed = find("file-github-issues/limit-defers-the-rest.yaml");
+  filed.expect.effects[0].labels = ["ready-for-agent"];
+  const found = problems(contractOf("file-github-issues"), filed).filter((p) => notAllowed.test(p));
+  assert.equal(found.length, 1);
+  assert.match(found[0], /create_issue with only `ready-for-agent`/);
+  assert.match(found[0], /It allows:.*create_issue with no labels/);
+  const pr = find("implement-github-issue/an-interrupted-pass-does-not-open-a-second-pr.yaml");
+  const made = pr.expect.effects.find((e) => e.op === "create_pr");
+  if (made) { made.labels = ["agent:ready-for-review"]; assert.ok(problems(contractOf("implement-github-issue"), pr).some((p) => notAllowed.test(p))); }
+});
+
+const FORBIDDEN_3 = [
+  ["file-github-issues/a-duplicate-gets-a-comment.yaml", { op: "label_add", target: "issue#7", label: "wontfix" }, "filing never labels an existing issue"],
+  ["file-github-issues/a-duplicate-gets-a-comment.yaml", { op: "comment", target: "issue#7", marker: "agent:handoff" }, "evidence comments carry no marker"],
+  ["file-github-issues/a-duplicate-gets-a-comment.yaml", { op: "close", target: "issue#7" }, "filing closes nothing"],
+  ["reconcile-github-issues/merged-pr-closes-the-issue.yaml", { op: "label_add", target: "issue#12", label: "wontfix" }, "reconcile never applies wontfix"],
+  ["reconcile-github-issues/merged-pr-closes-the-issue.yaml", { op: "label_remove", target: "issue#12", label: "needs-triage" }, "reconcile leaves needs-triage to triage"],
+  ["reconcile-github-issues/stale-lease-is-cleared.yaml", { op: "comment", target: "issue#13", marker: "agent:lease" }, "reconcile writes no lease"],
+  ["reconcile-github-issues/stale-lease-is-cleared.yaml", { op: "label_add", target: "issue#13", label: "agent:triage" }, "reconcile never claims an issue"],
+];
+for (const [file, extra, why] of FORBIDDEN_3) {
+  test(`${file.split("/")[0]}: ${why}`, () => {
+    const sc = find(file);
+    assert.deepEqual(problems(contractOf(sc.skill), sc), [], "the golden scenario is clean first");
+    sc.expect.effects.push(extra);
+    assert.ok(problems(contractOf(sc.skill), sc).some((p) => notAllowed.test(p)), JSON.stringify(extra));
+  });
+}
+
+test("setup-github-agent-workflow: it writes labels and one file, and pushes nothing", () => {
+  const sc = find("setup-github-agent-workflow/an-empty-repository-gets-every-label.yaml");
+  assert.deepEqual(problems(contractOf(sc.skill), sc), [], "the golden scenario is clean first");
+  sc.expect.effects.push({ op: "push", target: "pr#1" });
+  assert.ok(problems(contractOf(sc.skill), sc).some((p) => notAllowed.test(p)));
+});
+
+test("a group skill's one write is an unmarked run-log comment, and nothing else", () => {
+  const ctx = { world: { issues: [{ number: 40, state: "open", labels: ["agent:log"], comments: [] }], prs: [] }, claimed: new Set() };
+  for (const skill of ["triage-github-issues", "implement-github-issues", "review-github-prs", "shepherd-github-prs"]) {
+    const writes = contractOf(skill).effects.writes;
+    assert.deepEqual(Object.keys(writes), ["shared"], skill);
+    const allows = allowsOf(writes.shared);
+    assert.ok(allowedBy({ op: "comment", target: "issue#40" }, allows, ctx), `${skill}: the log entry`);
+    assert.equal(allowedBy({ op: "comment", target: "issue#40", marker: "agent:handoff" }, allows, ctx), null, `${skill}: a marker`);
+    assert.equal(allowedBy({ op: "label_add", target: "issue#40", label: "agent:log" }, allows, ctx), null, `${skill}: a label`);
+    assert.equal(allowedBy({ op: "close", target: "issue#40" }, allows, ctx), null, `${skill}: a close`);
+  }
+});

@@ -32,9 +32,13 @@ effects:
   reads: [the live app (when app_url is set and the browser stack is present), the code, open issues, recent Exploring log entries]
   writes:
     other:
-      - "New unlabelled issues, and evidence comments on duplicates, through file-github-issues (unless dry_run)."
+      - text: "New unlabelled issues, and evidence comments on duplicates, through file-github-issues (unless dry_run)."
+        allow:
+          - { op: create_issue, labels: [] }
+          - { op: comment, marker: null }
     shared:
-      - "One run-log entry."
+      - text: "One run-log entry."
+        allow: { op: comment, marker: null }
   external: ["A browser session against app_url, when in scope."]
 never:
   - "Apply, remove or change any label."
