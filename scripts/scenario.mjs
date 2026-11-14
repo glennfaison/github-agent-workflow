@@ -232,6 +232,7 @@ export function allowedBy(effect, allows, ctx) {
   for (const a of allows) {
     if (a.op !== effect.op) continue;
     if (a.label !== undefined && !(typeof effect.label === "string" && globMatches(a.label, effect.label))) continue;
+    if (a.labels !== undefined && !(effect.labels ?? []).every((l) => a.labels.some((g) => globMatches(g, l)))) continue;
     if ("marker" in a) {
       const m = markerOf(effect, ctx);
       if (a.marker === null ? m !== null : !(typeof m === "string" && globMatches(a.marker, m))) continue;
@@ -241,7 +242,7 @@ export function allowedBy(effect, allows, ctx) {
   return null;
 }
 
-const describe = (x) => [x.op, x.label !== undefined && `\`${x.label}\``, "marker" in x && (x.marker === null ? "(no marker)" : `\`${x.marker}\``)].filter(Boolean).join(" ");
+const describe = (x) => [x.op, x.label !== undefined && `\`${x.label}\``, x.labels !== undefined && (x.labels.length ? `with only ${x.labels.map((l) => `\`${l}\``).join(", ")}` : "with no labels"), "marker" in x && (x.marker === null ? "(no marker)" : `\`${x.marker}\``)].filter(Boolean).join(" ");
 
 /**
  * Why the contract does not allow an effect, or null when it does. First the scope must be one `effects.writes` lists.

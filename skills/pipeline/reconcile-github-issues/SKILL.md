@@ -46,14 +46,47 @@ effects:
   reads: [open issues with their labels and comments, "prs_for_issue", "markers", "children_of", the state of each sub-issue, item labels, "lease_live", the repository's own guidance]
   writes:
     other:
-      - "Closes an issue whose PR merged, with a comment, and removes agent:pr-open and ready-for-agent from it (unless dry_run)."
-      - "Closes a split issue whose sub-issues are all closed as completed, with a comment, and removes ready-for-agent from it. A keep-open one is not closed and swaps ready-for-agent for ready-for-human, with a comment (unless dry_run)."
-      - "Swaps ready-for-agent for ready-for-human, with a comment, on a split issue that has a sub-issue closed as not planned (unless dry_run)."
-      - "Swaps agent:pr-open or ready-for-agent for ready-for-human, with a comment, when every PR was closed unmerged (unless dry_run)."
-      - "Repairs conflicting state labels in one edit per issue, with a comment when it falls back to ready-for-human (unless dry_run)."
-      - "Removes a stale agent:triage or agent:in-progress label (unless dry_run)."
+      - text: "Closes an issue whose PR merged, with a comment, and removes agent:pr-open and ready-for-agent from it (unless dry_run)."
+        allow:
+          - { op: close }
+          - { op: comment, marker: null }
+          - { op: label_remove, label: agent:pr-open }
+          - { op: label_remove, label: ready-for-agent }
+      - text: "Closes a split issue whose sub-issues are all closed as completed, with a comment, and removes ready-for-agent from it. A keep-open one is not closed and swaps ready-for-agent for ready-for-human, with a comment (unless dry_run)."
+        allow:
+          - { op: close }
+          - { op: comment, marker: null }
+          - { op: label_remove, label: ready-for-agent }
+          - { op: label_add, label: ready-for-human }
+      - text: "Swaps ready-for-agent for ready-for-human, with a comment, on a split issue that has a sub-issue closed as not planned (unless dry_run)."
+        allow:
+          - { op: comment, marker: null }
+          - { op: label_remove, label: ready-for-agent }
+          - { op: label_add, label: ready-for-human }
+      - text: "Swaps agent:pr-open or ready-for-agent for ready-for-human, with a comment, when every PR was closed unmerged (unless dry_run)."
+        allow:
+          - { op: comment, marker: null }
+          - { op: label_remove, label: agent:pr-open }
+          - { op: label_remove, label: ready-for-agent }
+          - { op: label_add, label: ready-for-human }
+      - text: "Repairs conflicting state labels in one edit per issue, with a comment when it falls back to ready-for-human (unless dry_run). The target is any one of the four state labels, and every other one is removed."
+        allow:
+          - { op: label_add, label: needs-info }
+          - { op: label_add, label: ready-for-agent }
+          - { op: label_add, label: ready-for-human }
+          - { op: label_add, label: agent:pr-open }
+          - { op: label_remove, label: needs-info }
+          - { op: label_remove, label: ready-for-agent }
+          - { op: label_remove, label: ready-for-human }
+          - { op: label_remove, label: agent:pr-open }
+          - { op: comment, marker: null }
+      - text: "Removes a stale agent:triage or agent:in-progress label (unless dry_run)."
+        allow:
+          - { op: label_remove, label: agent:triage }
+          - { op: label_remove, label: agent:in-progress }
     shared:
-      - "One run-log entry (when write_log is true)."
+      - text: "One run-log entry (when write_log is true)."
+        allow: { op: comment, marker: null }
 never:
   - "Triage, implement, review or merge anything, or change code."
   - "Claim an issue, or repair the labels of one that has a live lease."

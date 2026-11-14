@@ -32,7 +32,8 @@ effects:
   reads: [open PRs labelled agent:needs-work, their check state]
   writes:
     shared:
-      - "One run-log entry."
+      - text: "One run-log entry."
+        allow: { op: comment, marker: null }
 never:
   - "Shepherd a PR itself, or claim one. Only shepherd-github-pr claims."
   - "Wait for CI to finish."

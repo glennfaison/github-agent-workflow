@@ -32,8 +32,12 @@ effects:
   reads: ["`gh auth status`, `gh repo view` and `gh label list`", "the tools and the skills available to the runner", "the repository's agent instructions file"]
   writes:
     repository:
-      - "The labels in `references/labels.md`: created when missing, and the `agent:` ones reset to their description."
-      - "The `## GitHub workflow` section of the agent instructions file."
+      - text: "The labels in `references/labels.md`: created when missing, and the `agent:` ones reset to their description."
+        allow:
+          - { op: label_create }
+          - { op: label_update }
+      - text: "The `## GitHub workflow` section of the agent instructions file."
+        allow: { op: write_file }
   external: ["The probes for `gh`, `jq`, `node` and the external skills."]
 never:
   - "Write a settings file. A repository's values belong in the prompt or the agent instructions."

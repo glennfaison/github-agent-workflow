@@ -80,12 +80,12 @@ effects:
       - text: "A feature or bugfix branch pushed to origin, with commits."
         allow: { op: push }
       - text: "One PR against pr_base_branch, labelled agent:needs-work."
-        allow: { op: create_pr }
+        allow: { op: create_pr, labels: [agent:needs-work] }
     other:
       - text: "agent:needs-work on an existing OPEN agent PR for the issue."
         allow: { op: label_add, label: agent:needs-work }
       - text: "New sub-issues through file-github-issues when the issue is split, each with no labels, each linked to the issue as a sub-issue."
-        allow: { op: create_issue }
+        allow: { op: create_issue, labels: [] }
     shared:
       - text: "One run-log entry (when write_log is true)."
         allow: { op: comment, marker: null }

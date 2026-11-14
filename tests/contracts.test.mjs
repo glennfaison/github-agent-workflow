@@ -362,3 +362,19 @@ test("entryParts and allowsOf read both forms", () => {
   assert.deepEqual(allowsOf(["prose", { text: "T", allow: [{ op: "push" }, { op: "merge" }] }]), [{ op: "push" }, { op: "merge" }]);
   assert.deepEqual(allowsOf(["only", "prose"]), []);
 });
+
+// ---- `labels` on create_issue and create_pr ----------------------------------------------------------------------------
+const otherWith = (block) => ITEM.replace('claimed: ["A label."]', `claimed: ["A label."]\n    other:\n${block}`);
+
+test("a create op needs `labels`: a list of names or globs, and `[]` means none", () => {
+  assert.deepEqual(run([item(otherWith(`      - text: "New issues with no labels."\n        allow: { op: create_issue, labels: [] }`))]), []);
+  assert.deepEqual(run([item(otherWith(`      - text: "A labelled issue."\n        allow: { op: create_issue, labels: [bug, "agent:*"] }`))]), []);
+  assert.ok(run([item(otherWith(`      - text: "x"\n        allow: { op: create_issue }`))]).some((e) => /`create_issue` needs `labels`/.test(e)));
+  assert.ok(run([item(otherWith(`      - text: "x"\n        allow: { op: create_issue, labels: bug }`))]).some((e) => /`create_issue` needs `labels`/.test(e)));
+  assert.ok(run([item(otherWith(`      - text: "x"\n        allow: { op: create_issue, labels: [""] }`))]).some((e) => /`create_issue` needs `labels`/.test(e)));
+});
+
+test("`labels` on an op that creates nothing is rejected", () => {
+  assert.ok(allowErrors(`      - text: "x"\n        allow: { op: label_add, label: a, labels: [a] }`).some((e) => /`labels` applies only to create_issue and create_pr/.test(e)));
+  assert.ok(allowErrors(`      - text: "x"\n        allow: { op: comment, marker: null, labels: [] }`).some((e) => /`labels` applies only to/.test(e)));
+});
