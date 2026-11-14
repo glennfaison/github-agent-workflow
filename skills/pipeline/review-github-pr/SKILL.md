@@ -48,17 +48,47 @@ effects:
   reads: ["the PR title, body and comments, and its diff at the pinned SHA", linked issues and their labels, check state, "protected_files", "codeowners_for", markers, the repository's own guidance]
   writes:
     claimed:
-      - "The agent:in-progress lease label and its marker. A stale label from a dead run is replaced by the new lease. With `lease_held=true` nothing is written here."
-      - "Deferred, review, merged and human-merge comments, and the label swaps they come with."
-      - "An agent:failure marker on failure. On escalation, the escalate comment and agent:stuck."
+      - text: "The agent:in-progress lease label and its marker. A stale label from a dead run is replaced by the new lease. With `lease_held=true` nothing is written here."
+        allow:
+          - { op: label_add, label: agent:in-progress }
+          - { op: label_remove, label: agent:in-progress }
+          - { op: comment, marker: agent:lease }
+          - { op: comment_edit, marker: agent:lease }
+      - text: "Deferred, review, merged and human-merge comments, and the label swaps they come with."
+        allow:
+          - { op: comment, marker: agent:deferred }
+          - { op: comment, marker: agent:handoff }
+          - { op: comment, marker: agent:human-merge }
+          - { op: label_remove, label: agent:ready-for-review }
+          - { op: label_remove, label: agent:needs-work }
+          - { op: label_add, label: agent:needs-work }
+          - { op: label_add, label: agent:human-merge }
+      - text: "An agent:failure marker on failure. On escalation, the escalate comment and agent:stuck."
+        allow:
+          - { op: comment, marker: agent:failure }
+          - { op: comment, marker: agent:escalate }
+          - { op: label_add, label: agent:stuck }
     repository:
-      - "The merge of the PR into its base (merge_method) and deletion of its head branch."
-      - "A small fix pushed to the PR branch when findings are sent back."
+      - text: "The merge of the PR into its base (merge_method) and deletion of its head branch."
+        allow:
+          - { op: merge }
+          - { op: delete_branch }
+      - text: "A small fix pushed to the PR branch when findings are sent back."
+        allow: { op: push }
     other:
-      - "Linked issues: removal of agent:pr-open, closing with a comment, or ready-for-human for a keep-open issue."
-      - "A review request to human_reviewer or the CODEOWNERS when a PR is escalated or handed to a person."
+      - text: "Linked issues: removal of agent:pr-open, closing with a comment, or ready-for-human for a keep-open issue."
+        allow:
+          - { op: label_remove, label: agent:pr-open }
+          - { op: label_remove, label: ready-for-agent }
+          - { op: label_add, label: ready-for-human }
+          - { op: comment, marker: null }
+          - { op: close }
+      - text: "A review request to human_reviewer or the CODEOWNERS when a PR is escalated or handed to a person."
+        allow: { op: review_request }
     shared:
-      - "One run-log entry (when write_log is true)."
+      - text: "One run-log entry (when write_log is true)."
+        allow: { op: comment, marker: null }
+
   external: ["The repository's test commands, when a fix is pushed."]
 never:
   - "Merge in the same run in which you pushed a commit. A fresh review run must review the new head."
