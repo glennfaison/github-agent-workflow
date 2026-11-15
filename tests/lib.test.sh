@@ -346,6 +346,26 @@ check "issue_for_pr trusts the agent's own PR"     12        "$(issue_for_pr 61)
 check "trusted_authors default is empty" "" "$(bash -c 'source "$1"; echo "$trusted_authors"' _ "$LIB")"
 check "trusted_authors extends trust" "61 OPEN" "$(trusted_authors=agent-bot2 bash -c 'source "$1"; prs_for_issue 12' _ "$LIB")"
 
+echo "Agent identity"
+# A GitHub App installation token gets a 403 from `gh api user`, and real `gh` still prints the error body on stdout.
+# The simulator's faults only write to stderr, so these tests put a `gh` function in front of it to do what `gh` does.
+gh_user_403() { bash -c 'source "$1"; shift
+  gh() { if [ "$1 $2" = "api user" ]; then printf "%s\n" "{\"message\":\"Resource not accessible by integration\",\"status\":\"403\"}"; echo "gh: Resource not accessible by integration (HTTP 403)" >&2; return 1; fi; command gh "$@"; }
+  "$@"' _ "$LIB" "$@"; }
+gh_user_prints() { local out="$1"; shift; bash -c 'source "$1"; out="$2"; shift 2
+  gh() { if [ "$1 $2" = "api user" ]; then printf "%s\n" "$out"; return 0; fi; command gh "$@"; }
+  "$@"' _ "$LIB" "$out" "$@"; }
+check "_agent_self is the login gh reports" "agent-bot" "$(bash -c 'source "$1"; _agent_self' _ "$LIB")"
+w '.user = "app-slug[bot]"'
+check "a [bot] login is a login" "app-slug[bot]" "$(bash -c 'source "$1"; _agent_self' _ "$LIB")"
+w 'del(.user)'
+check "_agent_self is empty when gh api user is a 403 that prints a body" "" "$(gh_user_403 _agent_self)"
+check "the error body is not read as trusted logins" '"agent-bot2"' "$(trusted_authors=agent-bot2 gh_user_403 _trusted_logins)"
+check "with nobody to trust the list is still valid jq" '"@@none@@"' "$(gh_user_403 _trusted_logins)"
+check "output that is not a login is not used, even on success" "" "$(gh_user_prints 'not a login, sorry' _agent_self)"
+check "an empty login is not used" "" "$(gh_user_prints '' _agent_self)"
+check "a 403 does not stop the other trusted logins" "61 OPEN" "$(trusted_authors=agent-bot gh_user_403 prs_for_issue 12)"
+
 echo "Shared marker fixtures (the same cases tests/helpers.test.mjs runs)"
 FIX="$PKG/tests/fixtures/markers.json"
 for i in $(jq -r 'keys[]' "$FIX"); do
