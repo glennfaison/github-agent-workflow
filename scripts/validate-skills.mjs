@@ -18,7 +18,10 @@
 //   - every promoted skill has a valid `## Contract` (scripts/contracts.mjs), except those in
 //     CONTRACT_PENDING: its params are its Inputs table, its results are a closed set, its effects are
 //     listed by scope, and the prose no longer carries Eligibility, Outputs, Result or Never sections of
-//     its own. Reference skills say `kind: reference` and are exempt from the rest. A skill that another
+//     its own. Reference skills say `kind: reference` and are exempt from the rest, except that they too
+//     open with `## Contract` and keep no folded section. The contract is the first section of every
+//     skill, every skill that runs has a `## Process` section, and every pipeline skill lists `runner` and
+//     `unattended`. A skill that another
 //     skill calls must have one, and a utility skill's `used_by` must list its callers
 //   - each skill's purity class (pure, claimed, writes elsewhere) is printed
 // Package-wide:

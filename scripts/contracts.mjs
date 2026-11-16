@@ -80,6 +80,9 @@ const REQUIRED = {
 const ALLOWED = new Set([...COMMON, "target", "types", "dispatches", "used_by"]);
 
 // Prose sections that the contract replaces. A skill that still has one has two sources of truth.
+// Inputs every pipeline skill (item, group or sweep) lists. Defaults and meanings are in the protocol.
+export const COMMON_INPUTS = ["runner", "unattended"];
+
 export const FOLDED_SECTIONS = ["Eligibility", "Context read", "Outputs", "Result", "Never", "Success criteria"];
 
 const PROTOCOL = "agent-workflow-protocol";
@@ -128,7 +131,14 @@ export function purity(c) {
 
 /** Headings of the sections in a skill body. */
 export function headings(body) {
-  return [...body.matchAll(/^## (.+?)\s*$/gm)].map((m) => m[1].replace(/[`*]/g, "").trim());
+  let fenced = false;
+  const found = [];
+  for (const line of body.split("\n")) {
+    if (/^\s*```/.test(line)) { fenced = !fenced; continue; }
+    const m = !fenced && line.match(/^## (.+?)\s*$/);
+    if (m) found.push(m[1].replace(/[`*]/g, "").trim());
+  }
+  return found;
 }
 
 /**
@@ -158,6 +168,13 @@ export function checkContracts(skills, byName, external = new Set(), { pending =
 
     for (const k of Object.keys(c)) if (!ALLOWED.has(k)) err(`unknown key \`${k}\``);
     if (!KINDS.includes(c.kind)) { err(`kind must be one of ${KINDS.join(", ")}`); continue; }
+    // The shape every skill shares, reference skills included: the contract comes first, and the prose
+    // keeps no second copy of what the contract says.
+    const heads = headings(s.body);
+    if (heads[0] !== "Contract") err(`\`## Contract\` must be the first section, but \`## ${heads[0]}\` comes first`);
+    for (const h of heads) {
+      if (FOLDED_SECTIONS.includes(h)) err(`has a \`## ${h}\` section. That belongs in the contract now`);
+    }
     if (c.kind === "reference") {
       // Reference material is never run: no effects, no returns, no scenarios. Nothing else is allowed, so
       // a skill cannot claim the exemption and also carry half a contract.
@@ -176,6 +193,14 @@ export function checkContracts(skills, byName, external = new Set(), { pending =
       const extra = c.params.filter((k) => !s.inputKeys.includes(k));
       if (missing.length) err(`\`params\` is missing ${missing.map((k) => `\`${k}\``).join(", ")}, which the Inputs table lists`);
       if (extra.length) err(`\`params\` has ${extra.map((k) => `\`${k}\``).join(", ")}, which the Inputs table does not list`);
+    }
+
+    // **Process** says how: every skill that runs names its how-section that
+    if (!heads.includes("Process")) err("has no `## Process` section. The how-section of every skill that runs is named Process");
+
+    // every pipeline skill lists the common inputs (see **Common inputs** in the protocol)
+    if (PIPELINE_KINDS.includes(c.kind) && Array.isArray(c.params)) {
+      for (const k of COMMON_INPUTS) if (!c.params.includes(k)) err(`a pipeline skill lists \`${k}\` in \`params\` and in its Inputs table, and this one does not`);
     }
 
     // target
@@ -228,11 +253,6 @@ export function checkContracts(skills, byName, external = new Set(), { pending =
         }
         if (e.external !== undefined && !isStrings(e.external)) err("`effects.external` must be a non-empty list of strings");
       }
-    }
-
-    // the prose must not keep a second copy of what the contract says
-    for (const h of headings(s.body)) {
-      if (FOLDED_SECTIONS.includes(h)) err(`has a \`## ${h}\` section. That belongs in the contract now`);
     }
 
     // A utility skill returns a document, so `returns` describes its shape: sections, or the verdicts it may give.
