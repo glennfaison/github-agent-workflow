@@ -7,6 +7,14 @@ description: Shared rules for the GitHub issue-to-merge agent workflow (group an
 
 Shared by every skill in this package. Each of them points here. Read this file once per run, then open the reference files it names only when a step tells you to. For which skill to run, see `pipeline-guide`.
 
+## Contract
+
+Reference material, never run, so it has no effects to check. See **Contracts** below.
+
+```yaml
+kind: reference
+```
+
 ## Contracts
 
 Every skill opens with a `## Contract`: one YAML block that says what the skill is as a function. The utility skills that have none yet are listed in `CONTRACT_PENDING` in the validator, and that list only shrinks. **Process** says *how*. Where the two disagree, the contract wins, and `npm run validate` checks the parts it can. A skill is evaluated against its contract: give it a state of the world and inputs, then check what it returned and what it wrote.
@@ -220,17 +228,11 @@ Hidden HTML comments make state readable without parsing prose. Append them as t
 | `client_guidance_files`, `item_labels N issue\|pr` | the repository's agent-facing files on the default branch (one path per line, plus `repo_guidance`), and each label on the item as `name: description`. See `references/client-guidance.md` |
 | `log_issue`, `log_run FILE`, `log_status`, `read_logs DAYS` | see `references/log.md` |
 
-## Contract
-
-Reference material, never run, so it has no effects to check. See **Contracts** above.
-
-```yaml
-kind: reference
-```
-
 ## Inputs
 
-This skill is reference material: it is never run, so it takes **no inputs** of its own. Every skill that does run names its own in its own **`## Inputs`** section, and the settings they share are in **Defaults** above.
+**Free text.** None. This skill is reference material: it is never run, so it takes no inputs of its own. Every skill that does run names its own in its own **`## Inputs`** section, and the settings they share are in **Defaults** above.
+
+**Key-value pairs.** None.
 
 **Implicit dependencies.** None of its own. `scripts/lib.sh` needs `gh`, `jq` and Node.js.
 

@@ -9,6 +9,14 @@ The table of contents for this package. It says which skill to look for and when
 
 Call a skill by its name through the Skill tool (or `/name` where your runner has slash commands). Skills never link to each other by path, because where a skill lives depends on how the package was installed.
 
+## Contract
+
+Reference material, never run, so it has no effects to check. See **Contracts** in the protocol.
+
+```yaml
+kind: reference
+```
+
 ## Which skill, when
 
 | Skill | Kind | Use it when |
@@ -56,14 +64,6 @@ The steps never call each other. They coordinate through labels, hidden marker c
 | Implementing | Opens a PR and sets `agent:pr-open` on the issue and `agent:needs-work` on the PR. An issue that is too large is split instead: linked sub-issues and an `agent:split` marker, the issue left as it is. Lease: `agent:in-progress` |
 | Shepherding | Fixes failures, then the ready handoff and `agent:ready-for-review`. Lease: `agent:in-progress` |
 | Reviewing | Merges pinned to the reviewed commit, or the review handoff and back to `agent:needs-work`. Lease: `agent:in-progress` |
-
-## Contract
-
-Reference material, never run, so it has no effects to check. See **Contracts** in the protocol.
-
-```yaml
-kind: reference
-```
 
 ## Inputs
 
