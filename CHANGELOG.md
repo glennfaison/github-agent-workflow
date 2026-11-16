@@ -1,5 +1,15 @@
 # github-agent-workflow
 
+## 1.11.2
+
+### Patch Changes
+
+- 13a7c0b: `file-github-issues` now lists `runner` like every other pipeline skill, and the protocol's **Defaults** table names it. `explore-github-repo` passes its runner name on when it dispatches the skill, so the runner no longer falls back to `unknown`. The runner prompts are regenerated.
+- aab4f2c: `merge-safety` names its how-section `## Process`, like every other skill, instead of `## Workflow`. Nothing cited the old name.
+- 83c7c41: `agent-workflow-protocol` and `pipeline-guide` now open with `## Contract` (`kind: reference`), like every other skill, instead of carrying it near the end. The protocol's **Inputs** names both input forms (free text and key-value pairs) and says each is none.
+- 99c48d3: `runner-prompts` no longer ends with a `## Never` section, the legacy shape that contracts replaced. Its three rules (invent no input, edit `references/prompts.md` only through `npm run sync`, run no pipeline skill) are now the last step of **Process**.
+- 2ebf08b: `npm run validate` now checks four rules it let through: the contract is the first section of every skill, reference skills included; a reference skill may not keep a `## Never`, `## Result` or other folded section; every skill that runs has a `## Process` section; and every pipeline skill lists `runner` and `unattended`. The protocol's **Contracts** section now defines `types` and states these rules. A heading inside a code fence no longer counts as a section.
+
 ## 1.11.1
 
 ### Patch Changes
