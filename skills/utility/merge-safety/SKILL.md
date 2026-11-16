@@ -62,7 +62,7 @@ optional except `pr`:
 callers and contracts, and the linked issue when it clarifies the intended
 behaviour. It merges nothing and changes no labels.
 
-## Workflow
+## Process
 
 1. Establish the exact PR, base and head, then inspect the complete diff and
    relevant callers or contracts. Read the linked issue when it clarifies the
