@@ -5,7 +5,7 @@ import { checkContracts, extractContract, resultHead, headings, purity, entryPar
 const ITEM = `kind: item
 step: Triaging
 target: { param: issue, type: issue }
-params: [issue, runner]
+params: [issue, runner, unattended]
 requires: ["The issue is open."]
 returns: ["#N done", "#N escalated: <reason>", "#N skipped: <reason>", "#N failed: <reason>"]
 ensures: ["The lease is released."]
@@ -20,7 +20,7 @@ terminates: "One pass."`;
 
 const GROUP = `kind: group
 step: Triaging
-params: [runner]
+params: [runner, unattended]
 dispatches: do-it
 requires: ["None."]
 returns: ["nothing eligible"]
@@ -34,10 +34,11 @@ calls: []
 idempotent: "Yes."
 terminates: "One pass."`;
 
-const INPUTS = "## Inputs\n\n| Input | Default | What |\n|---|---|---|\n| `issue` | *(required)* | x |\n| `runner` | `unknown` | y |\n";
-const skill = (name, yaml, rest = "", inputKeys = ["issue", "runner"]) => ({
+const INPUTS = "## Inputs\n\n| Input | Default | What |\n|---|---|---|\n| `issue` | *(required)* | x |\n| `runner` | `unknown` | y |\n| `unattended` | `true` | z |\n";
+const PROCESS = "## Process\n\n1. Do it.\n";
+const skill = (name, yaml, rest = "", inputKeys = ["issue", "runner", "unattended"]) => ({
   name, rel: `skills/pipeline/${name}`, bucket: "pipeline", userInvoked: false, inputKeys,
-  body: `# ${name}\n\n## Contract\n\n\`\`\`yaml\n${yaml}\n\`\`\`\n\n${INPUTS}\n${rest}`,
+  body: `# ${name}\n\n## Contract\n\n\`\`\`yaml\n${yaml}\n\`\`\`\n\n${INPUTS}\n${PROCESS}\n${rest}`,
 });
 const run = (skills, extra = [], pending = new Set()) => {
   const all = [...skills, ...extra];
@@ -50,15 +51,15 @@ test("a well-formed item contract has no problems", () => {
 });
 
 test("a group dispatching an item of the same step is fine", () => {
-  assert.deepEqual(run([skill("do-them", GROUP, "", ["runner"]), item()]), []);
+  assert.deepEqual(run([skill("do-them", GROUP, "", ["runner", "unattended"]), item()]), []);
 });
 
 test("a dispatched item that writes the run log must accept write_log", () => {
   const logging = ITEM.replace('claimed: ["A label."]', 'claimed: ["A label."]\n    shared: ["One run-log entry."]');
-  const errs = run([skill("do-them", GROUP, "", ["runner"]), item(logging)]);
+  const errs = run([skill("do-them", GROUP, "", ["runner", "unattended"]), item(logging)]);
   assert.ok(errs.some((e) => /no `write_log` param/.test(e)));
-  const ok = logging.replace("[issue, runner]", "[issue, runner, write_log]");
-  assert.deepEqual(run([skill("do-them", GROUP, "", ["runner"]), item(ok, "", ["issue", "runner", "write_log"])]), []);
+  const ok = logging.replace("[issue, runner, unattended]", "[issue, runner, unattended, write_log]");
+  assert.deepEqual(run([skill("do-them", GROUP, "", ["runner", "unattended"]), item(ok, "", ["issue", "runner", "unattended", "write_log"])]), []);
 });
 
 test("a precondition may not call a helper that writes", () => {
@@ -82,7 +83,7 @@ test("invalid YAML is reported, not thrown", () => {
 });
 
 test("params must equal the Inputs table", () => {
-  const errs = run([item(ITEM.replace("[issue, runner]", "[issue, bogus]"))]);
+  const errs = run([item(ITEM.replace("[issue, runner, unattended]", "[issue, bogus, unattended]"))]);
   assert.ok(errs.some((e) => /missing `runner`/.test(e)));
   assert.ok(errs.some((e) => /has `bogus`/.test(e)));
 });
@@ -121,17 +122,17 @@ test("a prose section the contract replaces is reported", () => {
 
 test("a group skill cannot claim, and an item skill with a target must", () => {
   const claiming = GROUP.replace("    shared:", "    claimed: [\"x\"]\n    shared:");
-  assert.ok(run([skill("do-them", claiming, "", ["runner"]), item()]).some((e) => /only an item skill claims/.test(e)));
+  assert.ok(run([skill("do-them", claiming, "", ["runner", "unattended"]), item()]).some((e) => /only an item skill claims/.test(e)));
   const noClaim = ITEM.replace(/    claimed: \["A label."\]/, "    shared: [\"A log.\"]");
   assert.ok(run([item(noClaim)]).some((e) => /needs `effects.writes.claimed`/.test(e)));
 });
 
 test("a sweep skill needs no target or dispatch, but cannot claim", () => {
   const SWEEP = GROUP.replace("kind: group", "kind: sweep").replace("dispatches: do-it\n", "");
-  assert.deepEqual(run([skill("tidy", SWEEP, "", ["runner"])]), []);
-  assert.ok(run([skill("tidy", SWEEP + "\ndispatches: do-it", "", ["runner"])]).some((e) => /only a group skill dispatches/.test(e)));
+  assert.deepEqual(run([skill("tidy", SWEEP, "", ["runner", "unattended"])]), []);
+  assert.ok(run([skill("tidy", SWEEP + "\ndispatches: do-it", "", ["runner", "unattended"])]).some((e) => /only a group skill dispatches/.test(e)));
   const claiming = SWEEP.replace("    shared:", "    claimed: [\"x\"]\n    shared:");
-  assert.ok(run([skill("tidy", claiming, "", ["runner"])]).some((e) => /only an item skill claims/.test(e)));
+  assert.ok(run([skill("tidy", claiming, "", ["runner", "unattended"])]).some((e) => /only an item skill claims/.test(e)));
 });
 
 test("an unknown write scope is reported", () => {
@@ -149,8 +150,8 @@ test("calls: an unknown or user-invoked skill is reported, and a skill the text 
 
 test("a group must dispatch an item skill of its own step", () => {
   const other = skill("do-it", ITEM.replace("step: Triaging", "step: Reviewing"));
-  assert.ok(run([skill("do-them", GROUP, "", ["runner"]), other]).some((e) => /belongs to Reviewing/.test(e)));
-  assert.ok(run([skill("do-them", GROUP.replace("do-it", "nope"), "", ["runner"])]).some((e) => /not a skill in this package/.test(e)));
+  assert.ok(run([skill("do-them", GROUP, "", ["runner", "unattended"]), other]).some((e) => /belongs to Reviewing/.test(e)));
+  assert.ok(run([skill("do-them", GROUP.replace("do-it", "nope"), "", ["runner", "unattended"])]).some((e) => /not a skill in this package/.test(e)));
 });
 
 test("resultHead and headings", () => {
@@ -246,8 +247,44 @@ test("a reference skill needs no params, results or scenarios, whatever its Inpu
   assert.deepEqual(run([skill("the-guide", REFERENCE, "## Process\n\nRead it.\n", ["issue", "runner"])]), []);
 });
 
-test("a reference skill may carry the prose sections a contract replaces", () => {
-  assert.deepEqual(run([skill("the-guide", REFERENCE, "## Result\n\ntext\n", [])]), []);
+test("a reference skill may not carry the prose sections a contract replaces either", () => {
+  const errs = run([skill("the-guide", REFERENCE, "## Never\n\ntext\n", [])]);
+  assert.ok(errs.some((e) => /has a `## Never` section/.test(e)));
+});
+
+test("a heading inside a code fence is not a section", () => {
+  assert.deepEqual(headings("## A\n```\n## Never\n```\n## B\n"), ["A", "B"]);
+  assert.deepEqual(run([skill("the-guide", REFERENCE, "```md\n## Never\n```\n", [])]), []);
+});
+
+test("the contract is the first section, in every kind of skill", () => {
+  const late = (name, yaml, kind) => ({
+    name, rel: `skills/pipeline/${name}`, bucket: "pipeline", userInvoked: false, inputKeys: kind === "reference" ? [] : ["issue", "runner", "unattended"],
+    body: `# ${name}\n\n## Overview\n\nText.\n\n## Contract\n\n\`\`\`yaml\n${yaml}\n\`\`\`\n\n${INPUTS}\n${PROCESS}`,
+  });
+  assert.ok(run([late("do-it", ITEM, "item")]).some((e) => /must be the first section, but `## Overview` comes first/.test(e)));
+  assert.ok(run([late("the-guide", REFERENCE, "reference")]).some((e) => /must be the first section/.test(e)));
+});
+
+test("a skill that runs has a `## Process` section, named exactly that", () => {
+  const renamed = (s) => ({ ...s, body: s.body.replace("## Process", "## Workflow") });
+  const errs = run([renamed(item())]);
+  assert.ok(errs.some((e) => /has no `## Process` section/.test(e)));
+  assert.deepEqual(run([skill("the-guide", REFERENCE, "", [])]), [], "a reference skill is never run, so it has no Process");
+});
+
+test("every pipeline skill lists runner and unattended, and a utility skill need not", () => {
+  const without = (k) => ITEM.replace(`params: [issue, runner, unattended]`, `params: [${["issue", "runner", "unattended"].filter((x) => x !== k).join(", ")}]`);
+  for (const k of ["runner", "unattended"]) {
+    const keys = ["issue", "runner", "unattended"].filter((x) => x !== k);
+    const errs = run([item(without(k), "", keys)]);
+    assert.ok(errs.some((e) => e.includes("lists `" + k + "`")), `missing ${k} is reported`);
+  }
+  const groupWithout = GROUP.replace("params: [runner, unattended]", "params: [runner]");
+  assert.ok(run([skill("do-them", groupWithout, "", ["runner"]), item()]).some((e) => /lists `unattended`/.test(e)));
+  // a utility skill is not a pipeline skill: it takes neither input and is not reported
+  assert.deepEqual(run([item(CALLER), util()]), []);
+  assert.ok(!run([item(CALLER), util()]).some((e) => /lists `(runner|unattended)`/.test(e)));
 });
 
 test("a skill without a contract is reported, unless it is pending", () => {
