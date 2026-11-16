@@ -29,7 +29,7 @@ types:
     evidence: "what the category's Required sections need"
     related: "optional issue numbers"
     screenshots: "optional"
-params: [candidates, dry_run, limit, parent, repo_guidance, dedupe_closed_days, run_id, title, category, area, impact, confidence, evidence, related, screenshots, unattended]
+params: [candidates, dry_run, limit, parent, repo_guidance, dedupe_closed_days, run_id, runner, title, category, area, impact, confidence, evidence, related, screenshots, unattended]
 requires:
   - "None: always eligible. It works on candidates, not on an item that could be leased."
 returns:
@@ -78,6 +78,7 @@ terminates: "One pass over the candidates."
 | `repo_guidance` | `AGENTS.md` | Extra files holding the repository's own agent rules, read in addition to the standard locations (see `references/client-guidance.md`) |
 | `dedupe_closed_days` | `30` | The "recently closed" window the duplicate search runs over |
 | `run_id` | *(none)* | Exploring run id to record on filed issues |
+| `runner` | `unknown` | Name recorded in the run id and the run log |
 | `unattended` | `true` | `true`: no human is present, so never ask (see **Unattended runs** in the protocol). `false`: a human may be asked |
 
 **One candidate as key-value pairs.** The `candidate` type in the contract is these fields. For several candidates use free text or `candidates`.

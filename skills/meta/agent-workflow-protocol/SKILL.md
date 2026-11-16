@@ -105,7 +105,7 @@ A key-value pair and free text that name the same thing resolve to the pair. An 
 | `max_review_rounds` | `3` | `review-github-pr` |
 | `max_item_failures` | `3` | `triage-github-issue`, `implement-github-issue`, `shepherd-github-pr`, `review-github-pr` |
 | `max_depth` | `1` | `implement-github-issues`, `implement-github-issue` |
-| `runner` | `unknown` | `explore-github-repo`, `triage-github-issues`, `triage-github-issue`, `implement-github-issues`, `implement-github-issue`, `shepherd-github-prs`, `shepherd-github-pr`, `review-github-prs`, `review-github-pr`, `reconcile-github-issues` |
+| `runner` | `unknown` | `explore-github-repo`, `file-github-issues`, `triage-github-issues`, `triage-github-issue`, `implement-github-issues`, `implement-github-issue`, `shepherd-github-prs`, `shepherd-github-pr`, `review-github-prs`, `review-github-pr`, `reconcile-github-issues` |
 | `unattended` | `true` | `explore-github-repo`, `file-github-issues`, `triage-github-issues`, `triage-github-issue`, `implement-github-issues`, `implement-github-issue`, `shepherd-github-prs`, `shepherd-github-pr`, `review-github-prs`, `review-github-pr`, `reconcile-github-issues` |
 | `trusted_authors` | *(none)* | `triage-github-issues`, `triage-github-issue`, `implement-github-issues`, `implement-github-issue`, `shepherd-github-prs`, `shepherd-github-pr`, `review-github-prs`, `review-github-pr`, `reconcile-github-issues`, `setup-github-agent-workflow` |
 | `write_log` | `true` | `triage-github-issue`, `implement-github-issue`, `shepherd-github-pr`, `review-github-pr`, `reconcile-github-issues` |
