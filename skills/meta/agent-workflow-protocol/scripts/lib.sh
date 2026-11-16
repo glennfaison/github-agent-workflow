@@ -110,8 +110,16 @@ export RUN_ID
 # A marker counts only when its author is trusted: the repository's OWNER, MEMBER or COLLABORATOR
 # accounts, the account this agent runs as, or a login in $trusted_authors (comma-separated).
 
+# `gh api user` is a 403 for a GitHub App installation token, and `gh` still prints the error body on stdout, so the
+# output counts only when the call succeeded and it is a login (`name` or `name[bot]`). Anything else leaves the
+# agent unknown: add its login to $trusted_authors.
 _agent_self() {
-  [ -n "${_AGENT_SELF+x}" ] || _AGENT_SELF="$(gh api user --jq .login 2>/dev/null || true)"
+  if [ -z "${_AGENT_SELF+x}" ]; then
+    local login re='^[A-Za-z0-9][A-Za-z0-9-]*(\[bot\])?$'
+    login="$(gh api user --jq .login 2>/dev/null)" || login=""
+    [[ "$login" =~ $re ]] || login=""
+    _AGENT_SELF="$login"
+  fi
   printf '%s' "$_AGENT_SELF"
 }
 
