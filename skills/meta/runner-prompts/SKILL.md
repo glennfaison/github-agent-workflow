@@ -35,9 +35,4 @@ kind: reference
 2. Print the preamble once, then the blocks for the steps asked for. Each step has a group block (the skill a scheduler runs) and an item block (the skill run by hand on one issue or PR).
 3. Replace `OWNER/REPO` with `repo`, and `NAME` with `runner_name`, when given. Change nothing else: a value in a block is that input's default, and the user may edit it.
 4. Say that the skills' own **Inputs** sections are authoritative if a block ever disagrees with one.
-
-## Never
-
-- Invent an input, or leave one out. `references/prompts.md` is generated from the skills' Inputs sections (`npm run sync`) and checked in CI.
-- Edit `references/prompts.md` by hand.
-- Run any pipeline skill.
+5. Stop there. Do not invent an input or leave one out, and do not edit `references/prompts.md` by hand: it is generated from the skills' **Inputs** sections (`npm run sync`) and checked in CI. Run no pipeline skill.
