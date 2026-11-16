@@ -32,6 +32,7 @@ limit=
 repo_guidance=AGENTS.md
 dedupe_closed_days=30
 run_id=
+runner=NAME
 unattended=true
 title=
 category=
